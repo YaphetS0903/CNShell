@@ -635,6 +635,23 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sync-pill {
+  border: 1px solid rgba(45, 212, 191, 0.35);
+  border-radius: 999px;
+  background: rgba(45, 212, 191, 0.1);
+  color: #a7f3e8;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
 .path-row {
   display: flex;
   align-items: center;

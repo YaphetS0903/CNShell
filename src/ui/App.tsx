@@ -110,6 +110,47 @@ function normalizeSendValue(value: string) {
   return value.replaceAll("\\r", "\r").replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll("\\e", "\x1b");
 }
 
+function normalizeRemotePath(path: string) {
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") {
+      continue;
+    }
+
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+
+    parts.push(part);
+  }
+
+  return `/${parts.join("/")}`;
+}
+
+function inferDirectoryFromCommand(command: string, currentPath: string) {
+  const trimmed = command.trim();
+  const match = /^cd(?:\s+(.+))?$/.exec(trimmed);
+  if (!match) {
+    return null;
+  }
+
+  const rawPath = (match[1] ?? "~").trim().replace(/^['"]|['"]$/g, "");
+  if (!rawPath || rawPath === "~") {
+    return "/";
+  }
+
+  if (rawPath === "-") {
+    return null;
+  }
+
+  if (rawPath.startsWith("/")) {
+    return normalizeRemotePath(rawPath);
+  }
+
+  return normalizeRemotePath(`${currentPath.replace(/\/$/, "")}/${rawPath}`);
+}
+
 function getActiveKeyRules(profiles: KeyMappingProfile[]) {
   return profiles.flatMap((profile) => (profile.enabled ? profile.rules.filter((rule) => rule.enabled) : []));
 }
@@ -317,6 +358,17 @@ export function App() {
     }));
   };
 
+  const syncRemotePath = (path: string) => {
+    const normalizedPath = normalizeRemotePath(path || "/");
+    setRemotePath(normalizedPath);
+    setSnapshot((current) => ({
+      ...current,
+      sessions: current.sessions.map((session) =>
+        session.id === activeTab.id ? { ...session, cwd: normalizedPath } : session
+      )
+    }));
+  };
+
   const appendRecordingInput = (input: string) => {
     if (!isRecordingScript || !input) {
       return;
@@ -338,6 +390,13 @@ export function App() {
   const sendTerminalInput = (sessionId: string, input: string, options: { record?: boolean } = {}) => {
     if (options.record !== false) {
       appendRecordingInput(input);
+    }
+
+    if (sessionId === activeTab.id && input.endsWith("\r")) {
+      const nextPath = inferDirectoryFromCommand(input.replace(/\r$/, ""), remotePath);
+      if (nextPath) {
+        syncRemotePath(nextPath);
+      }
     }
 
     void window.cnshell?.terminal.write(sessionId, input);
@@ -493,7 +552,7 @@ export function App() {
         ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then((listing) => {
-        setRemotePath(listing.path);
+        syncRemotePath(listing.path);
         setRemoteFileEntries(listing.entries);
         setSftpStatus("idle");
       })
@@ -712,6 +771,10 @@ export function App() {
     refreshSessionLog();
   }, [refreshSessionLog]);
 
+  useEffect(() => {
+    setRemotePath(activeTab.cwd || "/");
+  }, [activeTab.cwd, activeTab.id]);
+
   if (!isWorkspaceReady) {
     return (
       <main className="app-shell loading-shell">
@@ -797,7 +860,7 @@ export function App() {
               localPath={transferLocalPath}
               transferRemotePath={transferRemotePath}
               transferJobs={transferJobs}
-              onPathChange={setRemotePath}
+              onPathChange={syncRemotePath}
               onLocalPathChange={setTransferLocalPath}
               onTransferRemotePathChange={setTransferRemotePath}
               onRefresh={refreshRemoteFiles}
@@ -1549,9 +1612,12 @@ function FilePanel({
           <FileText size={16} aria-hidden="true" />
           <h2>SFTP</h2>
         </div>
-        <button type="button" aria-label="Refresh remote files" onClick={onRefresh}>
-          <RefreshCw size={16} aria-hidden="true" />
-        </button>
+        <div className="panel-actions">
+          <span className="sync-pill">cwd sync</span>
+          <button type="button" aria-label="Refresh remote files" onClick={onRefresh}>
+            <RefreshCw size={16} aria-hidden="true" />
+          </button>
+        </div>
       </div>
       <label className="path-row">
         <span className="sr-only">Remote path</span>
