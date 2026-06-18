@@ -31,7 +31,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement basic upload/download transfer queue.~~
 - [x] ~~Implement no-agent server metrics collection.~~
 - [x] ~~Implement Quick Commands and command palette.~~
-- [ ] Implement session tabs and reconnect states.
+- [x] ~~Implement session tabs and reconnect states.~~
 - [ ] Implement logging and terminal search.
 
 ## Xshell-Inspired Workflow Milestones
@@ -100,4 +100,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement basic SFTP upload/download transfer queue.~~
 - [x] ~~Implement no-agent SSH metrics collection.~~
 - [x] ~~Implement Quick Commands execution and command palette.~~
+- [x] ~~Implement session tab creation and reconnect action.~~
 - [ ] Add optional master password vault mode.

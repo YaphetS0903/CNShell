@@ -321,6 +321,28 @@ export function App() {
     setCommandQuery("");
   };
 
+  const createSessionForActiveConnection = () => {
+    const sessionId = `tab-${activeConnection.id}-${Date.now()}`;
+    const nextSession: SessionTab = {
+      id: sessionId,
+      connectionId: activeConnection.id,
+      title: activeConnection.name,
+      cwd: activeConnection.protocol === "local" ? "~" : "/",
+      status: "disconnected",
+      startedAt: new Date().toISOString()
+    };
+
+    setSnapshot((current) => ({
+      ...current,
+      sessions: [...current.sessions, nextSession]
+    }));
+    setSessionStatuses((current) => ({
+      ...current,
+      [sessionId]: "disconnected"
+    }));
+    setActiveTabId(sessionId);
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -395,7 +417,12 @@ export function App() {
           version={appVersion}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
         />
-        <TabStrip tabs={sessionTabsWithStatus} activeTabId={activeTabId} onSelect={setActiveTabId} />
+        <TabStrip
+          tabs={sessionTabsWithStatus}
+          activeTabId={activeTabId}
+          onSelect={setActiveTabId}
+          onCreate={createSessionForActiveConnection}
+        />
         <section className="workspace-grid">
           <TerminalPane
             activeConnection={activeConnection}
@@ -405,6 +432,7 @@ export function App() {
             startToken={sessionStartTokens[activeTab.id] ?? 0}
             pendingCommand={pendingCommand}
             onStatusChange={setSessionStatus}
+            onReconnect={startActiveSession}
           />
           <aside className="ops-panel" aria-label="Operations panels">
             {activeConnection.protocol === "ssh" ? (
@@ -576,11 +604,13 @@ function TopBar({
 function TabStrip({
   tabs,
   activeTabId,
-  onSelect
+  onSelect,
+  onCreate
 }: {
   tabs: SessionTab[];
   activeTabId: string;
   onSelect: (tabId: string) => void;
+  onCreate: () => void;
 }) {
   return (
     <div className="tab-strip" role="tablist" aria-label="Session tabs">
@@ -598,7 +628,7 @@ function TabStrip({
           <small className={tab.status}>{tab.status}</small>
         </button>
       ))}
-      <button type="button" className="new-tab" aria-label="Open new session tab">
+      <button type="button" className="new-tab" aria-label="Open new session tab" onClick={onCreate}>
         <Plus size={16} aria-hidden="true" />
       </button>
     </div>
@@ -612,7 +642,8 @@ function TerminalPane({
   useSavedCredential,
   startToken,
   pendingCommand,
-  onStatusChange
+  onStatusChange,
+  onReconnect
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
@@ -621,6 +652,7 @@ function TerminalPane({
   startToken: number;
   pendingCommand: PendingCommand | null;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
+  onReconnect: () => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
 
@@ -782,6 +814,10 @@ function TerminalPane({
           <button type="button">
             <UploadCloud size={16} aria-hidden="true" />
             ZMODEM
+          </button>
+          <button type="button" onClick={onReconnect}>
+            <RefreshCw size={16} aria-hidden="true" />
+            Reconnect
           </button>
           <button type="button" aria-label="More terminal actions">
             <MoreHorizontal size={16} aria-hidden="true" />
