@@ -1,4 +1,4 @@
-import type { AppSnapshot, RemoteFileEntry, ServerMetric } from "../domain/models.js";
+import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, ServerMetric } from "../domain/models.js";
 
 export type TerminalSessionKind = "local" | "ssh";
 
@@ -60,6 +60,7 @@ export interface SshSessionConfig {
   passphrase?: string;
   useSavedCredential?: boolean;
   readyTimeout?: number;
+  gateways?: JumpHostConfig[];
 }
 
 export interface CredentialSecret {

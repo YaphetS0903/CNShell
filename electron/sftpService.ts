@@ -2,7 +2,7 @@ import path from "node:path";
 import { Client, type FileEntryWithStats } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
-import { buildSshConnectConfig } from "./sshConnectionConfig.js";
+import { connectSshClient } from "./sshConnectionConfig.js";
 import type {
   ListRemoteDirectoryRequest,
   RemoteDirectoryListing,
@@ -48,10 +48,24 @@ export class SftpService {
     const directoryPath = path.posix.normalize(request.path || "/");
 
     return new Promise((resolve, reject) => {
-      const closeClient = () => client.end();
+      let gateways: Client[] = [];
+      const closeClient = () => {
+        client.end();
+        for (const gateway of gateways) {
+          gateway.end();
+        }
+      };
 
-      client
-        .on("ready", () => {
+      connectSshClient(client, {
+        ssh: request.ssh,
+        credentialStore: this.credentialStore,
+        knownHostsStore: this.knownHostsStore,
+        onHostKeyVerification: (event) => {
+          reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
+        }
+      })
+        .then((connected) => {
+          gateways = connected.gateways;
           client.sftp((sftpError, sftp) => {
             if (sftpError) {
               closeClient();
@@ -82,17 +96,7 @@ export class SftpService {
             });
           });
         })
-        .on("error", reject)
-        .connect(
-          buildSshConnectConfig({
-            ssh: request.ssh,
-            credentialStore: this.credentialStore,
-            knownHostsStore: this.knownHostsStore,
-            onHostKeyVerification: (event) => {
-              reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
-            }
-          })
-        );
+        .catch(reject);
     });
   }
 
@@ -100,10 +104,24 @@ export class SftpService {
     const client = new Client();
 
     return new Promise((resolve, reject) => {
-      const closeClient = () => client.end();
+      let gateways: Client[] = [];
+      const closeClient = () => {
+        client.end();
+        for (const gateway of gateways) {
+          gateway.end();
+        }
+      };
 
-      client
-        .on("ready", () => {
+      connectSshClient(client, {
+        ssh: request.ssh,
+        credentialStore: this.credentialStore,
+        knownHostsStore: this.knownHostsStore,
+        onHostKeyVerification: (event) => {
+          reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
+        }
+      })
+        .then((connected) => {
+          gateways = connected.gateways;
           client.sftp((sftpError, sftp) => {
             if (sftpError) {
               closeClient();
@@ -128,17 +146,7 @@ export class SftpService {
             }
           });
         })
-        .on("error", reject)
-        .connect(
-          buildSshConnectConfig({
-            ssh: request.ssh,
-            credentialStore: this.credentialStore,
-            knownHostsStore: this.knownHostsStore,
-            onHostKeyVerification: (event) => {
-              reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
-            }
-          })
-        );
+        .catch(reject);
     });
   }
 }

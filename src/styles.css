@@ -1109,6 +1109,55 @@ input:focus-visible {
   background: #172530;
 }
 
+.jump-host-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.jump-host-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 0.9fr) minmax(0, 1fr) 58px minmax(0, 0.8fr) auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 7px;
+}
+
+.jump-host-row strong {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(77, 171, 247, 0.14);
+  color: #b9e3ff;
+  font-size: 11px;
+}
+
+.jump-host-row input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #101923;
+  color: var(--text);
+  font-size: 11px;
+  padding: 7px;
+}
+
+.jump-host-row button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-size: 11px;
+}
+
 .credential-error {
   border: 1px solid rgba(255, 135, 135, 0.34);
   border-radius: 7px;

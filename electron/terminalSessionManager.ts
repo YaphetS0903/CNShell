@@ -4,7 +4,7 @@ import { spawn, type IPty } from "node-pty";
 import { Client, type ClientChannel } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
-import { buildSshConnectConfig } from "./sshConnectionConfig.js";
+import { connectSshClient } from "./sshConnectionConfig.js";
 import type { SessionLogStore } from "./sessionLogStore.js";
 import type {
   StartTerminalSessionRequest,
@@ -25,6 +25,7 @@ interface LocalTerminalSession {
 interface SshTerminalSession {
   kind: "ssh";
   client: Client;
+  gateways: Client[];
   stream?: ClientChannel;
 }
 
@@ -138,6 +139,9 @@ export class TerminalSessionManager {
     } else {
       session.stream?.close();
       session.client.end();
+      for (const gateway of session.gateways) {
+        gateway.end();
+      }
     }
 
     this.sessions.delete(id);
@@ -156,7 +160,7 @@ export class TerminalSessionManager {
     const rows = clampTerminalSize(request.rows, MIN_ROWS, MAX_ROWS);
     const client = new Client();
 
-    this.sessions.set(request.id, { kind: "ssh", client });
+    this.sessions.set(request.id, { kind: "ssh", client, gateways: [] });
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -170,9 +174,18 @@ export class TerminalSessionManager {
         }
       };
 
-      client
-        .on("ready", () => {
-          client.shell(
+      const startShell = (gateways: Client[]) => {
+        client.on("close", () => {
+          if (this.sessions.has(request.id)) {
+            this.sessions.delete(request.id);
+            for (const gateway of gateways) {
+              gateway.end();
+            }
+            this.window.webContents.send("terminal:exit", { id: request.id, exitCode: 0 });
+          }
+        });
+
+        client.shell(
             {
               term: "xterm-256color",
               cols,
@@ -184,7 +197,7 @@ export class TerminalSessionManager {
                 return;
               }
 
-              this.sessions.set(request.id, { kind: "ssh", client, stream });
+              this.sessions.set(request.id, { kind: "ssh", client, gateways, stream });
 
               stream.on("data", (data: Buffer) => {
                 const output = data.toString("utf8");
@@ -201,6 +214,9 @@ export class TerminalSessionManager {
               stream.on("close", () => {
                 this.sessions.delete(request.id);
                 client.end();
+                for (const gateway of gateways) {
+                  gateway.end();
+                }
                 this.window.webContents.send("terminal:exit", { id: request.id, exitCode: 0 });
               });
 
@@ -210,28 +226,21 @@ export class TerminalSessionManager {
               }
             }
           );
-        })
-        .on("error", fail)
-        .on("close", () => {
-          if (this.sessions.has(request.id)) {
-            this.sessions.delete(request.id);
-            this.window.webContents.send("terminal:exit", { id: request.id, exitCode: 0 });
-          }
-        });
+      };
 
-      client.connect(
-        buildSshConnectConfig({
-          ssh,
-          credentialStore: this.credentialStore,
-          knownHostsStore: this.knownHostsStore,
-          onHostKeyVerification: (event) => {
-            this.window.webContents.send("terminal:host-key-verification", {
-              id: request.id,
-              ...event
-            });
-          }
-        })
-      );
+      connectSshClient(client, {
+        ssh,
+        credentialStore: this.credentialStore,
+        knownHostsStore: this.knownHostsStore,
+        onHostKeyVerification: (event) => {
+          this.window.webContents.send("terminal:host-key-verification", {
+            id: request.id,
+            ...event
+          });
+        }
+      })
+        .then(({ gateways }) => startShell(gateways))
+        .catch(fail);
     });
   }
 

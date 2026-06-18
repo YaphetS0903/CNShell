@@ -1,7 +1,7 @@
 import { Client } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
-import { buildSshConnectConfig } from "./sshConnectionConfig.js";
+import { connectSshClient } from "./sshConnectionConfig.js";
 import type { CollectMetricsRequest, CollectMetricsResult } from "../src/shared/ipc.js";
 import type { ServerMetric } from "../src/domain/models.js";
 
@@ -78,29 +78,35 @@ export class MetricsService {
     const client = new Client();
 
     return new Promise((resolve, reject) => {
-      client
-        .on("ready", () => {
+      let gateways: Client[] = [];
+      const closeClient = () => {
+        client.end();
+        for (const gateway of gateways) {
+          gateway.end();
+        }
+      };
+
+      connectSshClient(client, {
+        ssh: request.ssh,
+        credentialStore: this.credentialStore,
+        knownHostsStore: this.knownHostsStore,
+        onHostKeyVerification: (event) => {
+          reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
+        }
+      })
+        .then((connected) => {
+          gateways = connected.gateways;
           execCommand(client, METRICS_COMMAND)
             .then((output) => {
-              client.end();
+              closeClient();
               resolve({ metrics: parseMetrics(output) });
             })
             .catch((error: Error) => {
-              client.end();
+              closeClient();
               reject(error);
             });
         })
-        .on("error", reject)
-        .connect(
-          buildSshConnectConfig({
-            ssh: request.ssh,
-            credentialStore: this.credentialStore,
-            knownHostsStore: this.knownHostsStore,
-            onHostKeyVerification: (event) => {
-              reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
-            }
-          })
-        );
+        .catch(reject);
     });
   }
 }

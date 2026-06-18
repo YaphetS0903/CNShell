@@ -12,7 +12,16 @@ export const connectionProfiles: ConnectionProfile[] = [
     authMethod: "privateKey",
     color: "#2f9e44",
     tags: ["nginx", "api"],
-    lastConnectedAt: "2026-06-18T09:12:00+08:00"
+    lastConnectedAt: "2026-06-18T09:12:00+08:00",
+    gateways: [
+      {
+        id: "gw-prod-bastion",
+        name: "prod-bastion",
+        host: "10.24.0.10",
+        port: 22,
+        username: "deploy"
+      }
+    ]
   },
   {
     id: "stage-db-01",

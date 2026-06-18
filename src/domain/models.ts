@@ -14,6 +14,15 @@ export interface ConnectionProfile {
   color: string;
   tags: string[];
   lastConnectedAt?: string;
+  gateways?: JumpHostConfig[];
+}
+
+export interface JumpHostConfig {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
 }
 
 export type SessionStatus = "connected" | "connecting" | "disconnected" | "error";

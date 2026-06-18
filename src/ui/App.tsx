@@ -29,8 +29,8 @@ import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
-import type { ConnectionProfile, SessionStatus, SessionTab, TransferJob } from "../domain/models";
-import type { CredentialStatus, HostKeyVerificationEvent, TunnelInfo, TunnelMode } from "../shared/ipc";
+import type { ConnectionProfile, JumpHostConfig, SessionStatus, SessionTab, TransferJob } from "../domain/models";
+import type { CredentialStatus, HostKeyVerificationEvent, SshSessionConfig, TunnelInfo, TunnelMode } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -70,6 +70,24 @@ function describeTunnel(tunnel: TunnelInfo) {
   }
 
   return `${bind} -> ${tunnel.targetHost ?? "?"}:${tunnel.targetPort ?? "?"}`;
+}
+
+function createSshConfig(
+  connection: ConnectionProfile,
+  draft: { password: string; privateKey: string; passphrase: string },
+  useSavedCredential: boolean
+): SshSessionConfig {
+  return {
+    connectionId: connection.id,
+    host: connection.host,
+    port: connection.port,
+    username: connection.username,
+    password: draft.password || undefined,
+    privateKey: draft.privateKey || undefined,
+    passphrase: draft.passphrase || undefined,
+    useSavedCredential,
+    gateways: connection.gateways
+  };
 }
 
 function applyHighlightRules(data: string) {
@@ -200,6 +218,15 @@ export function App() {
     }));
   };
 
+  const updateActiveGateways = (gateways: JumpHostConfig[]) => {
+    setSnapshot((current) => ({
+      ...current,
+      connections: current.connections.map((connection) =>
+        connection.id === activeConnection.id ? { ...connection, gateways } : connection
+      )
+    }));
+  };
+
   const startActiveSession = () => {
     setSessionStartTokens((current) => ({
       ...current,
@@ -289,16 +316,7 @@ export function App() {
     void window.cnshell?.sftp
       .listDirectory({
         path: remotePath,
-        ssh: {
-          connectionId: activeConnection.id,
-          host: activeConnection.host,
-          port: activeConnection.port,
-          username: activeConnection.username,
-          password: activeSshDraft.password || undefined,
-          privateKey: activeSshDraft.privateKey || undefined,
-          passphrase: activeSshDraft.passphrase || undefined,
-          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
-        }
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then((listing) => {
         setRemotePath(listing.path);
@@ -338,16 +356,7 @@ export function App() {
         direction,
         localPath,
         remotePath: remoteTransferPath,
-        ssh: {
-          connectionId: activeConnection.id,
-          host: activeConnection.host,
-          port: activeConnection.port,
-          username: activeConnection.username,
-          password: activeSshDraft.password || undefined,
-          privateKey: activeSshDraft.privateKey || undefined,
-          passphrase: activeSshDraft.passphrase || undefined,
-          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
-        }
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then(() => {
         setTransferJobs((current) =>
@@ -373,16 +382,7 @@ export function App() {
 
     void window.cnshell?.metrics
       .collect({
-        ssh: {
-          connectionId: activeConnection.id,
-          host: activeConnection.host,
-          port: activeConnection.port,
-          username: activeConnection.username,
-          password: activeSshDraft.password || undefined,
-          privateKey: activeSshDraft.privateKey || undefined,
-          passphrase: activeSshDraft.passphrase || undefined,
-          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
-        }
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then((result) => {
         setLiveMetrics(result.metrics);
@@ -449,16 +449,7 @@ export function App() {
         bindPort,
         targetHost: tunnelDraft.mode === "dynamic" ? undefined : targetHost,
         targetPort,
-        ssh: {
-          connectionId: activeConnection.id,
-          host: activeConnection.host,
-          port: activeConnection.port,
-          username: activeConnection.username,
-          password: activeSshDraft.password || undefined,
-          privateKey: activeSshDraft.privateKey || undefined,
-          passphrase: activeSshDraft.passphrase || undefined,
-          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
-        }
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then((info) => {
         setTunnels((current) => current.map((tunnel) => (tunnel.id === tunnelId ? info : tunnel)));
@@ -613,6 +604,9 @@ export function App() {
                 onDeleteCredential={deleteActiveCredential}
                 onTrustHost={trustActiveHost}
               />
+            ) : null}
+            {activeConnection.protocol === "ssh" ? (
+              <JumpHostPanel gateways={activeConnection.gateways ?? []} onChange={updateActiveGateways} />
             ) : null}
             <FilePanel
               remoteFiles={remoteFileEntries}
@@ -936,16 +930,7 @@ function TerminalPane({
           rows: terminal.rows,
           ssh:
             activeConnection.protocol === "ssh"
-              ? {
-                  connectionId: activeConnection.id,
-                  host: activeConnection.host,
-                  port: activeConnection.port,
-                  username: activeConnection.username,
-                  password: sshDraft.password || undefined,
-                  privateKey: sshDraft.privateKey || undefined,
-                  passphrase: sshDraft.passphrase || undefined,
-                  useSavedCredential
-                }
+              ? createSshConfig(activeConnection, sshDraft, useSavedCredential)
               : undefined
         })
         .then(() => onStatusChange(sessionId, "connected"))
@@ -984,6 +969,7 @@ function TerminalPane({
     activeConnection,
     activeTab,
     onStatusChange,
+    sshDraft,
     sshDraft.password,
     sshDraft.passphrase,
     sshDraft.privateKey,
@@ -1178,6 +1164,87 @@ function SshCredentialPanel({
             Delete saved
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function JumpHostPanel({
+  gateways,
+  onChange
+}: {
+  gateways: JumpHostConfig[];
+  onChange: (gateways: JumpHostConfig[]) => void;
+}) {
+  const addGateway = () => {
+    onChange([
+      ...gateways,
+      {
+        id: `gateway-${Date.now()}`,
+        name: `jump-${gateways.length + 1}`,
+        host: "127.0.0.1",
+        port: 22,
+        username: "deploy"
+      }
+    ]);
+  };
+
+  const updateGateway = (id: string, patch: Partial<JumpHostConfig>) => {
+    onChange(gateways.map((gateway) => (gateway.id === id ? { ...gateway, ...patch } : gateway)));
+  };
+
+  const removeGateway = (id: string) => {
+    onChange(gateways.filter((gateway) => gateway.id !== id));
+  };
+
+  return (
+    <section className="panel-section" aria-label="Jump host proxy">
+      <div className="panel-heading">
+        <div>
+          <SplitSquareHorizontal size={16} aria-hidden="true" />
+          <h2>Jump Hosts</h2>
+        </div>
+        <button type="button" aria-label="Add jump host" onClick={addGateway}>
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="jump-host-list">
+        {gateways.length === 0 ? (
+          <div className="trigger-empty">Direct SSH connection</div>
+        ) : (
+          gateways.map((gateway, index) => (
+            <div key={gateway.id} className="jump-host-row">
+              <strong>{index + 1}</strong>
+              <input
+                value={gateway.name}
+                placeholder="Name"
+                aria-label={`Jump host ${index + 1} name`}
+                onChange={(event) => updateGateway(gateway.id, { name: event.target.value })}
+              />
+              <input
+                value={gateway.host}
+                placeholder="Host"
+                aria-label={`Jump host ${index + 1} host`}
+                onChange={(event) => updateGateway(gateway.id, { host: event.target.value })}
+              />
+              <input
+                value={gateway.port}
+                placeholder="Port"
+                aria-label={`Jump host ${index + 1} port`}
+                onChange={(event) => updateGateway(gateway.id, { port: Number(event.target.value) || 22 })}
+              />
+              <input
+                value={gateway.username}
+                placeholder="User"
+                aria-label={`Jump host ${index + 1} user`}
+                onChange={(event) => updateGateway(gateway.id, { username: event.target.value })}
+              />
+              <button type="button" onClick={() => removeGateway(gateway.id)}>
+                Remove
+              </button>
+            </div>
+          ))
+        )}
       </div>
     </section>
   );

@@ -3,12 +3,13 @@ import { Client } from "ssh2";
 import type { ClientChannel, TcpConnectionDetails } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
-import { buildSshConnectConfig } from "./sshConnectionConfig.js";
+import { connectSshClient } from "./sshConnectionConfig.js";
 import type { StartTunnelRequest, TunnelInfo } from "../src/shared/ipc.js";
 
 interface ActiveTunnel {
   info: TunnelInfo;
   client: Client;
+  gateways: Client[];
   close: () => void;
 }
 
@@ -51,26 +52,23 @@ export class TunnelManager {
         }
       };
 
-      client
-        .on("ready", () => {
+      connectSshClient(client, {
+        ssh: request.ssh,
+        credentialStore: this.credentialStore,
+        knownHostsStore: this.knownHostsStore,
+        onHostKeyVerification: (event) => {
+          fail(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
+        }
+      })
+        .then(({ gateways }) => {
           if (request.mode === "remote") {
-            this.startRemoteTunnel(request, client, info, resolve, fail);
+            this.startRemoteTunnel(request, client, gateways, info, resolve, fail);
             return;
           }
 
-          this.startLocalServerTunnel(request, client, info, resolve, fail);
+          this.startLocalServerTunnel(request, client, gateways, info, resolve, fail);
         })
-        .on("error", fail)
-        .connect(
-          buildSshConnectConfig({
-            ssh: request.ssh,
-            credentialStore: this.credentialStore,
-            knownHostsStore: this.knownHostsStore,
-            onHostKeyVerification: (event) => {
-              fail(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
-            }
-          })
-        );
+        .catch(fail);
     });
   }
 
@@ -88,6 +86,7 @@ export class TunnelManager {
   private startLocalServerTunnel(
     request: StartTunnelRequest,
     client: Client,
+    gateways: Client[],
     info: TunnelInfo,
     resolve: (info: TunnelInfo) => void,
     reject: (error: Error) => void
@@ -119,9 +118,13 @@ export class TunnelManager {
       this.tunnels.set(request.id, {
         info,
         client,
+        gateways,
         close: () => {
           server.close();
           client.end();
+          for (const gateway of gateways) {
+            gateway.end();
+          }
         }
       });
       resolve(info);
@@ -131,6 +134,7 @@ export class TunnelManager {
   private startRemoteTunnel(
     request: StartTunnelRequest,
     client: Client,
+    gateways: Client[],
     info: TunnelInfo,
     resolve: (info: TunnelInfo) => void,
     reject: (error: Error) => void
@@ -170,9 +174,15 @@ export class TunnelManager {
       this.tunnels.set(request.id, {
         info,
         client,
+        gateways,
         close: () => {
           client.off("tcp connection", onTcpConnection);
-          client.unforwardIn(request.bindHost, info.bindPort, () => client.end());
+          client.unforwardIn(request.bindHost, info.bindPort, () => {
+            client.end();
+            for (const gateway of gateways) {
+              gateway.end();
+            }
+          });
         }
       });
       resolve(info);
