@@ -3,6 +3,7 @@ import type {
   CNshellApi,
   StartTerminalSessionRequest,
   TerminalDataEvent,
+  TerminalErrorEvent,
   TerminalExitEvent,
   TerminalSessionResizeRequest,
   TerminalSessionStarted
@@ -26,6 +27,11 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent, payload: TerminalExitEvent) => callback(payload);
       ipcRenderer.on("terminal:exit", listener);
       return () => ipcRenderer.off("terminal:exit", listener);
+    },
+    onError: (callback: (event: TerminalErrorEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalErrorEvent) => callback(payload);
+      ipcRenderer.on("terminal:error", listener);
+      return () => ipcRenderer.off("terminal:error", listener);
     }
   }
 } satisfies CNshellApi;

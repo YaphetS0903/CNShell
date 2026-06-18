@@ -6,6 +6,7 @@ export interface StartTerminalSessionRequest {
   cols: number;
   rows: number;
   cwd?: string;
+  ssh?: SshSessionConfig;
 }
 
 export interface TerminalSessionStarted {
@@ -30,6 +31,21 @@ export interface TerminalExitEvent {
   signal?: number;
 }
 
+export interface TerminalErrorEvent {
+  id: string;
+  message: string;
+}
+
+export interface SshSessionConfig {
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+  readyTimeout?: number;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   terminal: {
@@ -39,5 +55,6 @@ export interface CNshellApi {
     stop: (id: string) => Promise<boolean>;
     onData: (callback: (event: TerminalDataEvent) => void) => () => void;
     onExit: (callback: (event: TerminalExitEvent) => void) => () => void;
+    onError: (callback: (event: TerminalErrorEvent) => void) => () => void;
   };
 }

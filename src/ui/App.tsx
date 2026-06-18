@@ -37,6 +37,8 @@ export function App() {
   const [activeConnectionId, setActiveConnectionId] = useState(snapshot.connections[0].id);
   const [activeTabId, setActiveTabId] = useState(snapshot.sessions[0].id);
   const [appVersion, setAppVersion] = useState("dev");
+  const [sshDrafts, setSshDrafts] = useState<Record<string, { password: string; privateKey: string; passphrase: string }>>({});
+  const [sessionStartTokens, setSessionStartTokens] = useState<Record<string, number>>({});
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -75,6 +77,28 @@ export function App() {
     }));
   }, []);
 
+  const activeSshDraft = useMemo(
+    () => sshDrafts[activeConnection.id] ?? { password: "", privateKey: "", passphrase: "" },
+    [activeConnection.id, sshDrafts]
+  );
+
+  const updateActiveSshDraft = (field: "password" | "privateKey" | "passphrase", value: string) => {
+    setSshDrafts((current) => ({
+      ...current,
+      [activeConnection.id]: {
+        ...(current[activeConnection.id] ?? { password: "", privateKey: "", passphrase: "" }),
+        [field]: value
+      }
+    }));
+  };
+
+  const startActiveSession = () => {
+    setSessionStartTokens((current) => ({
+      ...current,
+      [activeTab.id]: (current[activeTab.id] ?? 0) + 1
+    }));
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -100,8 +124,22 @@ export function App() {
         <TopBar activeConnection={activeConnection} status={activeTab.status} version={appVersion} />
         <TabStrip tabs={sessionTabsWithStatus} activeTabId={activeTabId} onSelect={setActiveTabId} />
         <section className="workspace-grid">
-          <TerminalPane activeConnection={activeConnection} activeTab={activeTab} onStatusChange={setSessionStatus} />
+          <TerminalPane
+            activeConnection={activeConnection}
+            activeTab={activeTab}
+            sshDraft={activeSshDraft}
+            startToken={sessionStartTokens[activeTab.id] ?? 0}
+            onStatusChange={setSessionStatus}
+          />
           <aside className="ops-panel" aria-label="Operations panels">
+            {activeConnection.protocol === "ssh" ? (
+              <SshCredentialPanel
+                authMethod={activeConnection.authMethod}
+                draft={activeSshDraft}
+                onChange={updateActiveSshDraft}
+                onConnect={startActiveSession}
+              />
+            ) : null}
             <FilePanel remoteFiles={snapshot.remoteFiles} />
             <MetricsPanel metrics={snapshot.serverMetrics} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} />
@@ -265,10 +303,14 @@ function TabStrip({
 function TerminalPane({
   activeConnection,
   activeTab,
+  sshDraft,
+  startToken,
   onStatusChange
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
+  sshDraft: { password: string; privateKey: string; passphrase: string };
+  startToken: number;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
 }) {
   useEffect(() => {
@@ -323,14 +365,52 @@ function TerminalPane({
       });
     };
 
-    onStatusChange(sessionId, "connecting");
+    const removeErrorListener = window.cnshell?.terminal.onError(({ id, message }) => {
+      if (id === sessionId) {
+        terminal.writeln("");
+        terminal.writeln(`\x1b[31m${message}\x1b[0m`);
+        onStatusChange(sessionId, "error");
+      }
+    });
 
-    void window.cnshell?.terminal.start({
-      id: sessionId,
-      kind: "local",
-      cols: terminal.cols,
-      rows: terminal.rows
-    }).then(() => onStatusChange(sessionId, "connected"));
+    const startTerminalSession = () => {
+      onStatusChange(sessionId, "connecting");
+
+      void window.cnshell?.terminal
+        .start({
+          id: sessionId,
+          kind: activeConnection.protocol === "ssh" ? "ssh" : "local",
+          cols: terminal.cols,
+          rows: terminal.rows,
+          ssh:
+            activeConnection.protocol === "ssh"
+              ? {
+                  host: activeConnection.host,
+                  port: activeConnection.port,
+                  username: activeConnection.username,
+                  password: sshDraft.password || undefined,
+                  privateKey: sshDraft.privateKey || undefined,
+                  passphrase: sshDraft.passphrase || undefined
+                }
+              : undefined
+        })
+        .then(() => onStatusChange(sessionId, "connected"))
+        .catch((error: Error) => {
+          terminal.writeln(`\x1b[31m${error.message}\x1b[0m`);
+          onStatusChange(sessionId, "error");
+        });
+    };
+
+    if (activeConnection.protocol === "ssh") {
+      terminal.writeln("\x1b[33mSSH profile selected. Enter credentials in the SSH panel, then press Connect.\x1b[0m");
+      if (startToken > 0) {
+        startTerminalSession();
+      } else {
+        onStatusChange(sessionId, "disconnected");
+      }
+    } else {
+      startTerminalSession();
+    }
 
     const resizeObserver = new ResizeObserver(resizeSession);
     resizeObserver.observe(terminalHost);
@@ -340,11 +420,20 @@ function TerminalPane({
       dataDisposable.dispose();
       removeDataListener?.();
       removeExitListener?.();
+      removeErrorListener?.();
       void window.cnshell?.terminal.stop(sessionId);
       onStatusChange(sessionId, "disconnected");
       terminal.dispose();
     };
-  }, [activeConnection, activeTab, onStatusChange]);
+  }, [
+    activeConnection,
+    activeTab,
+    onStatusChange,
+    sshDraft.password,
+    sshDraft.passphrase,
+    sshDraft.privateKey,
+    startToken
+  ]);
 
   return (
     <section className="terminal-workbench" aria-label="Terminal workbench">
@@ -375,6 +464,62 @@ function TerminalPane({
         </div>
         <input placeholder="Draft a command before sending to one or many sessions" />
         <button type="button">Send</button>
+      </div>
+    </section>
+  );
+}
+
+function SshCredentialPanel({
+  authMethod,
+  draft,
+  onChange,
+  onConnect
+}: {
+  authMethod: ConnectionProfile["authMethod"];
+  draft: { password: string; privateKey: string; passphrase: string };
+  onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
+  onConnect: () => void;
+}) {
+  return (
+    <section className="panel-section ssh-panel" aria-label="SSH credentials">
+      <div className="panel-heading">
+        <div>
+          <KeyRound size={16} aria-hidden="true" />
+          <h2>SSH Login</h2>
+        </div>
+        <span className="poll-rate">{authMethod}</span>
+      </div>
+      <div className="ssh-form">
+        <label>
+          <span>Password</span>
+          <input
+            type="password"
+            value={draft.password}
+            placeholder="Session only"
+            onChange={(event) => onChange("password", event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Private key</span>
+          <textarea
+            value={draft.privateKey}
+            placeholder="Paste an OpenSSH private key for this session"
+            onChange={(event) => onChange("privateKey", event.target.value)}
+          />
+        </label>
+        <label>
+          <span>Passphrase</span>
+          <input
+            type="password"
+            value={draft.passphrase}
+            placeholder="Optional"
+            onChange={(event) => onChange("passphrase", event.target.value)}
+          />
+        </label>
+        <button type="button" onClick={onConnect}>
+          <TerminalSquare size={16} aria-hidden="true" />
+          Connect
+        </button>
       </div>
     </section>
   );

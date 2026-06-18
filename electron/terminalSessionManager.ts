@@ -1,6 +1,7 @@
 import os from "node:os";
 import { BrowserWindow } from "electron";
 import { spawn, type IPty } from "node-pty";
+import { Client, type ClientChannel } from "ssh2";
 import type {
   StartTerminalSessionRequest,
   TerminalSessionResizeRequest,
@@ -11,6 +12,19 @@ const MIN_COLS = 20;
 const MIN_ROWS = 6;
 const MAX_COLS = 500;
 const MAX_ROWS = 200;
+
+interface LocalTerminalSession {
+  kind: "local";
+  pty: IPty;
+}
+
+interface SshTerminalSession {
+  kind: "ssh";
+  client: Client;
+  stream?: ClientChannel;
+}
+
+type TerminalSession = LocalTerminalSession | SshTerminalSession;
 
 function clampTerminalSize(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) {
@@ -29,7 +43,7 @@ function resolveShell() {
 }
 
 export class TerminalSessionManager {
-  private readonly sessions = new Map<string, IPty>();
+  private readonly sessions = new Map<string, TerminalSession>();
 
   constructor(private readonly window: BrowserWindow) {}
 
@@ -53,7 +67,7 @@ export class TerminalSessionManager {
       }
     });
 
-    this.sessions.set(request.id, pty);
+    this.sessions.set(request.id, { kind: "local", pty });
 
     pty.onData((data) => {
       this.window.webContents.send("terminal:data", { id: request.id, data });
@@ -76,7 +90,12 @@ export class TerminalSessionManager {
       return false;
     }
 
-    session.write(data);
+    if (session.kind === "local") {
+      session.pty.write(data);
+      return true;
+    }
+
+    session.stream?.write(data);
     return true;
   }
 
@@ -86,7 +105,15 @@ export class TerminalSessionManager {
       return false;
     }
 
-    session.resize(clampTerminalSize(request.cols, MIN_COLS, MAX_COLS), clampTerminalSize(request.rows, MIN_ROWS, MAX_ROWS));
+    const cols = clampTerminalSize(request.cols, MIN_COLS, MAX_COLS);
+    const rows = clampTerminalSize(request.rows, MIN_ROWS, MAX_ROWS);
+
+    if (session.kind === "local") {
+      session.pty.resize(cols, rows);
+      return true;
+    }
+
+    session.stream?.setWindow(rows, cols, rows * 18, cols * 9);
     return true;
   }
 
@@ -96,9 +123,103 @@ export class TerminalSessionManager {
       return false;
     }
 
-    session.kill();
+    if (session.kind === "local") {
+      session.pty.kill();
+    } else {
+      session.stream?.close();
+      session.client.end();
+    }
+
     this.sessions.delete(id);
     return true;
+  }
+
+  startSshSession(request: StartTerminalSessionRequest): Promise<TerminalSessionStarted> {
+    this.stopSession(request.id);
+
+    const ssh = request.ssh;
+    if (!ssh) {
+      throw new Error("SSH configuration is required.");
+    }
+
+    if (!ssh.password && !ssh.privateKey) {
+      throw new Error("SSH password or private key is required.");
+    }
+
+    const cols = clampTerminalSize(request.cols, MIN_COLS, MAX_COLS);
+    const rows = clampTerminalSize(request.rows, MIN_ROWS, MAX_ROWS);
+    const client = new Client();
+
+    this.sessions.set(request.id, { kind: "ssh", client });
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const fail = (error: Error) => {
+        this.window.webContents.send("terminal:error", { id: request.id, message: error.message });
+        if (!settled) {
+          settled = true;
+          this.sessions.delete(request.id);
+          reject(error);
+        }
+      };
+
+      client
+        .on("ready", () => {
+          client.shell(
+            {
+              term: "xterm-256color",
+              cols,
+              rows
+            },
+            (error, stream) => {
+              if (error) {
+                fail(error);
+                return;
+              }
+
+              this.sessions.set(request.id, { kind: "ssh", client, stream });
+
+              stream.on("data", (data: Buffer) => {
+                this.window.webContents.send("terminal:data", { id: request.id, data: data.toString("utf8") });
+              });
+
+              stream.stderr.on("data", (data: Buffer) => {
+                this.window.webContents.send("terminal:data", { id: request.id, data: data.toString("utf8") });
+              });
+
+              stream.on("close", () => {
+                this.sessions.delete(request.id);
+                client.end();
+                this.window.webContents.send("terminal:exit", { id: request.id, exitCode: 0 });
+              });
+
+              if (!settled) {
+                settled = true;
+                resolve({ id: request.id });
+              }
+            }
+          );
+        })
+        .on("error", fail)
+        .on("close", () => {
+          if (this.sessions.has(request.id)) {
+            this.sessions.delete(request.id);
+            this.window.webContents.send("terminal:exit", { id: request.id, exitCode: 0 });
+          }
+        });
+
+      client.connect({
+        host: ssh.host,
+        port: ssh.port,
+        username: ssh.username,
+        password: ssh.password,
+        privateKey: ssh.privateKey,
+        passphrase: ssh.passphrase,
+        readyTimeout: ssh.readyTimeout ?? 15000,
+        keepaliveInterval: 15000
+      });
+    });
   }
 
   stopAll() {

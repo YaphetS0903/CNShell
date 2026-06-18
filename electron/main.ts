@@ -38,8 +38,8 @@ function createMainWindow() {
 app.whenReady().then(() => {
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("terminal:start", (_event, request: StartTerminalSessionRequest) => {
-    if (request.kind !== "local") {
-      throw new Error("SSH sessions are scaffolded but not connected yet.");
+    if (request.kind === "ssh") {
+      return terminalSessionManager?.startSshSession(request);
     }
 
     return terminalSessionManager?.startLocalSession(request);

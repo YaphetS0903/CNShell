@@ -608,6 +608,66 @@ input:focus-visible {
   font-size: 12px;
 }
 
+.ssh-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.ssh-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: #aebdca;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ssh-form input,
+.ssh-form textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0b131a;
+  color: var(--text);
+  font: inherit;
+  font-weight: 500;
+  padding: 9px 10px;
+}
+
+.ssh-form textarea {
+  min-height: 92px;
+  max-height: 180px;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ssh-form input::placeholder,
+.ssh-form textarea::placeholder {
+  color: #657381;
+}
+
+.ssh-form button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  gap: 8px;
+  border: 1px solid rgba(77, 171, 247, 0.55);
+  border-radius: 7px;
+  background: #123149;
+  color: #d7efff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.ssh-form button:hover {
+  background: #173c59;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
