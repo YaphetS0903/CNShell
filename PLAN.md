@@ -60,7 +60,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 
 ## Security Milestones
 
-- [ ] Host key verification and known_hosts management.
+- [x] ~~Host key verification and known_hosts management.~~
 - [ ] System keychain integration for secrets.
 - [ ] Master password option.
 - [ ] Private key import with passphrase support.
@@ -93,5 +93,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Smoke test Electron desktop startup.~~
 - [x] ~~Add SSH connection service implementation.~~
 - [x] ~~Wire SSH session output into xterm.js.~~
-- [ ] Add host key verification for SSH sessions.
+- [x] ~~Add host key verification for SSH sessions.~~
 - [ ] Add secure credential storage instead of session-only credentials.

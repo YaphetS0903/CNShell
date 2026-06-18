@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
+  HostKeyVerificationEvent,
   StartTerminalSessionRequest,
   TerminalDataEvent,
   TerminalErrorEvent,
@@ -18,6 +19,8 @@ const api = {
     resize: (request: TerminalSessionResizeRequest) =>
       ipcRenderer.invoke("terminal:resize", request) as Promise<boolean>,
     stop: (id: string) => ipcRenderer.invoke("terminal:stop", id) as Promise<boolean>,
+    trustHost: (event: HostKeyVerificationEvent) =>
+      ipcRenderer.invoke("terminal:trust-host", event) as Promise<boolean>,
     onData: (callback: (event: TerminalDataEvent) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, payload: TerminalDataEvent) => callback(payload);
       ipcRenderer.on("terminal:data", listener);
@@ -32,6 +35,11 @@ const api = {
       const listener = (_event: Electron.IpcRendererEvent, payload: TerminalErrorEvent) => callback(payload);
       ipcRenderer.on("terminal:error", listener);
       return () => ipcRenderer.off("terminal:error", listener);
+    },
+    onHostKeyVerification: (callback: (event: HostKeyVerificationEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: HostKeyVerificationEvent) => callback(payload);
+      ipcRenderer.on("terminal:host-key-verification", listener);
+      return () => ipcRenderer.off("terminal:host-key-verification", listener);
     }
   }
 } satisfies CNshellApi;

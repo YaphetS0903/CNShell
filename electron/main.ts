@@ -1,12 +1,15 @@
 import { app, BrowserWindow, ipcMain } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { KnownHostsStore } from "./knownHostsStore.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
+import type { HostKeyVerificationEvent } from "../src/shared/ipc.js";
 import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "./sessionTypes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let terminalSessionManager: TerminalSessionManager | null = null;
+let knownHostsStore: KnownHostsStore | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -25,7 +28,7 @@ function createMainWindow() {
     }
   });
 
-  terminalSessionManager = new TerminalSessionManager(window);
+  terminalSessionManager = new TerminalSessionManager(window, knownHostsStore);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -36,6 +39,7 @@ function createMainWindow() {
 }
 
 app.whenReady().then(() => {
+  knownHostsStore = new KnownHostsStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("terminal:start", (_event, request: StartTerminalSessionRequest) => {
     if (request.kind === "ssh") {
@@ -49,6 +53,10 @@ app.whenReady().then(() => {
     terminalSessionManager?.resizeSession(request)
   );
   ipcMain.handle("terminal:stop", (_event, id: string) => terminalSessionManager?.stopSession(id));
+  ipcMain.handle("terminal:trust-host", (_event, event: HostKeyVerificationEvent) => {
+    knownHostsStore?.trustHost(event.host, event.port, event.fingerprint, event.keyBase64);
+    return true;
+  });
   createMainWindow();
 
   app.on("activate", () => {

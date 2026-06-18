@@ -36,6 +36,18 @@ export interface TerminalErrorEvent {
   message: string;
 }
 
+export type HostKeyTrustStatus = "trusted" | "unknown" | "changed";
+
+export interface HostKeyVerificationEvent {
+  id: string;
+  status: HostKeyTrustStatus;
+  host: string;
+  port: number;
+  fingerprint: string;
+  keyBase64: string;
+  expectedFingerprint?: string;
+}
+
 export interface SshSessionConfig {
   host: string;
   port: number;
@@ -53,8 +65,10 @@ export interface CNshellApi {
     write: (id: string, data: string) => Promise<boolean>;
     resize: (request: TerminalSessionResizeRequest) => Promise<boolean>;
     stop: (id: string) => Promise<boolean>;
+    trustHost: (event: HostKeyVerificationEvent) => Promise<boolean>;
     onData: (callback: (event: TerminalDataEvent) => void) => () => void;
     onExit: (callback: (event: TerminalExitEvent) => void) => () => void;
     onError: (callback: (event: TerminalErrorEvent) => void) => () => void;
+    onHostKeyVerification: (callback: (event: HostKeyVerificationEvent) => void) => () => void;
   };
 }

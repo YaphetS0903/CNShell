@@ -668,6 +668,54 @@ input:focus-visible {
   background: #173c59;
 }
 
+.ssh-form button:disabled {
+  border-color: #35414b;
+  background: #18232c;
+  color: #6f7d89;
+  cursor: not-allowed;
+}
+
+.host-key-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid rgba(242, 204, 96, 0.36);
+  border-radius: 8px;
+  background: rgba(242, 204, 96, 0.08);
+  padding: 10px;
+}
+
+.host-key-prompt.changed {
+  border-color: rgba(255, 135, 135, 0.42);
+  background: rgba(255, 135, 135, 0.08);
+}
+
+.host-key-prompt strong {
+  color: #ffec99;
+  font-size: 12px;
+}
+
+.host-key-prompt.changed strong {
+  color: #ffa8a8;
+}
+
+.host-key-prompt span,
+.host-key-prompt small {
+  color: #aebdca;
+  font-size: 11px;
+}
+
+.host-key-prompt code {
+  overflow-wrap: anywhere;
+  border-radius: 6px;
+  background: #0b131a;
+  color: #dbe9f3;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 7px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

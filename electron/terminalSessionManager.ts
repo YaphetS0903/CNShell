@@ -2,6 +2,7 @@ import os from "node:os";
 import { BrowserWindow } from "electron";
 import { spawn, type IPty } from "node-pty";
 import { Client, type ClientChannel } from "ssh2";
+import type { KnownHostsStore } from "./knownHostsStore.js";
 import type {
   StartTerminalSessionRequest,
   TerminalSessionResizeRequest,
@@ -45,7 +46,10 @@ function resolveShell() {
 export class TerminalSessionManager {
   private readonly sessions = new Map<string, TerminalSession>();
 
-  constructor(private readonly window: BrowserWindow) {}
+  constructor(
+    private readonly window: BrowserWindow,
+    private readonly knownHostsStore: KnownHostsStore | null
+  ) {}
 
   startLocalSession(request: StartTerminalSessionRequest): TerminalSessionStarted {
     this.stopSession(request.id);
@@ -217,7 +221,25 @@ export class TerminalSessionManager {
         privateKey: ssh.privateKey,
         passphrase: ssh.passphrase,
         readyTimeout: ssh.readyTimeout ?? 15000,
-        keepaliveInterval: 15000
+        keepaliveInterval: 15000,
+        hostVerifier: (key: Buffer) => {
+          if (!this.knownHostsStore) {
+            return false;
+          }
+
+          const verification = this.knownHostsStore.verifyHostKey(ssh.host, ssh.port, key);
+          if (verification.status === "trusted") {
+            return true;
+          }
+
+          this.window.webContents.send("terminal:host-key-verification", {
+            id: request.id,
+            ...verification,
+            keyBase64: key.toString("base64")
+          });
+
+          return false;
+        }
       });
     });
   }

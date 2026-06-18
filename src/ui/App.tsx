@@ -28,6 +28,7 @@ import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type { ConnectionProfile, SessionStatus, SessionTab } from "../domain/models";
+import type { HostKeyVerificationEvent } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -39,6 +40,7 @@ export function App() {
   const [appVersion, setAppVersion] = useState("dev");
   const [sshDrafts, setSshDrafts] = useState<Record<string, { password: string; privateKey: string; passphrase: string }>>({});
   const [sessionStartTokens, setSessionStartTokens] = useState<Record<string, number>>({});
+  const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -99,6 +101,22 @@ export function App() {
     }));
   };
 
+  const trustActiveHost = () => {
+    const prompt = hostKeyPrompts[activeTab.id];
+    if (!prompt || prompt.status === "changed") {
+      return;
+    }
+
+    void window.cnshell?.terminal.trustHost(prompt).then(() => {
+      setHostKeyPrompts((current) => {
+        const next = { ...current };
+        delete next[activeTab.id];
+        return next;
+      });
+      startActiveSession();
+    });
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -106,6 +124,16 @@ export function App() {
   useEffect(() => {
     workspaceStorage.saveSnapshot(snapshot);
   }, [snapshot]);
+
+  useEffect(() => {
+    return window.cnshell?.terminal.onHostKeyVerification((event) => {
+      setHostKeyPrompts((current) => ({
+        ...current,
+        [event.id]: event
+      }));
+      setSessionStatus(event.id, "error");
+    });
+  }, [setSessionStatus]);
 
   return (
     <main className="app-shell">
@@ -136,8 +164,10 @@ export function App() {
               <SshCredentialPanel
                 authMethod={activeConnection.authMethod}
                 draft={activeSshDraft}
+                hostKeyPrompt={hostKeyPrompts[activeTab.id]}
                 onChange={updateActiveSshDraft}
                 onConnect={startActiveSession}
+                onTrustHost={trustActiveHost}
               />
             ) : null}
             <FilePanel remoteFiles={snapshot.remoteFiles} />
@@ -472,13 +502,17 @@ function TerminalPane({
 function SshCredentialPanel({
   authMethod,
   draft,
+  hostKeyPrompt,
   onChange,
-  onConnect
+  onConnect,
+  onTrustHost
 }: {
   authMethod: ConnectionProfile["authMethod"];
   draft: { password: string; privateKey: string; passphrase: string };
+  hostKeyPrompt?: HostKeyVerificationEvent;
   onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
   onConnect: () => void;
+  onTrustHost: () => void;
 }) {
   return (
     <section className="panel-section ssh-panel" aria-label="SSH credentials">
@@ -490,6 +524,20 @@ function SshCredentialPanel({
         <span className="poll-rate">{authMethod}</span>
       </div>
       <div className="ssh-form">
+        {hostKeyPrompt ? (
+          <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
+            <strong>{hostKeyPrompt.status === "changed" ? "Host key changed" : "Unknown host key"}</strong>
+            <span>
+              {hostKeyPrompt.host}:{hostKeyPrompt.port}
+            </span>
+            <code>{hostKeyPrompt.fingerprint}</code>
+            {hostKeyPrompt.expectedFingerprint ? <small>Expected {hostKeyPrompt.expectedFingerprint}</small> : null}
+            <button type="button" disabled={hostKeyPrompt.status === "changed"} onClick={onTrustHost}>
+              <ShieldCheck size={16} aria-hidden="true" />
+              Trust and reconnect
+            </button>
+          </div>
+        ) : null}
         <label>
           <span>Password</span>
           <input
