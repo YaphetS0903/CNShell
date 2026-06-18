@@ -73,9 +73,9 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Unit tests for connection models and storage.~~
 - [x] ~~IPC contract tests.~~
 - [x] ~~Renderer component tests for core workflow states.~~
-- [ ] Windows installer packaging.
-- [ ] macOS packaging.
-- [ ] Linux packaging.
+- [x] ~~Windows installer packaging.~~
+- [x] ~~macOS packaging.~~
+- [x] ~~Linux packaging.~~
 - [ ] Auto-update channel.
 - [ ] Crash/error reporting boundary.
 
@@ -128,4 +128,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Add unit tests for connection models and storage.~~
 - [x] ~~Add IPC contract tests.~~
 - [x] ~~Add renderer component tests for core workflow states.~~
-- [ ] Add Windows installer packaging.
+- [x] ~~Add Windows installer packaging.~~
+- [x] ~~Add macOS packaging.~~
+- [x] ~~Add Linux packaging.~~
+- [ ] Add auto-update channel.
