@@ -2521,7 +2521,7 @@ function MetricSparkline({ label, unit, max, values }: { label: string; unit: st
   );
 }
 
-function QuickCommandPanel({
+export function QuickCommandPanel({
   quickCommands,
   onExecute
 }: {
@@ -2953,7 +2953,7 @@ function ScriptRecorderPanel({
   );
 }
 
-function LogViewerPanel({
+export function LogViewerPanel({
   title,
   refreshLabel,
   emptyText,
@@ -3040,7 +3040,7 @@ function CloudSyncPanel({
   );
 }
 
-function BulkCommandConfirmation({
+export function BulkCommandConfirmation({
   command,
   targets,
   onConfirm,
@@ -3088,7 +3088,7 @@ function BulkCommandConfirmation({
   );
 }
 
-function CommandPalette({
+export function CommandPalette({
   commands,
   query,
   onQueryChange,
