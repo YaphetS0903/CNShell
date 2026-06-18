@@ -36,7 +36,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 
 ## Xshell-Inspired Workflow Milestones
 
-- [ ] Compose Pane for multi-line command drafting.
+- [x] ~~Compose Pane for multi-line command drafting.~~
 - [ ] Synchronized input across selected sessions.
 - [ ] Highlight Sets for terminal output rules.
 - [ ] Trigger rules for output matching and automatic actions.
@@ -102,4 +102,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement Quick Commands execution and command palette.~~
 - [x] ~~Implement session tab creation and reconnect action.~~
 - [x] ~~Implement terminal output logging and search.~~
+- [x] ~~Upgrade Compose Pane to multiline command drafting.~~
 - [ ] Add optional master password vault mode.

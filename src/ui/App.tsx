@@ -859,12 +859,13 @@ function TerminalPane({
           <Code2 size={16} aria-hidden="true" />
           <span>Compose Pane</span>
         </div>
-        <input
+        <textarea
           value={composeValue}
           placeholder="Draft a command before sending to one or many sessions"
           onChange={(event) => setComposeValue(event.target.value)}
           onKeyDown={(event) => {
-            if (event.key === "Enter") {
+            if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+              event.preventDefault();
               sendComposeValue();
             }
           }}
