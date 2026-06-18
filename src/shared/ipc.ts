@@ -1,4 +1,4 @@
-import type { AppSnapshot, RemoteFileEntry } from "../domain/models.js";
+import type { AppSnapshot, RemoteFileEntry, ServerMetric } from "../domain/models.js";
 
 export type TerminalSessionKind = "local" | "ssh";
 
@@ -101,6 +101,14 @@ export interface TransferFileResult {
   ok: boolean;
 }
 
+export interface CollectMetricsRequest {
+  ssh: SshSessionConfig;
+}
+
+export interface CollectMetricsResult {
+  metrics: ServerMetric[];
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -126,5 +134,8 @@ export interface CNshellApi {
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;
     transferFile: (request: TransferFileRequest) => Promise<TransferFileResult>;
+  };
+  metrics: {
+    collect: (request: CollectMetricsRequest) => Promise<CollectMetricsResult>;
   };
 }

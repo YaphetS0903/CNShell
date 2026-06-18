@@ -3,11 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CredentialStore } from "./credentialStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
+import { MetricsService } from "./metricsService.js";
 import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
 import { WorkspaceStore } from "./workspaceStore.js";
 import type {
   HostKeyVerificationEvent,
+  CollectMetricsRequest,
   ListRemoteDirectoryRequest,
   SaveCredentialRequest,
   TransferFileRequest
@@ -22,6 +24,7 @@ let knownHostsStore: KnownHostsStore | null = null;
 let credentialStore: CredentialStore | null = null;
 let workspaceStore: WorkspaceStore | null = null;
 let sftpService: SftpService | null = null;
+let metricsService: MetricsService | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -55,6 +58,7 @@ app.whenReady().then(() => {
   credentialStore = new CredentialStore(app.getPath("userData"));
   workspaceStore = new WorkspaceStore(app.getPath("userData"));
   sftpService = new SftpService(knownHostsStore, credentialStore);
+  metricsService = new MetricsService(knownHostsStore, credentialStore);
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {
@@ -84,6 +88,7 @@ app.whenReady().then(() => {
     sftpService?.listDirectory(request)
   );
   ipcMain.handle("sftp:transfer-file", (_event, request: TransferFileRequest) => sftpService?.transferFile(request));
+  ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
   createMainWindow();
 
   app.on("activate", () => {

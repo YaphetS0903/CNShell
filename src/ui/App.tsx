@@ -49,6 +49,9 @@ export function App() {
   const [remotePath, setRemotePath] = useState("/var/www/cnshell");
   const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
   const [sftpError, setSftpError] = useState("");
+  const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
+  const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [metricsError, setMetricsError] = useState("");
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
@@ -269,6 +272,38 @@ export function App() {
       });
   };
 
+  const refreshMetrics = () => {
+    if (activeConnection.protocol !== "ssh") {
+      setLiveMetrics(snapshot.serverMetrics);
+      return;
+    }
+
+    setMetricsStatus("loading");
+    setMetricsError("");
+
+    void window.cnshell?.metrics
+      .collect({
+        ssh: {
+          connectionId: activeConnection.id,
+          host: activeConnection.host,
+          port: activeConnection.port,
+          username: activeConnection.username,
+          password: activeSshDraft.password || undefined,
+          privateKey: activeSshDraft.privateKey || undefined,
+          passphrase: activeSshDraft.passphrase || undefined,
+          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
+        }
+      })
+      .then((result) => {
+        setLiveMetrics(result.metrics);
+        setMetricsStatus("idle");
+      })
+      .catch((error: Error) => {
+        setMetricsError(error.message);
+        setMetricsStatus("error");
+      });
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -278,6 +313,7 @@ export function App() {
       if (storedSnapshot) {
         setSnapshot(storedSnapshot);
         setRemoteFileEntries(storedSnapshot.remoteFiles);
+        setLiveMetrics(storedSnapshot.serverMetrics);
         setActiveConnectionId(storedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(storedSnapshot.sessions[0]?.id ?? "");
       }
@@ -376,7 +412,7 @@ export function App() {
               onRefresh={refreshRemoteFiles}
               onTransfer={startTransfer}
             />
-            <MetricsPanel metrics={snapshot.serverMetrics} />
+            <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} />
           </aside>
         </section>
@@ -912,7 +948,17 @@ function FilePanel({
   );
 }
 
-function MetricsPanel({ metrics }: { metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"] }) {
+function MetricsPanel({
+  metrics,
+  status,
+  error,
+  onRefresh
+}: {
+  metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"];
+  status: "idle" | "loading" | "error";
+  error: string;
+  onRefresh: () => void;
+}) {
   return (
     <section className="panel-section" aria-label="Server metrics">
       <div className="panel-heading">
@@ -920,8 +966,16 @@ function MetricsPanel({ metrics }: { metrics: ReturnType<typeof createInitialApp
           <Activity size={16} aria-hidden="true" />
           <h2>Monitor</h2>
         </div>
-        <span className="poll-rate">5s</span>
+        <button type="button" aria-label="Refresh metrics" onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden="true" />
+        </button>
       </div>
+      {status === "loading" ? <div className="sftp-state">Collecting remote metrics...</div> : null}
+      {status === "error" ? (
+        <div className="sftp-state error" role="alert">
+          {error}
+        </div>
+      ) : null}
       <div className="metric-grid">
         {metrics.map((metric) => (
           <article key={metric.label} className="metric-tile">

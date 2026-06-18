@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
+  CollectMetricsRequest,
+  CollectMetricsResult,
   CredentialStatus,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
@@ -66,6 +68,10 @@ const api = {
       ipcRenderer.invoke("sftp:list-directory", request) as Promise<RemoteDirectoryListing>,
     transferFile: (request: TransferFileRequest) =>
       ipcRenderer.invoke("sftp:transfer-file", request) as Promise<TransferFileResult>
+  },
+  metrics: {
+    collect: (request: CollectMetricsRequest) =>
+      ipcRenderer.invoke("metrics:collect", request) as Promise<CollectMetricsResult>
   }
 } satisfies CNshellApi;
 
