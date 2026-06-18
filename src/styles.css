@@ -1601,6 +1601,56 @@ textarea:focus-visible {
   background: var(--accent);
 }
 
+.monitor-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+
+.monitor-chart {
+  min-height: 86px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #0b131a;
+  padding: 9px;
+}
+
+.monitor-chart div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.monitor-chart span {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-chart strong {
+  color: #d4e0e8;
+  font-size: 12px;
+}
+
+.monitor-chart svg {
+  width: 100%;
+  height: 42px;
+}
+
+.monitor-chart polyline {
+  fill: none;
+  stroke: #4dabf7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+
 .process-list {
   display: flex;
   max-height: 230px;

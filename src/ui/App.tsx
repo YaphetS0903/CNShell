@@ -66,6 +66,15 @@ interface SafePasteReview {
   reasons: string[];
 }
 
+interface MetricHistoryPoint {
+  at: string;
+  cpu: number;
+  memory: number;
+  disk: number;
+  network: number;
+  processes: number;
+}
+
 const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
   { value: "local", label: "Local" },
   { value: "remote", label: "Remote" },
@@ -179,6 +188,10 @@ function shouldReviewPaste(text: string) {
   return inspectPastedText(text).length > 0;
 }
 
+function metricValue(metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"], label: string) {
+  return metrics.find((metric) => metric.label === label)?.value ?? 0;
+}
+
 function describeTunnel(tunnel: TunnelInfo) {
   const bind = `${tunnel.bindHost}:${tunnel.bindPort}`;
 
@@ -264,6 +277,7 @@ export function App() {
   const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
   const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [metricsError, setMetricsError] = useState("");
+  const [metricHistory, setMetricHistory] = useState<MetricHistoryPoint[]>([]);
   const [remoteProcesses, setRemoteProcesses] = useState(snapshot.remoteProcesses);
   const [processStatus, setProcessStatus] = useState<"idle" | "loading" | "error">("idle");
   const [processError, setProcessError] = useState("");
@@ -660,6 +674,26 @@ export function App() {
       });
   };
 
+  const appendMetricHistory = (
+    metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"],
+    processCount = remoteProcesses.length
+  ) => {
+    const now = new Date();
+    setMetricHistory((current) =>
+      [
+        ...current,
+        {
+          at: now.toLocaleTimeString(),
+          cpu: metricValue(metrics, "CPU"),
+          memory: metricValue(metrics, "Memory"),
+          disk: metricValue(metrics, "Disk"),
+          network: metricValue(metrics, "Ping"),
+          processes: processCount
+        }
+      ].slice(-20)
+    );
+  };
+
   const refreshMetrics = () => {
     if (activeConnection.protocol !== "ssh") {
       setLiveMetrics(snapshot.serverMetrics);
@@ -675,6 +709,7 @@ export function App() {
       })
       .then((result) => {
         setLiveMetrics(result.metrics);
+        appendMetricHistory(result.metrics);
         setMetricsStatus("idle");
       })
       .catch((error: Error) => {
@@ -698,6 +733,7 @@ export function App() {
       })
       .then((result) => {
         setRemoteProcesses(result.processes);
+        appendMetricHistory(liveMetrics, result.processes.length);
         setProcessStatus("idle");
       })
       .catch((error: Error) => {
@@ -976,7 +1012,13 @@ export function App() {
               onContentChange={setEditorContent}
               onSave={saveRemoteFile}
             />
-            <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
+            <MetricsPanel
+              metrics={liveMetrics}
+              history={metricHistory}
+              status={metricsStatus}
+              error={metricsError}
+              onRefresh={refreshMetrics}
+            />
             <ProcessPanel
               processes={remoteProcesses}
               status={processStatus}
@@ -1851,15 +1893,25 @@ function RemoteEditorPanel({
 
 function MetricsPanel({
   metrics,
+  history,
   status,
   error,
   onRefresh
 }: {
   metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"];
+  history: MetricHistoryPoint[];
   status: "idle" | "loading" | "error";
   error: string;
   onRefresh: () => void;
 }) {
+  const chartSeries = [
+    { label: "CPU", key: "cpu" as const, unit: "%", max: 100 },
+    { label: "Memory", key: "memory" as const, unit: "%", max: 100 },
+    { label: "Disk", key: "disk" as const, unit: "%", max: 100 },
+    { label: "Network", key: "network" as const, unit: "ms", max: 200 },
+    { label: "Processes", key: "processes" as const, unit: "", max: Math.max(20, ...history.map((point) => point.processes)) }
+  ];
+
   return (
     <section className="panel-section" aria-label="Server metrics">
       <div className="panel-heading">
@@ -1891,7 +1943,47 @@ function MetricsPanel({
           </article>
         ))}
       </div>
+      <div className="monitor-chart-grid">
+        {chartSeries.map((series) => (
+          <MetricSparkline
+            key={series.label}
+            label={series.label}
+            unit={series.unit}
+            max={series.max}
+            values={history.map((point) => point[series.key])}
+          />
+        ))}
+      </div>
     </section>
+  );
+}
+
+function MetricSparkline({ label, unit, max, values }: { label: string; unit: string; max: number; values: number[] }) {
+  const points =
+    values.length === 0
+      ? ""
+      : values
+          .map((value, index) => {
+            const x = values.length === 1 ? 100 : (index / (values.length - 1)) * 100;
+            const y = 34 - Math.min(value / max, 1) * 30;
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          })
+          .join(" ");
+  const latest = values.at(-1) ?? 0;
+
+  return (
+    <article className="monitor-chart">
+      <div>
+        <span>{label}</span>
+        <strong>
+          {Math.round(latest)}
+          {unit}
+        </strong>
+      </div>
+      <svg viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true">
+        <polyline points={points} />
+      </svg>
+    </article>
   );
 }
 
