@@ -79,6 +79,19 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Auto-update channel.~~
 - [x] ~~Crash/error reporting boundary.~~
 
+## Phase 2 Productization Milestones
+
+- [x] ~~Add connection search filtering by host, group, name, username, and tags.~~
+- [x] ~~Add connection create/edit/delete workflow with persisted workspace updates.~~
+- [x] ~~Wire topbar shortcuts to focus the tunneling manager and credential vault panels.~~
+- [x] ~~Add quick command create/edit/delete workflow.~~
+- [x] ~~Add terminal split-pane workspace behavior.~~
+- [x] ~~Add terminal actions menu for logs, ZMODEM, reconnect, and clear guidance.~~
+- [x] ~~Add collapsible connection groups with persisted in-memory state.~~
+- [x] ~~Add inline validation and recovery messages for connection and command forms.~~
+- [x] ~~Expand renderer tests for connection management, quick command management, and terminal toolbar actions.~~
+- [x] ~~Re-run full typecheck, lint, test, and packaged app smoke verification.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

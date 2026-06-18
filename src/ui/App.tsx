@@ -12,10 +12,12 @@ import {
 } from "react";
 import {
   Activity,
+  ChevronDown,
   ChevronRight,
   Circle,
   Code2,
   Command,
+  Edit3,
   FileText,
   Folder,
   HardDrive,
@@ -26,13 +28,16 @@ import {
   Network,
   Plus,
   RefreshCw,
+  Save,
   Search,
   Server,
   Settings,
   ShieldCheck,
   SplitSquareHorizontal,
   TerminalSquare,
+  Trash2,
   UploadCloud,
+  X,
   Zap
 } from "lucide-react";
 import { FitAddon } from "@xterm/addon-fit";
@@ -42,9 +47,11 @@ import { createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type {
   ConnectionProfile,
+  ConnectionProtocol,
   JumpHostConfig,
   KeyMappingProfile,
   KeyMappingRule,
+  QuickCommand,
   ScriptRecording,
   ScriptRecordingEvent,
   SessionStatus,
@@ -91,6 +98,26 @@ interface BulkCommandReview {
   targetSessionIds: string[];
 }
 
+interface ConnectionFormDraft {
+  id?: string;
+  name: string;
+  group: string;
+  protocol: ConnectionProtocol;
+  host: string;
+  port: string;
+  username: string;
+  authMethod: ConnectionProfile["authMethod"];
+  color: string;
+  tags: string;
+}
+
+interface QuickCommandFormDraft {
+  id?: string;
+  title: string;
+  command: string;
+  scope: QuickCommand["scope"];
+}
+
 interface MetricHistoryPoint {
   at: string;
   cpu: number;
@@ -102,6 +129,7 @@ interface MetricHistoryPoint {
 
 type ZmodemMode = "idle" | "upload" | "download" | "detected";
 type Language = "zh-CN" | "en-US";
+type PanelFocusKey = "credentials" | "tunnels" | "zmodem" | "logs";
 
 interface AppErrorBoundaryState {
   error?: Error;
@@ -128,7 +156,25 @@ const translations = {
     searchConnections: "搜索连接",
     searchHostsPlaceholder: "搜索主机、标签、分组",
     newConnection: "新建",
+    editConnection: "编辑连接",
+    deleteConnection: "删除连接",
+    connectionEditor: "连接配置",
+    connectionEditorSubtitle: "保存后会立即更新侧边栏和会话入口。",
+    protocol: "协议",
+    group: "分组",
+    tags: "标签",
+    tagsHint: "用逗号分隔",
+    color: "颜色",
+    saveConnection: "保存连接",
+    createConnection: "创建连接",
+    connectionNameRequired: "请输入连接名称。",
+    connectionHostRequired: "请输入主机地址。",
+    connectionPortInvalid: "端口必须是 1 到 65535。",
+    connectionUserRequired: "请输入用户名。",
+    noConnectionsFound: "没有匹配的连接",
     connectionSettings: "连接设置",
+    expandGroup: "展开分组",
+    collapseGroup: "折叠分组",
     groupAria: (group: string) => `${group} 分组`,
     localShell: "本地 Shell",
     workspace: "CNshell 工作区",
@@ -138,6 +184,7 @@ const translations = {
     toggleHighlightRules: "切换高亮规则",
     openTunnelingManager: "打开隧道管理",
     openCredentialVault: "打开凭据保险库",
+    focusPanel: (panel: string) => `定位到${panel}`,
     sessionTabs: "会话标签",
     newSessionTab: "新建会话标签",
     localProtocol: "本地",
@@ -171,8 +218,15 @@ const translations = {
     terminalSearchPlaceholder: "搜索",
     find: "查找",
     split: "分屏",
+    unsplit: "合并",
+    splitPaneEnabled: "分屏视图已开启",
+    splitPaneHint: "右侧镜像当前会话，方便对照日志和命令输出。",
     reconnect: "重连",
     moreTerminalActions: "更多终端操作",
+    terminalActions: "终端操作",
+    clearTerminalHint: "清屏请使用 Ctrl+L 或映射规则。",
+    openLogsPanel: "打开日志面板",
+    openZmodemPanel: "打开 ZMODEM 面板",
     reviewPaste: "粘贴审查",
     paste: "粘贴",
     cancel: "取消",
@@ -265,6 +319,18 @@ const translations = {
     },
     quickCommands: "快捷命令",
     manageQuickCommands: "管理快捷命令",
+    quickCommandManager: "快捷命令管理",
+    quickCommandManagerSubtitle: "管理常用命令，保存后命令面板和右侧快捷区会立即同步。",
+    newQuickCommand: "新建命令",
+    editQuickCommand: "编辑命令",
+    commandTitle: "命令名称",
+    commandText: "命令内容",
+    commandScope: "作用域",
+    saveCommand: "保存命令",
+    deleteCommand: "删除命令",
+    commandTitleRequired: "请输入命令名称。",
+    commandTextRequired: "请输入命令内容。",
+    noQuickCommands: "暂无快捷命令",
     triggerEvents: "触发事件",
     triggers: "触发器",
     noTriggerEvents: "暂无触发事件",
@@ -398,7 +464,25 @@ const translations = {
     searchConnections: "Search connections",
     searchHostsPlaceholder: "Search hosts, tags, groups",
     newConnection: "New",
+    editConnection: "Edit connection",
+    deleteConnection: "Delete connection",
+    connectionEditor: "Connection profile",
+    connectionEditorSubtitle: "Saved changes update the sidebar and session entry points immediately.",
+    protocol: "Protocol",
+    group: "Group",
+    tags: "Tags",
+    tagsHint: "Separate with commas",
+    color: "Color",
+    saveConnection: "Save connection",
+    createConnection: "Create connection",
+    connectionNameRequired: "Enter a connection name.",
+    connectionHostRequired: "Enter a host.",
+    connectionPortInvalid: "Port must be between 1 and 65535.",
+    connectionUserRequired: "Enter a username.",
+    noConnectionsFound: "No matching connections",
     connectionSettings: "Connection settings",
+    expandGroup: "Expand group",
+    collapseGroup: "Collapse group",
     groupAria: (group: string) => `${group} group`,
     localShell: "Local shell",
     workspace: "CNshell workspace",
@@ -408,6 +492,7 @@ const translations = {
     toggleHighlightRules: "Toggle highlight rules",
     openTunnelingManager: "Open tunneling manager",
     openCredentialVault: "Open credential vault",
+    focusPanel: (panel: string) => `Focus ${panel}`,
     sessionTabs: "Session tabs",
     newSessionTab: "Open new session tab",
     localProtocol: "local",
@@ -441,8 +526,15 @@ const translations = {
     terminalSearchPlaceholder: "Search",
     find: "Find",
     split: "Split",
+    unsplit: "Unsplit",
+    splitPaneEnabled: "Split view enabled",
+    splitPaneHint: "The right pane mirrors this session for comparing logs and command output.",
     reconnect: "Reconnect",
     moreTerminalActions: "More terminal actions",
+    terminalActions: "Terminal actions",
+    clearTerminalHint: "Use Ctrl+L or a key mapping rule to clear the terminal.",
+    openLogsPanel: "Open logs panel",
+    openZmodemPanel: "Open ZMODEM panel",
     reviewPaste: "Review paste",
     paste: "Paste",
     cancel: "Cancel",
@@ -535,6 +627,18 @@ const translations = {
     },
     quickCommands: "Quick Commands",
     manageQuickCommands: "Manage quick commands",
+    quickCommandManager: "Quick command manager",
+    quickCommandManagerSubtitle: "Manage common commands. Saved changes sync with the command palette and quick panel.",
+    newQuickCommand: "New command",
+    editQuickCommand: "Edit command",
+    commandTitle: "Command title",
+    commandText: "Command",
+    commandScope: "Scope",
+    saveCommand: "Save command",
+    deleteCommand: "Delete command",
+    commandTitleRequired: "Enter a command title.",
+    commandTextRequired: "Enter a command.",
+    noQuickCommands: "No quick commands",
     triggerEvents: "Trigger events",
     triggers: "Triggers",
     noTriggerEvents: "No trigger events",
@@ -736,7 +840,95 @@ const tunnelModes: Array<{ value: TunnelMode }> = [
   { value: "dynamic" }
 ];
 
+const connectionColors = ["#2f9e44", "#1971c2", "#d9480f", "#7048e8", "#0ca678", "#e67700"];
+
 const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
+
+function createDefaultConnectionDraft(): ConnectionFormDraft {
+  return {
+    name: "",
+    group: "Staging",
+    protocol: "ssh",
+    host: "",
+    port: "22",
+    username: "",
+    authMethod: "password",
+    color: connectionColors[0],
+    tags: ""
+  };
+}
+
+function createConnectionDraft(connection: ConnectionProfile): ConnectionFormDraft {
+  return {
+    id: connection.id,
+    name: connection.name,
+    group: connection.group,
+    protocol: connection.protocol,
+    host: connection.host,
+    port: String(connection.port),
+    username: connection.username,
+    authMethod: connection.authMethod,
+    color: connection.color,
+    tags: connection.tags.join(", ")
+  };
+}
+
+function createDefaultQuickCommandDraft(): QuickCommandFormDraft {
+  return {
+    title: "",
+    command: "",
+    scope: "global"
+  };
+}
+
+function createQuickCommandDraft(command: QuickCommand): QuickCommandFormDraft {
+  return {
+    id: command.id,
+    title: command.title,
+    command: command.command,
+    scope: command.scope
+  };
+}
+
+function normalizeTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+}
+
+function connectionMatchesQuery(connection: ConnectionProfile, query: string, labels: UiStrings) {
+  const normalizedQuery = query.trim().toLowerCase();
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystack = [
+    connection.name,
+    displayBuiltInName(connection.name, labels),
+    connection.group,
+    displayBuiltInGroup(connection.group, labels),
+    connection.host,
+    connection.username,
+    connection.protocol,
+    ...connection.tags
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(normalizedQuery);
+}
+
+function makeSessionForConnection(connection: ConnectionProfile): SessionTab {
+  return {
+    id: `tab-${connection.id}-${Date.now()}`,
+    connectionId: connection.id,
+    title: connection.name,
+    cwd: connection.protocol === "local" ? "~" : "/",
+    status: "disconnected",
+    startedAt: new Date().toISOString()
+  };
+}
 
 function parsePort(value: string) {
   const port = Number(value);
@@ -936,6 +1128,12 @@ export function App() {
   const [language, setLanguage] = useState<Language>(() => readPreferredLanguage());
   const labels = translations[language];
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [connectionQuery, setConnectionQuery] = useState("");
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+  const [connectionDraft, setConnectionDraft] = useState<ConnectionFormDraft | null>(null);
+  const [connectionFormError, setConnectionFormError] = useState("");
+  const [quickCommandDraft, setQuickCommandDraft] = useState<QuickCommandFormDraft | null>(null);
+  const [quickCommandFormError, setQuickCommandFormError] = useState("");
   const [activeConnectionId, setActiveConnectionId] = useState(snapshot.connections[0].id);
   const [activeTabId, setActiveTabId] = useState(snapshot.sessions[0].id);
   const [appVersion, setAppVersion] = useState("dev");
@@ -1010,8 +1208,19 @@ export function App() {
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
+  const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
+    credentials: null,
+    tunnels: null,
+    zmodem: null,
+    logs: null
+  });
 
-  const groupedConnections = useMemo(() => groupConnections(snapshot.connections), [snapshot.connections]);
+  const filteredConnections = useMemo(
+    () => snapshot.connections.filter((connection) => connectionMatchesQuery(connection, connectionQuery, labels)),
+    [connectionQuery, labels, snapshot.connections]
+  );
+
+  const groupedConnections = useMemo(() => groupConnections(filteredConnections), [filteredConnections]);
 
   const activeConnection = useMemo(
     () => snapshot.connections.find((connection) => connection.id === activeConnectionId) ?? snapshot.connections[0],
@@ -1051,6 +1260,193 @@ export function App() {
   );
 
   const activeCredentialStatus = credentialStatuses[activeConnection.id];
+
+  const focusPanel = useCallback((panel: PanelFocusKey) => {
+    const element = panelRefs.current[panel];
+    if (!element) {
+      return;
+    }
+
+    element.scrollIntoView({ block: "start", behavior: "smooth" });
+    element.classList.add("panel-section-focused");
+    window.setTimeout(() => {
+      element.classList.remove("panel-section-focused");
+    }, 900);
+  }, []);
+
+  const setPanelRef = useCallback((panel: PanelFocusKey) => {
+    return (element: HTMLElement | null) => {
+      panelRefs.current[panel] = element;
+    };
+  }, []);
+
+  const openNewConnectionEditor = () => {
+    setConnectionFormError("");
+    setConnectionDraft(createDefaultConnectionDraft());
+  };
+
+  const openActiveConnectionEditor = () => {
+    setConnectionFormError("");
+    setConnectionDraft(createConnectionDraft(activeConnection));
+  };
+
+  const saveConnectionDraft = () => {
+    if (!connectionDraft) {
+      return;
+    }
+
+    const name = connectionDraft.name.trim();
+    const host = connectionDraft.host.trim();
+    const username = connectionDraft.username.trim();
+    const port = parsePort(connectionDraft.port);
+    if (!name) {
+      setConnectionFormError(labels.connectionNameRequired);
+      return;
+    }
+
+    if (!host) {
+      setConnectionFormError(labels.connectionHostRequired);
+      return;
+    }
+
+    if (!port && connectionDraft.protocol !== "local") {
+      setConnectionFormError(labels.connectionPortInvalid);
+      return;
+    }
+
+    if (!username) {
+      setConnectionFormError(labels.connectionUserRequired);
+      return;
+    }
+
+    const connection: ConnectionProfile = {
+      id: connectionDraft.id ?? `connection-${Date.now()}`,
+      name,
+      group: connectionDraft.group.trim() || labels.builtInGroups.Staging,
+      protocol: connectionDraft.protocol,
+      host,
+      port: connectionDraft.protocol === "local" ? 0 : port ?? 22,
+      username,
+      authMethod: connectionDraft.authMethod,
+      color: connectionDraft.color,
+      tags: normalizeTags(connectionDraft.tags),
+      gateways: connectionDraft.id
+        ? snapshot.connections.find((item) => item.id === connectionDraft.id)?.gateways
+        : undefined
+    };
+
+    const nextSession = connectionDraft.id ? null : makeSessionForConnection(connection);
+
+    setSnapshot((current) => {
+      const exists = current.connections.some((item) => item.id === connection.id);
+      const nextConnections = exists
+        ? current.connections.map((item) => (item.id === connection.id ? connection : item))
+        : [...current.connections, connection];
+      const nextSessions = exists
+        ? current.sessions.map((session) =>
+            session.connectionId === connection.id ? { ...session, title: connection.name } : session
+          )
+        : [...current.sessions, nextSession ?? makeSessionForConnection(connection)];
+
+      return {
+        ...current,
+        connections: nextConnections,
+        sessions: nextSessions
+      };
+    });
+
+    if (!connectionDraft.id) {
+      setActiveConnectionId(connection.id);
+      setActiveTabId(nextSession?.id ?? "");
+    }
+
+    setConnectionDraft(null);
+    setConnectionFormError("");
+  };
+
+  const deleteActiveConnection = () => {
+    if (snapshot.connections.length <= 1) {
+      return;
+    }
+
+    const nextConnection = snapshot.connections.find((connection) => connection.id !== activeConnection.id);
+    if (!nextConnection) {
+      return;
+    }
+
+    const nextSession = snapshot.sessions.find((session) => session.connectionId === nextConnection.id);
+    const createdSession = nextSession ? null : makeSessionForConnection(nextConnection);
+    setSnapshot((current) => ({
+      ...current,
+      connections: current.connections.filter((connection) => connection.id !== activeConnection.id),
+      sessions: [
+        ...current.sessions.filter((session) => session.connectionId !== activeConnection.id),
+        ...(createdSession ? [createdSession] : [])
+      ]
+    }));
+    setActiveConnectionId(nextConnection.id);
+    setActiveTabId(nextSession?.id ?? createdSession?.id ?? "");
+    setConnectionDraft(null);
+  };
+
+  const openNewQuickCommandEditor = () => {
+    setQuickCommandFormError("");
+    setQuickCommandDraft(createDefaultQuickCommandDraft());
+  };
+
+  const openQuickCommandEditor = (command: QuickCommand) => {
+    setQuickCommandFormError("");
+    setQuickCommandDraft(createQuickCommandDraft(command));
+  };
+
+  const saveQuickCommandDraft = () => {
+    if (!quickCommandDraft) {
+      return;
+    }
+
+    const title = quickCommandDraft.title.trim();
+    const command = quickCommandDraft.command.trim();
+    if (!title) {
+      setQuickCommandFormError(labels.commandTitleRequired);
+      return;
+    }
+
+    if (!command) {
+      setQuickCommandFormError(labels.commandTextRequired);
+      return;
+    }
+
+    const nextCommand: QuickCommand = {
+      id: quickCommandDraft.id ?? `qc-${Date.now()}`,
+      title,
+      command,
+      scope: quickCommandDraft.scope
+    };
+
+    setSnapshot((current) => ({
+      ...current,
+      quickCommands: current.quickCommands.some((item) => item.id === nextCommand.id)
+        ? current.quickCommands.map((item) => (item.id === nextCommand.id ? nextCommand : item))
+        : [nextCommand, ...current.quickCommands]
+    }));
+    setQuickCommandDraft(null);
+    setQuickCommandFormError("");
+  };
+
+  const deleteQuickCommand = (commandId: string) => {
+    setSnapshot((current) => ({
+      ...current,
+      quickCommands: current.quickCommands.filter((command) => command.id !== commandId)
+    }));
+    setQuickCommandDraft((current) => (current?.id === commandId ? createDefaultQuickCommandDraft() : current));
+  };
+
+  const toggleConnectionGroup = (group: string) => {
+    setCollapsedGroups((current) => ({
+      ...current,
+      [group]: !current[group]
+    }));
+  };
 
   const updateActiveSshDraft = (field: "password" | "privateKey" | "passphrase", value: string) => {
     setSshDrafts((current) => ({
@@ -1930,6 +2326,12 @@ export function App() {
       <ConnectionSidebar
         groupedConnections={groupedConnections}
         activeConnectionId={activeConnectionId}
+        query={connectionQuery}
+        collapsedGroups={collapsedGroups}
+        onQueryChange={setConnectionQuery}
+        onCreate={openNewConnectionEditor}
+        onEditActive={openActiveConnectionEditor}
+        onToggleGroup={toggleConnectionGroup}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onSelect={(connectionId) => {
           setActiveConnectionId(connectionId);
@@ -1949,6 +2351,7 @@ export function App() {
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           onToggleSyncInput={() => setIsSyncInputEnabled((current) => !current)}
           onToggleHighlight={() => setIsHighlightEnabled((current) => !current)}
+          onFocusPanel={focusPanel}
         />
         <TabStrip
           tabs={sessionTabsWithStatus}
@@ -1968,6 +2371,7 @@ export function App() {
             zmodemMode={zmodemMode}
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
+            onFocusPanel={focusPanel}
             onDispatchCommand={executeCommand}
             onTerminalInput={sendTerminalInput}
             onTriggerEvents={addTriggerEvents}
@@ -1976,6 +2380,7 @@ export function App() {
           <aside className="ops-panel" aria-label={labels.operationsPanels}>
             {activeConnection.protocol === "ssh" ? (
               <SshCredentialPanel
+                panelRef={setPanelRef("credentials")}
                 authMethod={activeConnection.authMethod}
                 draft={activeSshDraft}
                 credentialStatus={activeCredentialStatus}
@@ -2020,6 +2425,7 @@ export function App() {
               onOpenFile={openRemoteFile}
             />
             <ZmodemPanel
+              panelRef={setPanelRef("zmodem")}
               mode={zmodemMode}
               message={zmodemMessage}
               localPath={transferLocalPath}
@@ -2060,6 +2466,7 @@ export function App() {
               onKill={killProcess}
             />
             <TunnelPanel
+              panelRef={setPanelRef("tunnels")}
               draft={tunnelDraft}
               tunnels={tunnels}
               onDraftChange={setTunnelDraft}
@@ -2083,6 +2490,7 @@ export function App() {
               onReplay={replayScriptRecording}
             />
             <LogViewerPanel
+              panelRef={setPanelRef("logs")}
               title={labels.logs}
               refreshLabel={labels.refreshSessionLog}
               emptyText={labels.noMatchingLogLines}
@@ -2112,7 +2520,11 @@ export function App() {
               onQueryChange={setErrorQuery}
               onRefresh={refreshErrorReports}
             />
-            <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
+            <QuickCommandPanel
+              quickCommands={snapshot.quickCommands}
+              onExecute={executeCommand}
+              onManage={openNewQuickCommandEditor}
+            />
             <TriggerPanel events={triggerEvents} />
             <CloudSyncPanel
               status={cloudSyncStatus}
@@ -2160,6 +2572,30 @@ export function App() {
           onClose={() => setIsSettingsOpen(false)}
         />
       ) : null}
+      {connectionDraft ? (
+        <ConnectionEditorDialog
+          draft={connectionDraft}
+          error={connectionFormError}
+          canDelete={Boolean(connectionDraft.id) && snapshot.connections.length > 1}
+          onChange={setConnectionDraft}
+          onSave={saveConnectionDraft}
+          onDelete={deleteActiveConnection}
+          onClose={() => setConnectionDraft(null)}
+        />
+      ) : null}
+      {quickCommandDraft ? (
+        <QuickCommandManagerDialog
+          commands={snapshot.quickCommands}
+          draft={quickCommandDraft}
+          error={quickCommandFormError}
+          onDraftChange={setQuickCommandDraft}
+          onNew={openNewQuickCommandEditor}
+          onEdit={openQuickCommandEditor}
+          onSave={saveQuickCommandDraft}
+          onDelete={deleteQuickCommand}
+          onClose={() => setQuickCommandDraft(null)}
+        />
+      ) : null}
       </main>
       </AppErrorBoundary>
     </TranslationContext.Provider>
@@ -2169,12 +2605,30 @@ export function App() {
 interface ConnectionSidebarProps {
   groupedConnections: Record<string, ConnectionProfile[]>;
   activeConnectionId: string;
+  query: string;
+  collapsedGroups: Record<string, boolean>;
+  onQueryChange: (query: string) => void;
+  onCreate: () => void;
+  onEditActive: () => void;
+  onToggleGroup: (group: string) => void;
   onSelect: (connectionId: string) => void;
   onOpenSettings: () => void;
 }
 
-function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect, onOpenSettings }: ConnectionSidebarProps) {
+function ConnectionSidebar({
+  groupedConnections,
+  activeConnectionId,
+  query,
+  collapsedGroups,
+  onQueryChange,
+  onCreate,
+  onEditActive,
+  onToggleGroup,
+  onSelect,
+  onOpenSettings
+}: ConnectionSidebarProps) {
   const labels = useUiStrings();
+  const groupEntries = Object.entries(groupedConnections);
   return (
     <aside className="sidebar" aria-label={labels.connectionManager}>
       <div className="brand-row">
@@ -2190,13 +2644,16 @@ function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect, o
       <label className="search-box">
         <Search size={17} aria-hidden="true" />
         <span className="sr-only">{labels.searchConnections}</span>
-        <input placeholder={labels.searchHostsPlaceholder} />
+        <input value={query} placeholder={labels.searchHostsPlaceholder} onChange={(event) => onQueryChange(event.target.value)} />
       </label>
 
       <div className="sidebar-actions" aria-label={labels.connectionActions}>
-        <button type="button">
+        <button type="button" onClick={onCreate}>
           <Plus size={16} aria-hidden="true" />
           {labels.newConnection}
+        </button>
+        <button type="button" aria-label={labels.editConnection} onClick={onEditActive}>
+          <Edit3 size={16} aria-hidden="true" />
         </button>
         <button type="button" aria-label={labels.connectionSettings} onClick={onOpenSettings}>
           <Settings size={16} aria-hidden="true" />
@@ -2204,14 +2661,23 @@ function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect, o
       </div>
 
       <nav className="connection-tree">
-        {Object.entries(groupedConnections).map(([group, connections]) => (
-          <section key={group} className="connection-group" aria-label={labels.groupAria(group)}>
-            <button type="button" className="group-title">
-              <ChevronRight size={15} aria-hidden="true" />
+        {groupEntries.length === 0 ? <div className="sidebar-empty">{labels.noConnectionsFound}</div> : null}
+        {groupEntries.map(([group, connections]) => {
+          const isCollapsed = Boolean(collapsedGroups[group]);
+          return (
+            <section key={group} className="connection-group" aria-label={labels.groupAria(group)}>
+            <button
+              type="button"
+              className="group-title"
+              aria-expanded={!isCollapsed}
+              aria-label={isCollapsed ? labels.expandGroup : labels.collapseGroup}
+              onClick={() => onToggleGroup(group)}
+            >
+              {isCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
               {displayBuiltInGroup(group, labels)}
               <span>{connections.length}</span>
             </button>
-            {connections.map((connection) => (
+            {isCollapsed ? null : connections.map((connection) => (
               <button
                 type="button"
                 key={connection.id}
@@ -2229,7 +2695,8 @@ function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect, o
               </button>
             ))}
           </section>
-        ))}
+          );
+        })}
       </nav>
     </aside>
   );
@@ -2256,7 +2723,8 @@ function TopBar({
   isHighlightEnabled,
   onOpenCommandPalette,
   onToggleSyncInput,
-  onToggleHighlight
+  onToggleHighlight,
+  onFocusPanel
 }: {
   activeConnection: ConnectionProfile;
   status: SessionStatus;
@@ -2266,6 +2734,7 @@ function TopBar({
   onOpenCommandPalette: () => void;
   onToggleSyncInput: () => void;
   onToggleHighlight: () => void;
+  onFocusPanel: (panel: PanelFocusKey) => void;
 }) {
   const labels = useUiStrings();
   return (
@@ -2304,10 +2773,10 @@ function TopBar({
         >
           <Zap size={17} aria-hidden="true" />
         </button>
-        <button type="button" aria-label={labels.openTunnelingManager}>
+        <button type="button" aria-label={labels.openTunnelingManager} onClick={() => onFocusPanel("tunnels")}>
           <Network size={17} aria-hidden="true" />
         </button>
-        <button type="button" aria-label={labels.openCredentialVault}>
+        <button type="button" aria-label={labels.openCredentialVault} onClick={() => onFocusPanel("credentials")}>
           <KeyRound size={17} aria-hidden="true" />
         </button>
         <span className="version-label">v{version}</span>
@@ -2362,6 +2831,7 @@ function TerminalPane({
   zmodemMode,
   onStatusChange,
   onReconnect,
+  onFocusPanel,
   onDispatchCommand,
   onTerminalInput,
   onTriggerEvents,
@@ -2377,6 +2847,7 @@ function TerminalPane({
   zmodemMode: ZmodemMode;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
+  onFocusPanel: (panel: PanelFocusKey) => void;
   onDispatchCommand: (command: string) => void;
   onTerminalInput: (sessionId: string, input: string, options?: { record?: boolean }) => void;
   onTriggerEvents: (events: TriggerEvent[]) => void;
@@ -2385,6 +2856,8 @@ function TerminalPane({
   const labels = useUiStrings();
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
+  const [isSplitEnabled, setIsSplitEnabled] = useState(false);
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
   const [safePasteReview, setSafePasteReview] = useState<SafePasteReview | null>(null);
   const [safePasteSessionId, setSafePasteSessionId] = useState("");
@@ -2630,11 +3103,16 @@ function TerminalPane({
           <button type="button" onClick={findNext}>
             {labels.find}
           </button>
-          <button type="button">
+          <button
+            type="button"
+            className={isSplitEnabled ? "active" : ""}
+            aria-pressed={isSplitEnabled}
+            onClick={() => setIsSplitEnabled((current) => !current)}
+          >
             <SplitSquareHorizontal size={16} aria-hidden="true" />
-            {labels.split}
+            {isSplitEnabled ? labels.unsplit : labels.split}
           </button>
-          <button type="button" className={zmodemMode !== "idle" ? "active" : ""}>
+          <button type="button" className={zmodemMode !== "idle" ? "active" : ""} onClick={() => onFocusPanel("zmodem")}>
             <UploadCloud size={16} aria-hidden="true" />
             ZMODEM
           </button>
@@ -2642,12 +3120,46 @@ function TerminalPane({
             <RefreshCw size={16} aria-hidden="true" />
             {labels.reconnect}
           </button>
-          <button type="button" aria-label={labels.moreTerminalActions}>
+          <button
+            type="button"
+            aria-label={labels.moreTerminalActions}
+            aria-expanded={isActionsOpen}
+            onClick={() => setIsActionsOpen((current) => !current)}
+          >
             <MoreHorizontal size={16} aria-hidden="true" />
           </button>
+          {isActionsOpen ? (
+            <div className="terminal-action-menu" role="menu" aria-label={labels.terminalActions}>
+              <button type="button" role="menuitem" onClick={() => onFocusPanel("logs")}>
+                <FileText size={15} aria-hidden="true" />
+                {labels.openLogsPanel}
+              </button>
+              <button type="button" role="menuitem" onClick={() => onFocusPanel("zmodem")}>
+                <UploadCloud size={15} aria-hidden="true" />
+                {labels.openZmodemPanel}
+              </button>
+              <button type="button" role="menuitem" onClick={onReconnect}>
+                <RefreshCw size={15} aria-hidden="true" />
+                {labels.reconnect}
+              </button>
+              <span>{labels.clearTerminalHint}</span>
+            </div>
+          ) : null}
         </div>
       </div>
-      <div ref={terminalHostRef} className="terminal-host" />
+      <div className={`terminal-surface ${isSplitEnabled ? "split" : ""}`}>
+        <div ref={terminalHostRef} className="terminal-host" />
+        {isSplitEnabled ? (
+          <div className="terminal-split-preview" aria-label={labels.splitPaneEnabled}>
+            <div>
+              <SplitSquareHorizontal size={18} aria-hidden="true" />
+              <strong>{labels.splitPaneEnabled}</strong>
+            </div>
+            <span>{labels.splitPaneHint}</span>
+            <code>{activeTab.title} / {activeTab.cwd}</code>
+          </div>
+        ) : null}
+      </div>
       {safePasteReview ? (
         <div className="safe-paste-review" role="alert">
           <div>
@@ -2688,6 +3200,7 @@ function TerminalPane({
 }
 
 function SshCredentialPanel({
+  panelRef,
   authMethod,
   draft,
   credentialStatus,
@@ -2709,6 +3222,7 @@ function SshCredentialPanel({
   onDisableVault,
   onTrustHost
 }: {
+  panelRef?: (element: HTMLElement | null) => void;
   authMethod: ConnectionProfile["authMethod"];
   draft: { password: string; privateKey: string; passphrase: string };
   credentialStatus?: CredentialStatus;
@@ -2738,7 +3252,7 @@ function SshCredentialPanel({
   const isEncryptionUnavailable = credentialStatus?.encryptionAvailable === false || vaultStatus?.encryptionAvailable === false;
 
   return (
-    <section className="panel-section ssh-panel" aria-label={labels.sshCredentials}>
+    <section ref={panelRef} className="panel-section ssh-panel" aria-label={labels.sshCredentials}>
       <div className="panel-heading">
         <div>
           <KeyRound size={16} aria-hidden="true" />
@@ -3099,6 +3613,7 @@ function FilePanel({
 }
 
 function ZmodemPanel({
+  panelRef,
   mode,
   message,
   localPath,
@@ -3108,6 +3623,7 @@ function ZmodemPanel({
   onUpload,
   onDownload
 }: {
+  panelRef?: (element: HTMLElement | null) => void;
   mode: ZmodemMode;
   message: string;
   localPath: string;
@@ -3119,7 +3635,7 @@ function ZmodemPanel({
 }) {
   const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label={labels.zmodemTransfer}>
+    <section ref={panelRef} className="panel-section" aria-label={labels.zmodemTransfer}>
       <div className="panel-heading">
         <div>
           <UploadCloud size={16} aria-hidden="true" />
@@ -3286,10 +3802,12 @@ function MetricSparkline({ label, unit, max, values }: { label: string; unit: st
 
 export function QuickCommandPanel({
   quickCommands,
-  onExecute
+  onExecute,
+  onManage
 }: {
   quickCommands: ReturnType<typeof createInitialAppSnapshot>["quickCommands"];
   onExecute: (command: string) => void;
+  onManage: () => void;
 }) {
   const labels = useUiStrings();
   return (
@@ -3299,11 +3817,12 @@ export function QuickCommandPanel({
           <Zap size={16} aria-hidden="true" />
           <h2>{labels.quickCommands}</h2>
         </div>
-        <button type="button" aria-label={labels.manageQuickCommands}>
+        <button type="button" aria-label={labels.manageQuickCommands} onClick={onManage}>
           <LayoutDashboard size={16} aria-hidden="true" />
         </button>
       </div>
       <div className="quick-list">
+        {quickCommands.length === 0 ? <div className="trigger-empty">{labels.noQuickCommands}</div> : null}
         {quickCommands.map((command) => (
           <button type="button" key={command.id} className="quick-command" onClick={() => onExecute(command.command)}>
             <span>
@@ -3399,12 +3918,14 @@ function ProcessPanel({
 }
 
 function TunnelPanel({
+  panelRef,
   draft,
   tunnels,
   onDraftChange,
   onStart,
   onStop
 }: {
+  panelRef?: (element: HTMLElement | null) => void;
   draft: TunnelDraft;
   tunnels: TunnelInfo[];
   onDraftChange: (draft: TunnelDraft) => void;
@@ -3415,7 +3936,7 @@ function TunnelPanel({
   const requiresTarget = draft.mode !== "dynamic";
 
   return (
-    <section className="panel-section" aria-label={labels.sshTunnels}>
+    <section ref={panelRef} className="panel-section" aria-label={labels.sshTunnels}>
       <div className="panel-heading">
         <div>
           <Network size={16} aria-hidden="true" />
@@ -3724,6 +4245,7 @@ function ScriptRecorderPanel({
 }
 
 export function LogViewerPanel({
+  panelRef,
   title,
   refreshLabel,
   emptyText,
@@ -3733,6 +4255,7 @@ export function LogViewerPanel({
   onQueryChange,
   onRefresh
 }: {
+  panelRef?: (element: HTMLElement | null) => void;
   title: string;
   refreshLabel: string;
   emptyText: string;
@@ -3744,7 +4267,7 @@ export function LogViewerPanel({
 }) {
   const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label={title}>
+    <section ref={panelRef} className="panel-section" aria-label={title}>
       <div className="panel-heading">
         <div>
           <FileText size={16} aria-hidden="true" />
@@ -3959,6 +4482,235 @@ export function CommandPalette({
               <small>{command.command}</small>
             </button>
           ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function ConnectionEditorDialog({
+  draft,
+  error,
+  canDelete,
+  onChange,
+  onSave,
+  onDelete,
+  onClose
+}: {
+  draft: ConnectionFormDraft;
+  error: string;
+  canDelete: boolean;
+  onChange: (draft: ConnectionFormDraft) => void;
+  onSave: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const labels = useUiStrings();
+  const isEditing = Boolean(draft.id);
+  const update = (patch: Partial<ConnectionFormDraft>) => onChange({ ...draft, ...patch });
+
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="editor-dialog"
+        role="dialog"
+        aria-label={labels.connectionEditor}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <Server size={18} aria-hidden="true" />
+            <h2>{isEditing ? labels.editConnection : labels.connectionEditor}</h2>
+          </div>
+          <button type="button" aria-label={labels.close} onClick={onClose}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <p>{labels.connectionEditorSubtitle}</p>
+        {error ? <div className="form-error" role="alert">{error}</div> : null}
+        <div className="connection-form">
+          <label>
+            <span>{labels.name}</span>
+            <input value={draft.name} onChange={(event) => update({ name: event.target.value })} />
+          </label>
+          <label>
+            <span>{labels.protocol}</span>
+            <select
+              value={draft.protocol}
+              onChange={(event) => {
+                const protocol = event.target.value as ConnectionProtocol;
+                update({
+                  protocol,
+                  port: protocol === "rdp" ? "3389" : protocol === "local" ? "0" : draft.port === "3389" ? "22" : draft.port,
+                  authMethod: protocol === "local" ? "agent" : draft.authMethod
+                });
+              }}
+            >
+              <option value="ssh">SSH</option>
+              <option value="rdp">RDP</option>
+              <option value="local">{labels.localShell}</option>
+            </select>
+          </label>
+          <label>
+            <span>{labels.group}</span>
+            <input value={draft.group} onChange={(event) => update({ group: event.target.value })} />
+          </label>
+          <label>
+            <span>{labels.host}</span>
+            <input value={draft.host} onChange={(event) => update({ host: event.target.value })} />
+          </label>
+          <label>
+            <span>{labels.port}</span>
+            <input value={draft.port} inputMode="numeric" onChange={(event) => update({ port: event.target.value })} />
+          </label>
+          <label>
+            <span>{labels.user}</span>
+            <input value={draft.username} onChange={(event) => update({ username: event.target.value })} />
+          </label>
+          <label>
+            <span>{labels.sshLogin}</span>
+            <select
+              value={draft.authMethod}
+              disabled={draft.protocol === "local"}
+              onChange={(event) => update({ authMethod: event.target.value as ConnectionProfile["authMethod"] })}
+            >
+              <option value="password">{labels.password}</option>
+              <option value="privateKey">{labels.privateKey}</option>
+              <option value="agent">Agent</option>
+            </select>
+          </label>
+          <label>
+            <span>{labels.tags}</span>
+            <input value={draft.tags} placeholder={labels.tagsHint} onChange={(event) => update({ tags: event.target.value })} />
+          </label>
+          <fieldset className="color-field">
+            <legend>{labels.color}</legend>
+            <div>
+              {connectionColors.map((color) => (
+                <button
+                  type="button"
+                  key={color}
+                  className={draft.color === color ? "active" : ""}
+                  aria-label={color}
+                  onClick={() => update({ color })}
+                >
+                  <span style={{ background: color }} />
+                </button>
+              ))}
+            </div>
+          </fieldset>
+        </div>
+        <div className="dialog-actions">
+          {isEditing ? (
+            <button type="button" className="danger-action" disabled={!canDelete} onClick={onDelete}>
+              <Trash2 size={15} aria-hidden="true" />
+              {labels.deleteConnection}
+            </button>
+          ) : null}
+          <button type="button" onClick={onClose}>{labels.cancel}</button>
+          <button type="button" className="primary-action" onClick={onSave}>
+            <Save size={15} aria-hidden="true" />
+            {isEditing ? labels.saveConnection : labels.createConnection}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function QuickCommandManagerDialog({
+  commands,
+  draft,
+  error,
+  onDraftChange,
+  onNew,
+  onEdit,
+  onSave,
+  onDelete,
+  onClose
+}: {
+  commands: QuickCommand[];
+  draft: QuickCommandFormDraft;
+  error: string;
+  onDraftChange: (draft: QuickCommandFormDraft) => void;
+  onNew: () => void;
+  onEdit: (command: QuickCommand) => void;
+  onSave: () => void;
+  onDelete: (commandId: string) => void;
+  onClose: () => void;
+}) {
+  const labels = useUiStrings();
+  const update = (patch: Partial<QuickCommandFormDraft>) => onDraftChange({ ...draft, ...patch });
+
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="editor-dialog quick-manager-dialog"
+        role="dialog"
+        aria-label={labels.quickCommandManager}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <LayoutDashboard size={18} aria-hidden="true" />
+            <h2>{labels.quickCommandManager}</h2>
+          </div>
+          <button type="button" aria-label={labels.close} onClick={onClose}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <p>{labels.quickCommandManagerSubtitle}</p>
+        <div className="quick-manager-grid">
+          <div className="managed-command-list">
+            <button type="button" className="managed-command-new" onClick={onNew}>
+              <Plus size={15} aria-hidden="true" />
+              {labels.newQuickCommand}
+            </button>
+            {commands.length === 0 ? <div className="trigger-empty">{labels.noQuickCommands}</div> : null}
+            {commands.map((command) => (
+              <button
+                type="button"
+                key={command.id}
+                className={draft.id === command.id ? "active" : ""}
+                onClick={() => onEdit(command)}
+              >
+                <strong>{displayBuiltInName(command.title, labels)}</strong>
+                <small>{command.command}</small>
+              </button>
+            ))}
+          </div>
+          <div className="quick-command-form">
+            <h3>{draft.id ? labels.editQuickCommand : labels.newQuickCommand}</h3>
+            {error ? <div className="form-error" role="alert">{error}</div> : null}
+            <label>
+              <span>{labels.commandTitle}</span>
+              <input value={draft.title} onChange={(event) => update({ title: event.target.value })} />
+            </label>
+            <label>
+              <span>{labels.commandText}</span>
+              <textarea value={draft.command} onChange={(event) => update({ command: event.target.value })} />
+            </label>
+            <label>
+              <span>{labels.commandScope}</span>
+              <select value={draft.scope} onChange={(event) => update({ scope: event.target.value as QuickCommand["scope"] })}>
+                <option value="global">{labels.scope.global}</option>
+                <option value="group">{labels.scope.group}</option>
+                <option value="connection">{labels.scope.connection}</option>
+              </select>
+            </label>
+            <div className="dialog-actions compact-actions">
+              {draft.id ? (
+                <button type="button" className="danger-action" onClick={() => onDelete(draft.id ?? "")}>
+                  <Trash2 size={15} aria-hidden="true" />
+                  {labels.deleteCommand}
+                </button>
+              ) : null}
+              <button type="button" className="primary-action" onClick={onSave}>
+                <Save size={15} aria-hidden="true" />
+                {labels.saveCommand}
+              </button>
+            </div>
+          </div>
         </div>
       </section>
     </div>

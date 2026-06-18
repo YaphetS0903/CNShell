@@ -1,7 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BulkCommandConfirmation, CommandPalette, LogViewerPanel, QuickCommandPanel } from "./App";
+import {
+  BulkCommandConfirmation,
+  CommandPalette,
+  ConnectionEditorDialog,
+  LogViewerPanel,
+  QuickCommandManagerDialog,
+  QuickCommandPanel
+} from "./App";
 import { quickCommands } from "../domain/seed";
 
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
@@ -15,7 +22,7 @@ afterEach(() => {
 describe("renderer workflow components", () => {
   it("executes a quick command from the operations panel", () => {
     const onExecute = vi.fn();
-    render(<QuickCommandPanel quickCommands={quickCommands.slice(0, 2)} onExecute={onExecute} />);
+    render(<QuickCommandPanel quickCommands={quickCommands.slice(0, 2)} onExecute={onExecute} onManage={vi.fn()} />);
 
     fireEvent.click(screen.getByRole("button", { name: /Restart service/i }));
 
@@ -98,5 +105,72 @@ describe("renderer workflow components", () => {
     );
 
     expect(screen.getByText(/terminal.start/)).toBeInTheDocument();
+  });
+
+  it("edits and validates a connection profile dialog", () => {
+    const onChange = vi.fn();
+    const onSave = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <ConnectionEditorDialog
+        draft={{
+          id: "prod-web-01",
+          name: "prod-web-01",
+          group: "Production",
+          protocol: "ssh",
+          host: "10.24.18.11",
+          port: "22",
+          username: "deploy",
+          authMethod: "privateKey",
+          color: "#2f9e44",
+          tags: "nginx, api"
+        }}
+        error="Enter a host."
+        canDelete
+        onChange={onChange}
+        onSave={onSave}
+        onDelete={onDelete}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a host.");
+    fireEvent.change(screen.getByDisplayValue("prod-web-01"), { target: { value: "prod-web-02" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save connection/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Delete connection/i }));
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: "prod-web-02" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onDelete).toHaveBeenCalledOnce();
+  });
+
+  it("manages quick command drafts", () => {
+    const onDraftChange = vi.fn();
+    const onEdit = vi.fn();
+    const onSave = vi.fn();
+    const onDelete = vi.fn();
+    render(
+      <QuickCommandManagerDialog
+        commands={quickCommands}
+        draft={{ id: "qc-disk", title: "Disk usage", command: "df -h", scope: "global" }}
+        error=""
+        onDraftChange={onDraftChange}
+        onNew={vi.fn()}
+        onEdit={onEdit}
+        onSave={onSave}
+        onDelete={onDelete}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Nginx errors/i }));
+    fireEvent.change(screen.getByDisplayValue("Disk usage"), { target: { value: "Disk free" } });
+    fireEvent.click(screen.getByRole("button", { name: /Save command/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Delete command/i }));
+
+    expect(onEdit).toHaveBeenCalledWith(expect.objectContaining({ id: "qc-nginx" }));
+    expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ title: "Disk free" }));
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(onDelete).toHaveBeenCalledWith("qc-disk");
   });
 });
