@@ -104,6 +104,18 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Expand IPC validation and renderer component tests for the new workflows.~~
 - [x] ~~Re-run full typecheck, lint, test, package, and GitHub push.~~
 
+## Phase 4 FinalShell-Style File Workspace Sprint
+
+- [x] ~~Re-check FinalShell's visible SSH + SFTP workflow and map it to CNshell without copying proprietary code or assets.~~
+- [x] ~~Audit the current SFTP backend and renderer state flow.~~
+- [x] ~~Move SFTP out of the narrow right operations panel and into a bottom workspace under the terminal.~~
+- [x] ~~Add a directory tree, path bar, refresh/history-style actions, upload/download controls, and a dense file table.~~
+- [x] ~~Keep direct file operations visible: open/edit, rename, delete, create directory, and transfer status.~~
+- [x] ~~Embed the remote text editor into the bottom file workspace so a selected file can be edited immediately.~~
+- [x] ~~Automatically refresh the file panel after SSH connects and when the synced current directory changes.~~
+- [x] ~~Update renderer tests for the FinalShell-style file table/tree workflow.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

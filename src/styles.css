@@ -532,9 +532,18 @@ textarea:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(620px, 1fr) 360px;
+  grid-template-columns: minmax(780px, 1fr) 392px;
   min-height: 0;
   flex: 1;
+}
+
+.main-workbench {
+  display: grid;
+  grid-template-rows: minmax(280px, 1fr) minmax(250px, 34vh);
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--line);
+  background: #071016;
 }
 
 .terminal-split-layout {
@@ -592,8 +601,12 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  border-right: 1px solid var(--line);
+  border-right: 0;
   background: #071016;
+}
+
+.terminal-split-layout.active .terminal-workbench + .terminal-workbench {
+  border-left: 1px solid var(--line);
 }
 
 .terminal-toolbar {
@@ -873,6 +886,396 @@ textarea:focus-visible {
   border-color: rgba(255, 135, 135, 0.34);
   background: rgba(255, 135, 135, 0.08);
   color: #ffa8a8;
+}
+
+.file-workspace {
+  display: grid;
+  grid-template-rows: 34px 42px auto minmax(0, 1fr) auto;
+  min-width: 0;
+  min-height: 0;
+  border-top: 1px solid var(--line);
+  background: #0d141b;
+}
+
+.file-workspace-tabs {
+  display: flex;
+  align-items: end;
+  gap: 2px;
+  min-width: 0;
+  border-bottom: 1px solid #26323b;
+  background: #111a22;
+  padding: 4px 10px 0;
+}
+
+.file-workspace-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 74px;
+  min-height: 30px;
+  border: 1px solid #26323b;
+  border-bottom: 0;
+  border-radius: 6px 6px 0 0;
+  background: #0b131a;
+  color: #9eacb7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.file-workspace-tabs button.active {
+  background: #18242e;
+  color: #e1edf6;
+}
+
+.file-workspace-tabs span {
+  margin-left: 8px;
+  color: #8fa2af;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.file-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.2fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  border-bottom: 1px solid #1b2730;
+  background: #0f171f;
+  padding: 6px 10px;
+}
+
+.path-control,
+.file-toolbar-actions {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.path-control label {
+  min-width: 0;
+  flex: 1;
+}
+
+.path-control input,
+.file-toolbar-actions input {
+  width: 100%;
+  min-width: 0;
+  min-height: 29px;
+  border: 1px solid #273541;
+  border-radius: 5px;
+  background: #071016;
+  color: #d8e5ee;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+.file-toolbar-actions input {
+  flex: 1;
+  max-width: 210px;
+}
+
+.path-control button,
+.file-toolbar-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 31px;
+  min-width: 31px;
+  height: 29px;
+  border: 1px solid #273541;
+  border-radius: 5px;
+  background: #121d26;
+  color: #c8d8e2;
+  cursor: pointer;
+}
+
+.path-control button:hover:not(:disabled),
+.file-toolbar-actions button:hover:not(:disabled) {
+  background: #192935;
+}
+
+.path-control button:disabled,
+.file-toolbar-actions button:disabled,
+.file-toolbar input:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+
+.rotate-up {
+  transform: rotate(-90deg);
+}
+
+.file-state {
+  margin: 8px 10px 0;
+}
+
+.file-workspace-body {
+  display: grid;
+  grid-template-columns: 214px minmax(420px, 1fr) minmax(260px, 32%);
+  min-width: 0;
+  min-height: 0;
+}
+
+.remote-tree {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: auto;
+  border-right: 1px solid #24313a;
+  background: #0a1118;
+  padding: 6px 0;
+}
+
+.remote-tree button {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  min-height: 29px;
+  border: 0;
+  background: transparent;
+  color: #bdcbd5;
+  cursor: pointer;
+  font-size: 12px;
+  text-align: left;
+}
+
+.remote-tree button:hover:not(:disabled),
+.remote-tree button.active {
+  background: #18242e;
+  color: #f0f7fb;
+}
+
+.remote-tree span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-file-table {
+  display: grid;
+  grid-template-rows: 31px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: #0f171f;
+}
+
+.remote-file-header,
+.remote-file-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) 86px 82px 142px 112px 104px minmax(190px, auto);
+  align-items: center;
+  min-width: 900px;
+}
+
+.remote-file-header {
+  border-bottom: 1px solid #273541;
+  background: #151f28;
+  color: #c4d0da;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.remote-file-header span,
+.remote-file-row > span,
+.remote-file-name {
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.remote-file-rows {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.remote-file-row {
+  min-height: 31px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.035);
+  color: #d7e2ea;
+  font-size: 12px;
+}
+
+.remote-file-row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.018);
+}
+
+.remote-file-row:hover {
+  background: #172530;
+}
+
+.remote-file-name {
+  display: inline-grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  height: 100%;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.remote-file-name span,
+.remote-file-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-file-row.directory .remote-file-name {
+  color: #f7dc83;
+}
+
+.remote-file-row.symlink .remote-file-name {
+  color: #8ce3ff;
+}
+
+.remote-file-row .numeric {
+  color: #9fb2c0;
+  font-family: "Cascadia Code", Consolas, monospace;
+  text-align: right;
+}
+
+.remote-file-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-right: 8px;
+}
+
+.remote-file-actions button {
+  min-height: 23px;
+  border: 1px solid #293744;
+  border-radius: 4px;
+  background: #101b23;
+  color: #c8d8e2;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 7px;
+}
+
+.remote-file-actions button:hover:not(:disabled) {
+  background: #1b2c38;
+}
+
+.remote-file-actions button:disabled,
+.remote-file-name:disabled,
+.remote-tree button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.remote-file-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 5px;
+  min-height: 120px;
+  color: #94a6b4;
+  font-size: 12px;
+  text-align: center;
+}
+
+.remote-file-empty strong {
+  color: #d2dde6;
+}
+
+.remote-editor-inline {
+  display: grid;
+  grid-template-rows: 37px 31px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  border-left: 1px solid #24313a;
+  background: #0b131a;
+}
+
+.remote-editor-inline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 8px;
+  border-bottom: 1px solid #24313a;
+  background: #111a22;
+  padding: 0 9px;
+}
+
+.remote-editor-inline-header div {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 7px;
+  color: #d6e2eb;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.remote-editor-inline-header span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remote-editor-inline-header button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 68px;
+  min-height: 27px;
+  gap: 5px;
+  border: 1px solid #2c3b47;
+  border-radius: 5px;
+  background: #142532;
+  color: #d8ebf7;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.remote-editor-inline-header button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.remote-editor-inline .editor-status {
+  margin: 0;
+  border-width: 0 0 1px;
+  border-radius: 0;
+  background: #0e171e;
+}
+
+.remote-editor-inline textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  outline: 0;
+  background: #070e14;
+  color: #d9e8f2;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px;
+  resize: none;
+}
+
+.remote-editor-inline textarea:disabled {
+  color: #687885;
+}
+
+.file-transfer-list {
+  border-top: 1px solid #24313a;
+  background: #0d151c;
+  padding: 7px 10px;
 }
 
 .transfer-box {

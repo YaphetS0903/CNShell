@@ -17,10 +17,14 @@ import {
   Circle,
   Code2,
   Command,
+  Download,
   Edit3,
+  File,
   FileText,
   Folder,
+  FolderOpen,
   HardDrive,
+  Home,
   KeyRound,
   LayoutDashboard,
   Monitor,
@@ -36,6 +40,7 @@ import {
   SplitSquareHorizontal,
   TerminalSquare,
   Trash2,
+  Upload,
   UploadCloud,
   X,
   Zap
@@ -52,6 +57,7 @@ import type {
   KeyMappingProfile,
   KeyMappingRule,
   QuickCommand,
+  RemoteFileEntry,
   ScriptRecording,
   ScriptRecordingEvent,
   SessionStatus,
@@ -291,6 +297,26 @@ const translations = {
     cwdSync: "目录同步",
     refreshRemoteFiles: "刷新远程文件",
     createRemoteDirectory: "新建目录",
+    fileWorkspace: "文件工作区",
+    fileTab: "文件",
+    commandTab: "命令",
+    rootDirectory: "根目录",
+    parentDirectory: "上级目录",
+    fileName: "文件名",
+    fileSize: "大小",
+    fileType: "类型",
+    fileModifiedAt: "修改时间",
+    fileMode: "权限",
+    fileOwnerGroup: "用户/用户组",
+    fileTypeDirectory: "文件夹",
+    fileTypeFile: "文件",
+    fileTypeSymlink: "链接",
+    openRemoteFile: "打开编辑",
+    openRemoteDirectory: "进入目录",
+    transferPathPlaceholder: "本地路径或远程目标路径",
+    remoteDirectoryEmpty: "当前目录为空",
+    remoteDirectoryHint: "连接 SSH 后会自动加载远端目录，也可以手动刷新。",
+    sftpUnavailable: "请选择 SSH 会话后使用远程文件管理。",
     renameRemotePath: "重命名",
     deleteRemotePath: "删除",
     remoteName: "远程名称",
@@ -613,6 +639,26 @@ const translations = {
     cwdSync: "cwd sync",
     refreshRemoteFiles: "Refresh remote files",
     createRemoteDirectory: "New directory",
+    fileWorkspace: "File workspace",
+    fileTab: "Files",
+    commandTab: "Commands",
+    rootDirectory: "Root",
+    parentDirectory: "Parent directory",
+    fileName: "File name",
+    fileSize: "Size",
+    fileType: "Type",
+    fileModifiedAt: "Modified",
+    fileMode: "Mode",
+    fileOwnerGroup: "User/group",
+    fileTypeDirectory: "Folder",
+    fileTypeFile: "File",
+    fileTypeSymlink: "Link",
+    openRemoteFile: "Open editor",
+    openRemoteDirectory: "Open folder",
+    transferPathPlaceholder: "Local path or remote target path",
+    remoteDirectoryEmpty: "This directory is empty",
+    remoteDirectoryHint: "CNshell loads the remote directory after SSH connects. You can also refresh manually.",
+    sftpUnavailable: "Select an SSH session to use remote file management.",
     renameRemotePath: "Rename",
     deleteRemotePath: "Delete",
     remoteName: "Remote name",
@@ -819,6 +865,99 @@ function displayBuiltInGroup(group: string, labels: UiStrings) {
 
 function displayBuiltInName(name: string, labels: UiStrings) {
   return labels.builtInNames[name as keyof UiStrings["builtInNames"]] ?? name;
+}
+
+function displayFileType(type: RemoteFileEntry["type"], labels: UiStrings) {
+  if (type === "directory") {
+    return labels.fileTypeDirectory;
+  }
+
+  if (type === "symlink") {
+    return labels.fileTypeSymlink;
+  }
+
+  return labels.fileTypeFile;
+}
+
+function formatFileSize(size: number) {
+  if (size === 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${unitIndex === 0 ? value : value.toFixed(value >= 10 ? 1 : 2)} ${units[unitIndex]}`;
+}
+
+function formatRemoteTimestamp(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleString(undefined, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function buildDirectoryTree(pathValue: string, remoteFiles: RemoteFileEntry[]) {
+  const normalizedPath = normalizeRemotePath(pathValue || "/");
+  const parts = normalizedPath.split("/").filter(Boolean);
+  const ancestors = [
+    {
+      path: "/",
+      name: "/",
+      depth: 0,
+      isActive: normalizedPath === "/"
+    },
+    ...parts.map((part, index) => {
+      const itemPath = `/${parts.slice(0, index + 1).join("/")}`;
+      return {
+        path: itemPath,
+        name: part,
+        depth: index + 1,
+        isActive: itemPath === normalizedPath
+      };
+    })
+  ];
+
+  const childDirectories = remoteFiles
+    .filter((file) => file.type === "directory")
+    .map((file) => ({
+      path: file.path,
+      name: file.name,
+      depth: parts.length + 1,
+      isActive: file.path === normalizedPath
+    }));
+
+  const knownPaths = new Set<string>();
+  return [...ancestors, ...childDirectories].filter((item) => {
+    if (knownPaths.has(item.path)) {
+      return false;
+    }
+
+    knownPaths.add(item.path);
+    return true;
+  });
+}
+
+function ownerGroupFromMode(mode: string) {
+  const parts = mode.trim().split(/\s+/);
+  if (parts.length >= 4) {
+    return `${parts.at(-2)}/${parts.at(-1)}`;
+  }
+
+  return "-";
 }
 
 const TranslationContext = createContext<UiStrings>(translations["en-US"]);
@@ -1191,7 +1330,7 @@ export function App() {
   const [rdpStatus, setRdpStatus] = useState<"idle" | "launching" | "error">("idle");
   const [rdpError, setRdpError] = useState("");
   const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
-  const [remotePath, setRemotePath] = useState("/var/www/cnshell");
+  const [remotePath, setRemotePath] = useState("/");
   const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
   const [sftpError, setSftpError] = useState("");
   const [remoteOperationDraft, setRemoteOperationDraft] = useState<RemoteOperationDraft | null>(null);
@@ -1252,6 +1391,7 @@ export function App() {
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
+  const lastAutoRefreshKeyRef = useRef("");
   const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
     credentials: null,
     tunnels: null,
@@ -1522,7 +1662,7 @@ export function App() {
     }));
   };
 
-  const syncRemotePath = (path: string) => {
+  const syncRemotePath = useCallback((path: string) => {
     const normalizedPath = normalizeRemotePath(path || "/");
     setRemotePath(normalizedPath);
     setSnapshot((current) => ({
@@ -1531,7 +1671,39 @@ export function App() {
         session.id === activeTab?.id ? { ...session, cwd: normalizedPath } : session
       )
     }));
-  };
+  }, [activeTab?.id]);
+
+  const refreshRemoteFiles = useCallback((pathOverride?: string) => {
+    if (activeConnection.protocol !== "ssh") {
+      setRemoteFileEntries(snapshot.remoteFiles);
+      return;
+    }
+
+    const directoryPath = normalizeRemotePath(pathOverride ?? remotePath);
+    setSftpStatus("loading");
+    setSftpError("");
+
+    void window.cnshell?.sftp
+      .listDirectory({
+        path: directoryPath,
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then((listing) => {
+        syncRemotePath(listing.path);
+        setRemoteFileEntries(listing.entries);
+        setSftpStatus("idle");
+      })
+      .catch((error: Error) => {
+        setSftpError(error.message);
+        setSftpStatus("error");
+      });
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, remotePath, snapshot.remoteFiles, syncRemotePath]);
+
+  const navigateRemotePath = useCallback((nextPath: string) => {
+    const normalizedPath = normalizeRemotePath(nextPath || "/");
+    syncRemotePath(normalizedPath);
+    refreshRemoteFiles(normalizedPath);
+  }, [refreshRemoteFiles, syncRemotePath]);
 
   const appendRecordingInput = (input: string) => {
     if (!isRecordingScript || !input) {
@@ -1560,6 +1732,9 @@ export function App() {
       const nextPath = inferDirectoryFromCommand(input.replace(/\r$/, ""), remotePath);
       if (nextPath) {
         syncRemotePath(nextPath);
+        if (activeConnection.protocol === "ssh" && activeTab.status === "connected") {
+          refreshRemoteFiles(nextPath);
+        }
       }
     }
 
@@ -1918,31 +2093,6 @@ export function App() {
       .catch((error: Error) => {
         setRdpStatus("error");
         setRdpError(error.message);
-      });
-  };
-
-  const refreshRemoteFiles = () => {
-    if (activeConnection.protocol !== "ssh") {
-      setRemoteFileEntries(snapshot.remoteFiles);
-      return;
-    }
-
-    setSftpStatus("loading");
-    setSftpError("");
-
-    void window.cnshell?.sftp
-      .listDirectory({
-        path: remotePath,
-        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
-      })
-      .then((listing) => {
-        syncRemotePath(listing.path);
-        setRemoteFileEntries(listing.entries);
-        setSftpStatus("idle");
-      })
-      .catch((error: Error) => {
-        setSftpError(error.message);
-        setSftpStatus("error");
       });
   };
 
@@ -2492,6 +2642,20 @@ export function App() {
     setRemotePath(activeTab?.cwd || "/");
   }, [activeTab?.cwd, activeTab?.id]);
 
+  useEffect(() => {
+    if (!activeTab || activeConnection.protocol !== "ssh" || activeTab.status !== "connected") {
+      return;
+    }
+
+    const refreshKey = `${activeTab.id}:${remotePath}`;
+    if (lastAutoRefreshKeyRef.current === refreshKey) {
+      return;
+    }
+
+    lastAutoRefreshKeyRef.current = refreshKey;
+    refreshRemoteFiles(remotePath);
+  }, [activeConnection.protocol, activeTab, refreshRemoteFiles, remotePath]);
+
   if (!isWorkspaceReady) {
     return (
       <main className="app-shell loading-shell">
@@ -2549,48 +2713,77 @@ export function App() {
         />
         <section className="workspace-grid">
           {activeTab ? (
-          <div className={`terminal-split-layout ${splitTab ? "active" : ""}`}>
-            <TerminalPane
-              activeConnection={activeConnection}
-              activeTab={activeTab}
-              sshDraft={activeSshDraft}
-              useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
-              keyMappingProfiles={snapshot.keyMappingProfiles}
-              startToken={sessionStartTokens[activeTab.id] ?? 0}
-              isHighlightEnabled={isHighlightEnabled}
-              isSplitActive={Boolean(splitTab)}
-              zmodemMode={zmodemMode}
-              onStatusChange={setSessionStatus}
-              onReconnect={startActiveSession}
-              onSplit={createSplitSession}
-              onFocusPanel={focusPanel}
-              onDispatchCommand={executeCommand}
-              onTerminalInput={sendTerminalInput}
-              onTriggerEvents={addTriggerEvents}
-              onZmodemDetected={handleZmodemDetected}
-            />
-            {splitTab ? (
+          <div className="main-workbench">
+            <div className={`terminal-split-layout ${splitTab ? "active" : ""}`}>
               <TerminalPane
                 activeConnection={activeConnection}
-                activeTab={splitTab}
+                activeTab={activeTab}
                 sshDraft={activeSshDraft}
                 useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
                 keyMappingProfiles={snapshot.keyMappingProfiles}
-                startToken={sessionStartTokens[splitTab.id] ?? 0}
+                startToken={sessionStartTokens[activeTab.id] ?? 0}
                 isHighlightEnabled={isHighlightEnabled}
-                isSplitActive
-                isSecondaryPane
+                isSplitActive={Boolean(splitTab)}
                 zmodemMode={zmodemMode}
                 onStatusChange={setSessionStatus}
-                onReconnect={() => startSession(splitTab.id)}
+                onReconnect={startActiveSession}
                 onSplit={createSplitSession}
                 onFocusPanel={focusPanel}
-                onDispatchCommand={(command) => sendTerminalInput(splitTab.id, `${command}\r`)}
+                onDispatchCommand={executeCommand}
                 onTerminalInput={sendTerminalInput}
                 onTriggerEvents={addTriggerEvents}
                 onZmodemDetected={handleZmodemDetected}
               />
-            ) : null}
+              {splitTab ? (
+                <TerminalPane
+                  activeConnection={activeConnection}
+                  activeTab={splitTab}
+                  sshDraft={activeSshDraft}
+                  useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
+                  keyMappingProfiles={snapshot.keyMappingProfiles}
+                  startToken={sessionStartTokens[splitTab.id] ?? 0}
+                  isHighlightEnabled={isHighlightEnabled}
+                  isSplitActive
+                  isSecondaryPane
+                  zmodemMode={zmodemMode}
+                  onStatusChange={setSessionStatus}
+                  onReconnect={() => startSession(splitTab.id)}
+                  onSplit={createSplitSession}
+                  onFocusPanel={focusPanel}
+                  onDispatchCommand={(command) => sendTerminalInput(splitTab.id, `${command}\r`)}
+                  onTerminalInput={sendTerminalInput}
+                  onTriggerEvents={addTriggerEvents}
+                  onZmodemDetected={handleZmodemDetected}
+                />
+              ) : null}
+            </div>
+            <FilePanel
+              remoteFiles={remoteFileEntries}
+              path={remotePath}
+              status={sftpStatus}
+              error={sftpError}
+              localPath={transferLocalPath}
+              transferRemotePath={transferRemotePath}
+              transferJobs={transferJobs}
+              isAvailable={activeConnection.protocol === "ssh"}
+              isConnected={activeTab.status === "connected"}
+              editorPath={editorPath}
+              editorContent={editorContent}
+              editorStatus={editorStatus}
+              editorError={editorError}
+              onPathChange={syncRemotePath}
+              onNavigatePath={navigateRemotePath}
+              onLocalPathChange={setTransferLocalPath}
+              onTransferRemotePathChange={setTransferRemotePath}
+              onRefresh={() => refreshRemoteFiles()}
+              onTransfer={startTransfer}
+              onOpenFile={openRemoteFile}
+              onCreateDirectory={openCreateRemoteDirectory}
+              onRenamePath={openRenameRemotePath}
+              onDeletePath={openDeleteRemotePath}
+              onEditorContentChange={setEditorContent}
+              onSaveFile={saveRemoteFile}
+            />
           </div>
           ) : (
             <EmptySessionState onCreate={createSessionForActiveConnection} />
@@ -2627,24 +2820,6 @@ export function App() {
             {activeConnection.protocol === "ssh" ? (
               <JumpHostPanel gateways={activeConnection.gateways ?? []} onChange={updateActiveGateways} />
             ) : null}
-            <FilePanel
-              remoteFiles={remoteFileEntries}
-              path={remotePath}
-              status={sftpStatus}
-              error={sftpError}
-              localPath={transferLocalPath}
-              transferRemotePath={transferRemotePath}
-              transferJobs={transferJobs}
-              onPathChange={syncRemotePath}
-              onLocalPathChange={setTransferLocalPath}
-              onTransferRemotePathChange={setTransferRemotePath}
-              onRefresh={refreshRemoteFiles}
-              onTransfer={startTransfer}
-              onOpenFile={openRemoteFile}
-              onCreateDirectory={openCreateRemoteDirectory}
-              onRenamePath={openRenameRemotePath}
-              onDeletePath={openDeleteRemotePath}
-            />
             <ZmodemPanel
               panelRef={setPanelRef("zmodem")}
               mode={zmodemMode}
@@ -2663,14 +2838,6 @@ export function App() {
                 setZmodemMessage(labels.zmodemDownloadFlow);
                 startTransfer("download");
               }}
-            />
-            <RemoteEditorPanel
-              path={editorPath}
-              content={editorContent}
-              status={editorStatus}
-              error={editorError}
-              onContentChange={setEditorContent}
-              onSave={saveRemoteFile}
             />
             <MetricsPanel
               metrics={liveMetrics}
@@ -3754,7 +3921,14 @@ export function FilePanel({
   localPath,
   transferRemotePath,
   transferJobs,
+  isAvailable = true,
+  isConnected = true,
+  editorPath = "",
+  editorContent = "",
+  editorStatus = "idle",
+  editorError = "",
   onPathChange,
+  onNavigatePath,
   onLocalPathChange,
   onTransferRemotePathChange,
   onRefresh,
@@ -3762,16 +3936,25 @@ export function FilePanel({
   onOpenFile,
   onCreateDirectory,
   onRenamePath,
-  onDeletePath
+  onDeletePath,
+  onEditorContentChange = () => undefined,
+  onSaveFile = () => undefined
 }: {
-  remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"];
+  remoteFiles: RemoteFileEntry[];
   path: string;
   status: "idle" | "loading" | "error";
   error: string;
   localPath: string;
   transferRemotePath: string;
   transferJobs: TransferJob[];
+  isAvailable?: boolean;
+  isConnected?: boolean;
+  editorPath?: string;
+  editorContent?: string;
+  editorStatus?: "idle" | "loading" | "saving" | "error" | "saved";
+  editorError?: string;
   onPathChange: (path: string) => void;
+  onNavigatePath?: (path: string) => void;
   onLocalPathChange: (path: string) => void;
   onTransferRemotePathChange: (path: string) => void;
   onRefresh: () => void;
@@ -3780,90 +3963,194 @@ export function FilePanel({
   onCreateDirectory: () => void;
   onRenamePath: (path: string) => void;
   onDeletePath: (path: string) => void;
+  onEditorContentChange?: (content: string) => void;
+  onSaveFile?: () => void;
 }) {
   const labels = useUiStrings();
+  const directoryTree = useMemo(() => buildDirectoryTree(path, remoteFiles), [path, remoteFiles]);
+  const navigateTo = (targetPath: string) => {
+    if (onNavigatePath) {
+      onNavigatePath(targetPath);
+      return;
+    }
+
+    onPathChange(targetPath);
+  };
+  const parentPath = parentRemotePath(path);
+  const canUseSftp = isAvailable && isConnected;
   return (
-    <section className="panel-section file-panel" aria-label={labels.remoteFiles}>
-      <div className="panel-heading">
-        <div>
-          <FileText size={16} aria-hidden="true" />
-          <h2>SFTP</h2>
+    <section className="file-workspace" aria-label={labels.fileWorkspace}>
+      <div className="file-workspace-tabs" role="tablist" aria-label={labels.fileWorkspace}>
+        <button type="button" className="active" role="tab" aria-selected="true">
+          <FolderOpen size={15} aria-hidden="true" />
+          {labels.fileTab}
+        </button>
+        <button type="button" role="tab" aria-selected="false" onClick={() => undefined}>
+          <TerminalSquare size={15} aria-hidden="true" />
+          {labels.commandTab}
+        </button>
+        <span>{labels.cwdSync}</span>
+      </div>
+      <div className="file-toolbar">
+        <div className="path-control">
+          <button type="button" aria-label={labels.rootDirectory} disabled={!canUseSftp} onClick={() => navigateTo("/")}>
+            <Home size={15} aria-hidden="true" />
+          </button>
+          <button type="button" aria-label={labels.parentDirectory} disabled={!canUseSftp || path === "/"} onClick={() => navigateTo(parentPath)}>
+            <ChevronRight size={15} aria-hidden="true" className="rotate-up" />
+          </button>
+          <label>
+            <span className="sr-only">{labels.remotePath}</span>
+            <input
+              value={path}
+              disabled={!isAvailable}
+              onChange={(event) => onPathChange(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  navigateTo(path);
+                }
+              }}
+            />
+          </label>
         </div>
-        <div className="panel-actions">
-          <span className="sync-pill">{labels.cwdSync}</span>
-          <button type="button" aria-label={labels.createRemoteDirectory} onClick={onCreateDirectory}>
+        <div className="file-toolbar-actions">
+          <button type="button" aria-label={labels.refreshRemoteFiles} disabled={!canUseSftp || status === "loading"} onClick={onRefresh}>
+            <RefreshCw size={15} aria-hidden="true" />
+          </button>
+          <button type="button" aria-label={labels.createRemoteDirectory} disabled={!canUseSftp} onClick={onCreateDirectory}>
             <Plus size={16} aria-hidden="true" />
           </button>
-          <button type="button" aria-label={labels.refreshRemoteFiles} onClick={onRefresh}>
-            <RefreshCw size={16} aria-hidden="true" />
+          <input
+            value={localPath}
+            placeholder={labels.transferPathPlaceholder}
+            disabled={!isAvailable}
+            aria-label={labels.localPath}
+            onChange={(event) => onLocalPathChange(event.target.value)}
+          />
+          <input
+            value={transferRemotePath}
+            placeholder={labels.remotePath}
+            disabled={!isAvailable}
+            aria-label={labels.remotePath}
+            onChange={(event) => onTransferRemotePathChange(event.target.value)}
+          />
+          <button type="button" aria-label={labels.upload} disabled={!canUseSftp} onClick={() => onTransfer("upload")}>
+            <Upload size={15} aria-hidden="true" />
+          </button>
+          <button type="button" aria-label={labels.download} disabled={!canUseSftp} onClick={() => onTransfer("download")}>
+            <Download size={15} aria-hidden="true" />
           </button>
         </div>
       </div>
-      <label className="path-row">
-        <span className="sr-only">{labels.remotePath}</span>
-        <input value={path} onChange={(event) => onPathChange(event.target.value)} />
-      </label>
-      {status === "loading" ? <div className="sftp-state">{labels.loadingRemoteDirectory}</div> : null}
+      {status === "loading" ? <div className="sftp-state file-state">{labels.loadingRemoteDirectory}</div> : null}
       {status === "error" ? (
-        <div className="sftp-state error" role="alert">
+        <div className="sftp-state file-state error" role="alert">
           {error}
         </div>
       ) : null}
-      <div className="transfer-box">
-        <label>
-          <span>{labels.localPath}</span>
-          <input value={localPath} onChange={(event) => onLocalPathChange(event.target.value)} />
-        </label>
-        <label>
-          <span>{labels.remotePath}</span>
-          <input value={transferRemotePath} onChange={(event) => onTransferRemotePathChange(event.target.value)} />
-        </label>
-        <div className="transfer-actions">
-          <button type="button" onClick={() => onTransfer("upload")}>
-            {labels.upload}
-          </button>
-          <button type="button" onClick={() => onTransfer("download")}>
-            {labels.download}
-          </button>
-        </div>
-      </div>
-      <div className="file-list">
-        {remoteFiles.map((file) => (
-          <div key={file.id} className="file-row">
+      {!isAvailable ? <div className="sftp-state file-state">{labels.sftpUnavailable}</div> : null}
+      <div className="file-workspace-body">
+        <nav className="remote-tree" aria-label={labels.remoteFiles}>
+          {directoryTree.map((item) => (
             <button
               type="button"
-              className="file-row-main"
-              onClick={() => {
-                if (file.type === "directory") {
-                  onPathChange(file.path);
-                  return;
-                }
-
-                onOpenFile(file.path);
-              }}
+              key={item.path}
+              className={item.isActive ? "active" : ""}
+              disabled={!canUseSftp}
+              style={{ paddingLeft: 10 + item.depth * 14 }}
+              onClick={() => navigateTo(item.path)}
             >
-              <Folder size={16} aria-hidden="true" />
-              <span>
-                <strong>{file.name}</strong>
-                <small>
-                  {file.mode} / {file.modifiedAt}
-                </small>
-              </span>
-              <em>{file.type === "directory" ? "-" : `${Math.max(1, Math.round(file.size / 1024))} KB`}</em>
+              {item.path === "/" ? <HardDrive size={15} aria-hidden="true" /> : <Folder size={15} aria-hidden="true" />}
+              <span>{item.name}</span>
             </button>
-            <div className="file-row-actions">
-              <button type="button" onClick={() => onRenamePath(file.path)}>
-                {labels.renameRemotePath}
-              </button>
-              <button type="button" onClick={() => onDeletePath(file.path)}>
-                {labels.deleteRemotePath}
-              </button>
-            </div>
+          ))}
+        </nav>
+        <div className="remote-file-table" role="table" aria-label={labels.remoteFiles}>
+          <div className="remote-file-header" role="row">
+            <span role="columnheader">{labels.fileName}</span>
+            <span role="columnheader">{labels.fileSize}</span>
+            <span role="columnheader">{labels.fileType}</span>
+            <span role="columnheader">{labels.fileModifiedAt}</span>
+            <span role="columnheader">{labels.fileMode}</span>
+            <span role="columnheader">{labels.fileOwnerGroup}</span>
+            <span role="columnheader">{labels.connectionActions}</span>
           </div>
-        ))}
+          <div className="remote-file-rows">
+            {remoteFiles.length === 0 ? (
+              <div className="remote-file-empty">
+                <strong>{isConnected ? labels.remoteDirectoryEmpty : labels.remoteDirectoryHint}</strong>
+                <span>{labels.remoteDirectoryHint}</span>
+              </div>
+            ) : null}
+            {remoteFiles.map((file) => (
+              <div key={file.id} className={`remote-file-row ${file.type}`} role="row">
+                <button
+                  type="button"
+                  className="remote-file-name"
+                  disabled={!canUseSftp}
+                  onClick={() => {
+                    if (file.type === "directory") {
+                      navigateTo(file.path);
+                      return;
+                    }
+
+                    onOpenFile(file.path);
+                  }}
+                >
+                  {file.type === "directory" ? <Folder size={15} aria-hidden="true" /> : <File size={15} aria-hidden="true" />}
+                  <span>{file.name}</span>
+                </button>
+                <span className="numeric">{file.type === "directory" ? "-" : formatFileSize(file.size)}</span>
+                <span>{displayFileType(file.type, labels)}</span>
+                <span>{formatRemoteTimestamp(file.modifiedAt)}</span>
+                <span>{file.mode || "-"}</span>
+                <span>{ownerGroupFromMode(file.mode)}</span>
+                <span className="remote-file-actions">
+                  {file.type === "directory" ? (
+                    <button type="button" disabled={!canUseSftp} onClick={() => navigateTo(file.path)}>
+                      {labels.openRemoteDirectory}
+                    </button>
+                  ) : (
+                    <button type="button" disabled={!canUseSftp} onClick={() => onOpenFile(file.path)}>
+                      {labels.openRemoteFile}
+                    </button>
+                  )}
+                  <button type="button" disabled={!canUseSftp} onClick={() => onRenamePath(file.path)}>
+                    {labels.renameRemotePath}
+                  </button>
+                  <button type="button" disabled={!canUseSftp} onClick={() => onDeletePath(file.path)}>
+                    {labels.deleteRemotePath}
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="remote-editor-inline" aria-label={labels.remoteEditor}>
+          <div className="remote-editor-inline-header">
+            <div>
+              <Code2 size={15} aria-hidden="true" />
+              <span>{editorPath || labels.noFileSelected}</span>
+            </div>
+            <button type="button" disabled={!editorPath || editorStatus === "loading" || editorStatus === "saving"} onClick={onSaveFile}>
+              <Save size={15} aria-hidden="true" />
+              {labels.save}
+            </button>
+          </div>
+          <div className={`editor-status ${editorStatus}`}>
+            <span>{editorPath || labels.selectRemoteFile}</span>
+            <small>{editorError || editorStatus}</small>
+          </div>
+          <textarea
+            value={editorContent}
+            placeholder={labels.selectRemoteFile}
+            disabled={!editorPath || editorStatus === "loading"}
+            onChange={(event) => onEditorContentChange(event.target.value)}
+          />
+        </div>
       </div>
       {transferJobs.length > 0 ? (
-        <div className="transfer-list">
+        <div className="transfer-list file-transfer-list">
           {transferJobs.map((job) => (
             <div key={job.id} className={`transfer-row ${job.status}`}>
               <strong>{labels.transferDirection[job.direction]}</strong>
@@ -3920,49 +4207,6 @@ function ZmodemPanel({
             {labels.download}
           </button>
         </div>
-      </div>
-    </section>
-  );
-}
-
-function RemoteEditorPanel({
-  path,
-  content,
-  status,
-  error,
-  onContentChange,
-  onSave
-}: {
-  path: string;
-  content: string;
-  status: "idle" | "loading" | "saving" | "error" | "saved";
-  error: string;
-  onContentChange: (content: string) => void;
-  onSave: () => void;
-}) {
-  const labels = useUiStrings();
-  return (
-    <section className="panel-section remote-editor" aria-label={labels.remoteEditor}>
-      <div className="panel-heading">
-        <div>
-          <Code2 size={16} aria-hidden="true" />
-          <h2>{labels.editor}</h2>
-        </div>
-        <button type="button" disabled={!path || status === "loading" || status === "saving"} onClick={onSave}>
-          {labels.save}
-        </button>
-      </div>
-      <div className="remote-editor-body">
-        <div className={`editor-status ${status}`}>
-          <span>{path || labels.noFileSelected}</span>
-          <small>{error || status}</small>
-        </div>
-        <textarea
-          value={content}
-          placeholder={labels.selectRemoteFile}
-          disabled={!path || status === "loading"}
-          onChange={(event) => onContentChange(event.target.value)}
-        />
       </div>
     </section>
   );

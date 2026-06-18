@@ -206,9 +206,20 @@ describe("renderer workflow components", () => {
     const onCreateDirectory = vi.fn();
     const onRenamePath = vi.fn();
     const onDeletePath = vi.fn();
+    const onOpenFile = vi.fn();
+    const onNavigatePath = vi.fn();
     render(
       <FilePanel
         remoteFiles={[
+          {
+            id: "/var/www/logs",
+            name: "logs",
+            path: "/var/www/logs",
+            type: "directory",
+            size: 0,
+            modifiedAt: "2026-06-18T00:00:00.000Z",
+            mode: "drwxr-xr-x"
+          },
           {
             id: "/var/www/app.log",
             name: "app.log",
@@ -226,11 +237,12 @@ describe("renderer workflow components", () => {
         transferRemotePath=""
         transferJobs={[]}
         onPathChange={vi.fn()}
+        onNavigatePath={onNavigatePath}
         onLocalPathChange={vi.fn()}
         onTransferRemotePathChange={vi.fn()}
         onRefresh={vi.fn()}
         onTransfer={vi.fn()}
-        onOpenFile={vi.fn()}
+        onOpenFile={onOpenFile}
         onCreateDirectory={onCreateDirectory}
         onRenamePath={onRenamePath}
         onDeletePath={onDeletePath}
@@ -238,10 +250,16 @@ describe("renderer workflow components", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "New directory" }));
-    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "logs" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Open editor/i }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Rename" }).at(-1)!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" }).at(-1)!);
 
+    expect(screen.getByRole("columnheader", { name: "File name" })).toBeInTheDocument();
+    expect(screen.getByText("Folder")).toBeInTheDocument();
     expect(onCreateDirectory).toHaveBeenCalledOnce();
+    expect(onNavigatePath).toHaveBeenCalledWith("/var/www/logs");
+    expect(onOpenFile).toHaveBeenCalledWith("/var/www/app.log");
     expect(onRenamePath).toHaveBeenCalledWith("/var/www/app.log");
     expect(onDeletePath).toHaveBeenCalledWith("/var/www/app.log");
   });
