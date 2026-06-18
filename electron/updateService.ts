@@ -1,6 +1,8 @@
 import type { BrowserWindow } from "electron";
-import { autoUpdater } from "electron-updater";
+import electronUpdater from "electron-updater";
 import type { CheckForUpdatesRequest, UpdateStatus } from "../src/shared/ipc.js";
+
+const { autoUpdater } = electronUpdater;
 
 export class UpdateService {
   private status: UpdateStatus = {
