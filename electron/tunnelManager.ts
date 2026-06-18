@@ -4,7 +4,7 @@ import type { ClientChannel, TcpConnectionDetails } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { connectSshClient } from "./sshConnectionConfig.js";
-import type { StartTunnelRequest, TunnelInfo } from "../src/shared/ipc.js";
+import type { RelayInfo, StartRelayRequest, StartTunnelRequest, TunnelInfo } from "../src/shared/ipc.js";
 
 interface ActiveTunnel {
   info: TunnelInfo;
@@ -70,6 +70,26 @@ export class TunnelManager {
         })
         .catch(fail);
     });
+  }
+
+  startRelay(request: StartRelayRequest): Promise<RelayInfo> {
+    return this.start({
+      id: request.id,
+      ssh: request.ssh,
+      mode: "remote",
+      bindHost: request.relayHost,
+      bindPort: request.relayPort,
+      targetHost: request.targetHost,
+      targetPort: request.targetPort
+    }).then((info) => ({
+      id: info.id,
+      relayHost: info.bindHost,
+      relayPort: info.bindPort,
+      targetHost: info.targetHost ?? request.targetHost,
+      targetPort: info.targetPort ?? request.targetPort,
+      status: info.status,
+      message: info.message
+    }));
   }
 
   stop(id: string) {

@@ -40,7 +40,7 @@ import type {
   SessionTab,
   TransferJob
 } from "../domain/models";
-import type { CredentialStatus, HostKeyVerificationEvent, SshSessionConfig, TunnelInfo, TunnelMode } from "../shared/ipc";
+import type { CredentialStatus, HostKeyVerificationEvent, RelayInfo, SshSessionConfig, TunnelInfo, TunnelMode } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -323,6 +323,13 @@ export function App() {
     targetPort: "80"
   });
   const [tunnels, setTunnels] = useState<TunnelInfo[]>([]);
+  const [relayDraft, setRelayDraft] = useState({
+    relayHost: "0.0.0.0",
+    relayPort: "18080",
+    targetHost: "127.0.0.1",
+    targetPort: "8080"
+  });
+  const [relays, setRelays] = useState<RelayInfo[]>([]);
   const [isRecordingScript, setIsRecordingScript] = useState(false);
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [recordingLastInputAt, setRecordingLastInputAt] = useState<number | null>(null);
@@ -937,6 +944,55 @@ export function App() {
     });
   };
 
+  const startRelay = () => {
+    if (activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    const relayPort = parsePort(relayDraft.relayPort);
+    const targetPort = parsePort(relayDraft.targetPort);
+    const relayHost = relayDraft.relayHost.trim();
+    const targetHost = relayDraft.targetHost.trim();
+    if (!relayPort || !targetPort || !relayHost || !targetHost) {
+      return;
+    }
+
+    const relayId = `relay-${Date.now()}`;
+    const startingRelay: RelayInfo = {
+      id: relayId,
+      relayHost,
+      relayPort,
+      targetHost,
+      targetPort,
+      status: "starting"
+    };
+    setRelays((current) => [startingRelay, ...current].slice(0, 5));
+
+    void window.cnshell?.relay
+      .start({
+        id: relayId,
+        relayHost,
+        relayPort,
+        targetHost,
+        targetPort,
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then((info) => {
+        setRelays((current) => current.map((relay) => (relay.id === relayId ? info : relay)));
+      })
+      .catch((error: Error) => {
+        setRelays((current) =>
+          current.map((relay) => (relay.id === relayId ? { ...relay, status: "error", message: error.message } : relay))
+        );
+      });
+  };
+
+  const stopRelay = (id: string) => {
+    void window.cnshell?.relay.stop(id).then(() => {
+      setRelays((current) => current.map((relay) => (relay.id === id ? { ...relay, status: "stopped" } : relay)));
+    });
+  };
+
   const createSessionForActiveConnection = () => {
     const sessionId = `tab-${activeConnection.id}-${Date.now()}`;
     const nextSession: SessionTab = {
@@ -1152,6 +1208,13 @@ export function App() {
               onDraftChange={setTunnelDraft}
               onStart={startTunnel}
               onStop={stopTunnel}
+            />
+            <RelayPanel
+              draft={relayDraft}
+              relays={relays}
+              onDraftChange={setRelayDraft}
+              onStart={startRelay}
+              onStop={stopRelay}
             />
             <KeyMappingPanel profiles={snapshot.keyMappingProfiles} onChange={updateKeyMappingProfiles} />
             <ScriptRecorderPanel
@@ -2390,6 +2453,71 @@ function TunnelPanel({
               <span>{describeTunnel(tunnel)}</span>
               <small>{tunnel.message ?? tunnel.status}</small>
               <button type="button" onClick={() => onStop(tunnel.id)}>
+                Stop
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function RelayPanel({
+  draft,
+  relays,
+  onDraftChange,
+  onStart,
+  onStop
+}: {
+  draft: { relayHost: string; relayPort: string; targetHost: string; targetPort: string };
+  relays: RelayInfo[];
+  onDraftChange: (draft: { relayHost: string; relayPort: string; targetHost: string; targetPort: string }) => void;
+  onStart: () => void;
+  onStop: (id: string) => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="CN Relay">
+      <div className="panel-heading">
+        <div>
+          <Network size={16} aria-hidden="true" />
+          <h2>CN Relay</h2>
+        </div>
+        <button type="button" aria-label="Start relay" onClick={onStart}>
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="relay-form">
+        <input
+          value={draft.relayHost}
+          placeholder="Relay bind"
+          onChange={(event) => onDraftChange({ ...draft, relayHost: event.target.value })}
+        />
+        <input
+          value={draft.relayPort}
+          placeholder="Relay port"
+          onChange={(event) => onDraftChange({ ...draft, relayPort: event.target.value })}
+        />
+        <input
+          value={draft.targetHost}
+          placeholder="Intranet host"
+          onChange={(event) => onDraftChange({ ...draft, targetHost: event.target.value })}
+        />
+        <input
+          value={draft.targetPort}
+          placeholder="Target port"
+          onChange={(event) => onDraftChange({ ...draft, targetPort: event.target.value })}
+        />
+      </div>
+      <div className="relay-list">
+        {relays.length === 0 ? (
+          <div className="trigger-empty">No relay tunnels</div>
+        ) : (
+          relays.map((relay) => (
+            <div key={relay.id} className={`relay-row ${relay.status}`}>
+              <span>{`${relay.relayHost}:${relay.relayPort} -> ${relay.targetHost}:${relay.targetPort}`}</span>
+              <small>{relay.message ?? relay.status}</small>
+              <button type="button" onClick={() => onStop(relay.id)}>
                 Stop
               </button>
             </div>

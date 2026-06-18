@@ -20,7 +20,9 @@ import type {
   ReadRemoteFileResult,
   ReadSessionLogRequest,
   ReadSessionLogResult,
+  RelayInfo,
   StartTerminalSessionRequest,
+  StartRelayRequest,
   TerminalDataEvent,
   TerminalErrorEvent,
   TerminalExitEvent,
@@ -100,6 +102,10 @@ const api = {
   tunnels: {
     start: (request: StartTunnelRequest) => ipcRenderer.invoke("tunnels:start", request) as Promise<TunnelInfo>,
     stop: (id: string) => ipcRenderer.invoke("tunnels:stop", id) as Promise<boolean>
+  },
+  relay: {
+    start: (request: StartRelayRequest) => ipcRenderer.invoke("relay:start", request) as Promise<RelayInfo>,
+    stop: (id: string) => ipcRenderer.invoke("relay:stop", id) as Promise<boolean>
   },
   logs: {
     readSession: (request: ReadSessionLogRequest) =>

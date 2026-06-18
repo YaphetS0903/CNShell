@@ -171,6 +171,25 @@ export interface TunnelInfo {
   message?: string;
 }
 
+export interface StartRelayRequest {
+  id: string;
+  ssh: SshSessionConfig;
+  relayHost: string;
+  relayPort: number;
+  targetHost: string;
+  targetPort: number;
+}
+
+export interface RelayInfo {
+  id: string;
+  relayHost: string;
+  relayPort: number;
+  targetHost: string;
+  targetPort: number;
+  status: "starting" | "running" | "stopped" | "error";
+  message?: string;
+}
+
 export interface ReadSessionLogRequest {
   sessionId: string;
   query?: string;
@@ -236,6 +255,10 @@ export interface CNshellApi {
   };
   tunnels: {
     start: (request: StartTunnelRequest) => Promise<TunnelInfo>;
+    stop: (id: string) => Promise<boolean>;
+  };
+  relay: {
+    start: (request: StartRelayRequest) => Promise<RelayInfo>;
     stop: (id: string) => Promise<boolean>;
   };
   logs: {

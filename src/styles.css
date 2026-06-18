@@ -1009,14 +1009,16 @@ textarea:focus-visible {
   color: #c9fbf4;
 }
 
-.tunnel-form {
+.tunnel-form,
+.relay-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr) 74px;
   gap: 8px;
   padding: 12px 12px 8px;
 }
 
-.tunnel-form input {
+.tunnel-form input,
+.relay-form input {
   min-height: 32px;
   min-width: 0;
   border: 1px solid var(--line);
@@ -1031,14 +1033,16 @@ textarea:focus-visible {
   opacity: 0.62;
 }
 
-.tunnel-list {
+.tunnel-list,
+.relay-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 0 12px 12px;
 }
 
-.tunnel-row {
+.tunnel-row,
+.relay-row {
   display: grid;
   grid-template-columns: 48px minmax(0, 1fr) auto auto;
   align-items: center;
@@ -1047,6 +1051,10 @@ textarea:focus-visible {
   border-radius: 7px;
   background: #0b131a;
   padding: 7px 8px;
+}
+
+.relay-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
 .tunnel-row strong {
@@ -1060,7 +1068,8 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.tunnel-row span {
+.tunnel-row span,
+.relay-row span {
   overflow: hidden;
   color: #d4e0e8;
   font-size: 11px;
@@ -1068,16 +1077,19 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
-.tunnel-row small {
+.tunnel-row small,
+.relay-row small {
   color: #8ce99a;
   font-size: 11px;
 }
 
-.tunnel-row.error small {
+.tunnel-row.error small,
+.relay-row.error small {
   color: #ffa8a8;
 }
 
-.tunnel-row button {
+.tunnel-row button,
+.relay-row button {
   min-height: 28px;
   border: 1px solid var(--line);
   border-radius: 6px;

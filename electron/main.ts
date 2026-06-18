@@ -22,6 +22,7 @@ import type {
   ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
+  StartRelayRequest,
   StartTunnelRequest,
   TransferFileRequest,
   WriteRemoteFileRequest
@@ -115,6 +116,8 @@ app.whenReady().then(() => {
   ipcMain.handle("metrics:kill-process", (_event, request: KillProcessRequest) => metricsService?.killProcess(request));
   ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
   ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
+  ipcMain.handle("relay:start", (_event, request: StartRelayRequest) => tunnelManager?.startRelay(request));
+  ipcMain.handle("relay:stop", (_event, id: string) => tunnelManager?.stop(id));
   ipcMain.handle("logs:read-session", (_event, request: ReadSessionLogRequest) => ({
     lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
   }));
