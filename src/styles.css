@@ -32,7 +32,7 @@
 }
 
 body {
-  min-width: 1120px;
+  min-width: 1180px;
   min-height: 720px;
   margin: 0;
   overflow: hidden;
@@ -70,7 +70,7 @@ textarea:focus-visible {
 
 .app-shell {
   display: grid;
-  grid-template-columns: 304px 1fr;
+  grid-template-columns: clamp(252px, 17vw, 304px) minmax(0, 1fr);
   height: 100vh;
   background: var(--bg);
 }
@@ -149,9 +149,9 @@ textarea:focus-visible {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
-  padding: 18px;
+  padding: 16px;
   border-right: 1px solid var(--line);
   background: #0f171f;
 }
@@ -253,7 +253,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 7px;
   min-height: 34px;
-  width: 170px;
+  width: clamp(108px, 13vw, 170px);
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #071016;
@@ -302,6 +302,8 @@ textarea:focus-visible {
 
 .terminal-tools {
   position: relative;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .terminal-tools button.active {
@@ -411,8 +413,9 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   min-height: 64px;
-  padding: 0 18px 0 22px;
+  padding: 0 14px 0 18px;
   border-bottom: 1px solid var(--line);
   background: #0c141b;
 }
@@ -422,6 +425,7 @@ textarea:focus-visible {
   align-items: center;
   gap: 14px;
   min-width: 0;
+  flex: 1;
 }
 
 .host-summary strong,
@@ -430,13 +434,19 @@ textarea:focus-visible {
 }
 
 .host-summary strong {
+  overflow: hidden;
   font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .host-summary span:not(.status-pill) {
+  overflow: hidden;
   margin-top: 3px;
   color: var(--text-muted);
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-pill {
@@ -566,7 +576,7 @@ textarea:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: 316px minmax(680px, 1fr) 392px;
+  grid-template-columns: clamp(236px, 17vw, 300px) minmax(0, 1fr) clamp(286px, 19vw, 340px);
   min-height: 0;
   flex: 1;
 }
@@ -576,12 +586,12 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   overflow: auto;
   border-right: 1px solid var(--line);
   background: #0f171f;
   color: #d8e3eb;
-  padding: 10px;
+  padding: 9px;
 }
 
 .server-sync-row,
@@ -652,7 +662,7 @@ textarea:focus-visible {
 
 .usage-meter {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 74px;
+  grid-template-columns: 34px minmax(0, 1fr) 68px;
   align-items: center;
   gap: 8px;
   min-height: 24px;
@@ -706,7 +716,7 @@ textarea:focus-visible {
 
 .mini-process-table div {
   display: grid;
-  grid-template-columns: 64px 54px minmax(0, 1fr);
+  grid-template-columns: 58px 48px minmax(0, 1fr);
   min-height: 25px;
 }
 
@@ -743,7 +753,7 @@ textarea:focus-visible {
 
 .network-mini-chart {
   display: grid;
-  grid-template-rows: 28px 86px;
+  grid-template-rows: 28px 78px;
   overflow: hidden;
   border: 1px solid #2a3742;
   background: #0b131a;
@@ -811,7 +821,7 @@ textarea:focus-visible {
 .filesystem-mini-table div {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 94px;
+  grid-template-columns: minmax(0, 1fr) 86px;
   min-height: 26px;
 }
 
@@ -926,8 +936,9 @@ textarea:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   min-height: 48px;
-  padding: 0 14px;
+  padding: 0 10px;
   border-bottom: 1px solid #16232d;
   background: #0c151c;
 }
@@ -1279,9 +1290,9 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   overflow: auto;
-  padding: 12px;
+  padding: 10px;
   background: #0e151d;
 }
 
@@ -1424,7 +1435,7 @@ textarea:focus-visible {
 
 .file-toolbar {
   display: grid;
-  grid-template-columns: minmax(240px, 0.8fr) minmax(420px, 1.2fr);
+  grid-template-columns: minmax(180px, 0.85fr) minmax(240px, 1.15fr);
   align-items: center;
   gap: 10px;
   min-width: 0;
@@ -1462,7 +1473,7 @@ textarea:focus-visible {
 
 .file-toolbar-actions input {
   flex: 1;
-  max-width: 210px;
+  max-width: 170px;
 }
 
 .path-control button,
@@ -1502,7 +1513,7 @@ textarea:focus-visible {
 
 .file-workspace-body {
   display: grid;
-  grid-template-columns: 214px minmax(420px, 1fr) minmax(260px, 32%);
+  grid-template-columns: clamp(154px, 18%, 204px) minmax(0, 1fr) minmax(220px, 30%);
   min-width: 0;
   min-height: 0;
 }
@@ -1556,9 +1567,9 @@ textarea:focus-visible {
 .remote-file-header,
 .remote-file-row {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) 86px 82px 142px 112px 104px minmax(190px, auto);
+  grid-template-columns: minmax(160px, 1.5fr) 74px 72px 126px 96px 88px minmax(168px, auto);
   align-items: center;
-  min-width: 900px;
+  min-width: 780px;
 }
 
 .remote-file-header {
@@ -3615,27 +3626,93 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1500px) {
   .app-shell {
-    grid-template-columns: 276px 1fr;
+    grid-template-columns: 260px minmax(0, 1fr);
   }
 
   .workspace-grid {
-    grid-template-columns: 284px minmax(540px, 1fr) 332px;
+    grid-template-columns: 250px minmax(0, 1fr) 300px;
+  }
+
+  .server-status-rail {
+    padding: 8px;
+  }
+
+  .sidebar {
+    padding: 14px;
+  }
+
+  .terminal-tools {
+    gap: 6px;
+  }
+
+  .terminal-tools button {
+    min-width: 34px;
+    padding: 0 9px;
+  }
+
+  .terminal-search {
+    width: 118px;
+  }
+
+  .file-workspace-body {
+    grid-template-columns: 150px minmax(0, 1fr);
+  }
+
+  .remote-editor-inline {
+    display: none;
   }
 }
 
-@media (max-width: 980px) {
-  body {
-    min-width: 900px;
-  }
-
+@media (max-width: 1320px) {
   .app-shell {
-    grid-template-columns: 248px 1fr;
+    grid-template-columns: 238px minmax(0, 1fr);
   }
 
   .workspace-grid {
-    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-columns: 230px minmax(0, 1fr) 286px;
+  }
+
+  .topbar-actions {
+    gap: 6px;
+  }
+
+  .topbar-actions button {
+    min-width: 34px;
+    padding: 0 9px;
+  }
+
+  .version-label {
+    display: none;
+  }
+
+  .terminal-toolbar {
+    align-items: flex-start;
+    min-height: 84px;
+    padding-block: 8px;
+  }
+
+  .breadcrumb {
+    padding-top: 8px;
+  }
+
+  .terminal-tools {
+    max-width: 360px;
+  }
+}
+
+@media (max-width: 1180px) {
+  body {
+    min-width: 1040px;
+  }
+
+  .app-shell {
+    grid-template-columns: 224px minmax(0, 1fr);
+  }
+
+  .workspace-grid {
+    grid-template-columns: 218px minmax(0, 1fr);
   }
 
   .ops-panel {
