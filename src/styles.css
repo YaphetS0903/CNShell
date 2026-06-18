@@ -96,6 +96,22 @@ textarea:focus-visible {
   font-size: 13px;
 }
 
+.error-boundary {
+  max-width: 520px;
+  text-align: center;
+}
+
+.error-boundary button {
+  min-height: 38px;
+  border: 1px solid rgba(77, 171, 247, 0.55);
+  border-radius: 7px;
+  background: #123149;
+  color: #d7efff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

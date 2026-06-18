@@ -14,9 +14,11 @@ import type {
   ListRemoteDirectoryRequest,
   OpenRdpRequest,
   ReadAuditLogRequest,
+  ReadErrorReportRequest,
   ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
+  RendererErrorReportRequest,
   SshSessionConfig,
   StartRelayRequest,
   StartTerminalSessionRequest,
@@ -365,6 +367,23 @@ export function validateReadAuditLog(value: unknown): ReadAuditLogRequest {
   return {
     query: assertOptionalString(request.query, "query", MAX_LOG_QUERY_LENGTH),
     limit: request.limit === undefined ? undefined : assertInteger(request.limit, "limit", 1, 5000)
+  };
+}
+
+export function validateReadErrorReport(value: unknown): ReadErrorReportRequest {
+  const request = assertRecord(value, "request");
+  return {
+    query: assertOptionalString(request.query, "query", MAX_LOG_QUERY_LENGTH),
+    limit: request.limit === undefined ? undefined : assertInteger(request.limit, "limit", 1, 5000)
+  };
+}
+
+export function validateRendererErrorReport(value: unknown): RendererErrorReportRequest {
+  const request = assertRecord(value, "request");
+  return {
+    message: assertString(request.message, "message", 1000),
+    stack: assertOptionalString(request.stack, "stack", 8000),
+    componentStack: assertOptionalString(request.componentStack, "componentStack", 8000)
   };
 }
 

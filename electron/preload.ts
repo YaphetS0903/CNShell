@@ -22,7 +22,10 @@ import type {
   OpenRdpResult,
   ReadAuditLogRequest,
   ReadAuditLogResult,
+  ReadErrorReportRequest,
+  ReadErrorReportResult,
   RemoteDirectoryListing,
+  RendererErrorReportRequest,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
   ReadSessionLogRequest,
@@ -129,7 +132,11 @@ const api = {
     readSession: (request: ReadSessionLogRequest) =>
       ipcRenderer.invoke("logs:read-session", request) as Promise<ReadSessionLogResult>,
     readAudit: (request: ReadAuditLogRequest) =>
-      ipcRenderer.invoke("logs:read-audit", request) as Promise<ReadAuditLogResult>
+      ipcRenderer.invoke("logs:read-audit", request) as Promise<ReadAuditLogResult>,
+    readErrors: (request: ReadErrorReportRequest) =>
+      ipcRenderer.invoke("logs:read-errors", request) as Promise<ReadErrorReportResult>,
+    reportRendererError: (request: RendererErrorReportRequest) =>
+      ipcRenderer.invoke("logs:report-renderer-error", request) as Promise<boolean>
   },
   rdp: {
     open: (request: OpenRdpRequest) => ipcRenderer.invoke("rdp:open", request) as Promise<OpenRdpResult>

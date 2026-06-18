@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AuditLogStore, sanitizeAuditTarget, summarizeTerminalWrite, summarizeWorkspace } from "./auditLogStore.js";
 import { CloudSyncService } from "./cloudSyncService.js";
 import { CredentialStore } from "./credentialStore.js";
+import { ErrorReportStore } from "./errorReportStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
 import { MetricsService } from "./metricsService.js";
 import { SessionLogStore } from "./sessionLogStore.js";
@@ -29,8 +30,10 @@ import {
   validateListRemoteDirectory,
   validateOpenRdp,
   validateReadAuditLog,
+  validateReadErrorReport,
   validateReadRemoteFile,
   validateReadSessionLog,
+  validateRendererErrorReport,
   validateSaveCredential,
   validateStartRelay,
   validateStartTerminalSession,
@@ -56,6 +59,14 @@ let tunnelManager: TunnelManager | null = null;
 let cloudSyncService: CloudSyncService | null = null;
 let auditLogStore: AuditLogStore | null = null;
 let updateService: UpdateService | null = null;
+let errorReportStore: ErrorReportStore | null = null;
+
+function recordMainError(error: unknown) {
+  errorReportStore?.record("main", error instanceof Error ? error : new Error(String(error)));
+}
+
+process.on("uncaughtException", recordMainError);
+process.on("unhandledRejection", recordMainError);
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -150,6 +161,7 @@ app.whenReady().then(() => {
   tunnelManager = new TunnelManager(knownHostsStore, credentialStore);
   cloudSyncService = new CloudSyncService();
   auditLogStore = new AuditLogStore(app.getPath("userData"));
+  errorReportStore = new ErrorReportStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: unknown) => {
@@ -276,6 +288,22 @@ app.whenReady().then(() => {
     return {
       lines: auditLogStore?.read(request.query, request.limit) ?? []
     };
+  });
+  ipcMain.handle("logs:read-errors", (_event, payload: unknown) => {
+    const request = validateReadErrorReport(payload);
+    return {
+      lines: errorReportStore?.read(request.query, request.limit) ?? []
+    };
+  });
+  ipcMain.handle("logs:report-renderer-error", (_event, payload: unknown) => {
+    const request = validateRendererErrorReport(payload);
+    errorReportStore?.record("renderer", request);
+    auditLogStore?.record({
+      action: "renderer.error",
+      status: "error",
+      details: { message: request.message }
+    });
+    return true;
   });
   ipcMain.handle("rdp:open", (_event, payload: unknown) => {
     const request = validateOpenRdp(payload);

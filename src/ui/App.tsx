@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity,
   ChevronRight,
@@ -90,6 +90,47 @@ interface MetricHistoryPoint {
 }
 
 type ZmodemMode = "idle" | "upload" | "download" | "detected";
+
+interface AppErrorBoundaryState {
+  error?: Error;
+}
+
+class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
+  state: AppErrorBoundaryState = {};
+
+  static getDerivedStateFromError(error: Error): AppErrorBoundaryState {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    void window.cnshell?.logs.reportRendererError({
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined
+    });
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <main className="app-shell loading-shell">
+          <section className="workspace-loading error-boundary" role="alert">
+            <div className="brand-mark" aria-hidden="true">
+              CN
+            </div>
+            <strong>CNshell recovered from a renderer error</strong>
+            <span>{this.state.error.message}</span>
+            <button type="button" onClick={() => this.setState({ error: undefined })}>
+              Return to workspace
+            </button>
+          </section>
+        </main>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
   { value: "local", label: "Local" },
@@ -359,6 +400,9 @@ export function App() {
   const [auditQuery, setAuditQuery] = useState("");
   const [auditLines, setAuditLines] = useState<string[]>([]);
   const [auditStatus, setAuditStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [errorQuery, setErrorQuery] = useState("");
+  const [errorLines, setErrorLines] = useState<string[]>([]);
+  const [errorStatus, setErrorStatus] = useState<"idle" | "loading" | "error">("idle");
   const [cloudSyncStatus, setCloudSyncStatus] = useState("Ready");
   const [updateChannel, setUpdateChannel] = useState("latest");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle", channel: "latest" });
@@ -551,6 +595,23 @@ export function App() {
         setAuditStatus("error");
       });
   }, [auditQuery]);
+
+  const refreshErrorReports = useCallback(() => {
+    setErrorStatus("loading");
+    void window.cnshell?.logs
+      .readErrors({
+        query: errorQuery,
+        limit: 300
+      })
+      .then((result) => {
+        setErrorLines(result.lines);
+        setErrorStatus("idle");
+      })
+      .catch(() => {
+        setErrorLines([]);
+        setErrorStatus("error");
+      });
+  }, [errorQuery]);
 
   const exportCloudSyncSettings = () => {
     setCloudSyncStatus("Exporting encrypted settings");
@@ -1229,6 +1290,10 @@ export function App() {
   }, [refreshAuditLog]);
 
   useEffect(() => {
+    refreshErrorReports();
+  }, [refreshErrorReports]);
+
+  useEffect(() => {
     setRemotePath(activeTab.cwd || "/");
   }, [activeTab.cwd, activeTab.id]);
 
@@ -1247,7 +1312,8 @@ export function App() {
   }
 
   return (
-    <main className="app-shell">
+    <AppErrorBoundary>
+      <main className="app-shell">
       <ConnectionSidebar
         groupedConnections={groupedConnections}
         activeConnectionId={activeConnectionId}
@@ -1422,6 +1488,16 @@ export function App() {
               onQueryChange={setAuditQuery}
               onRefresh={refreshAuditLog}
             />
+            <LogViewerPanel
+              title="Errors"
+              refreshLabel="Refresh error reports"
+              emptyText="No error reports"
+              query={errorQuery}
+              lines={errorLines}
+              status={errorStatus}
+              onQueryChange={setErrorQuery}
+              onRefresh={refreshErrorReports}
+            />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
             <CloudSyncPanel
@@ -1463,7 +1539,8 @@ export function App() {
           onCancel={cancelBulkCommand}
         />
       ) : null}
-    </main>
+      </main>
+    </AppErrorBoundary>
   );
 }
 

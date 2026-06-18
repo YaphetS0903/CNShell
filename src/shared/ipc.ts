@@ -237,6 +237,21 @@ export interface ReadAuditLogResult {
   lines: string[];
 }
 
+export interface ReadErrorReportRequest {
+  query?: string;
+  limit?: number;
+}
+
+export interface ReadErrorReportResult {
+  lines: string[];
+}
+
+export interface RendererErrorReportRequest {
+  message: string;
+  stack?: string;
+  componentStack?: string;
+}
+
 export interface OpenRdpRequest {
   host: string;
   port: number;
@@ -328,6 +343,8 @@ export interface CNshellApi {
   logs: {
     readSession: (request: ReadSessionLogRequest) => Promise<ReadSessionLogResult>;
     readAudit: (request: ReadAuditLogRequest) => Promise<ReadAuditLogResult>;
+    readErrors: (request: ReadErrorReportRequest) => Promise<ReadErrorReportResult>;
+    reportRendererError: (request: RendererErrorReportRequest) => Promise<boolean>;
   };
   rdp: {
     open: (request: OpenRdpRequest) => Promise<OpenRdpResult>;
