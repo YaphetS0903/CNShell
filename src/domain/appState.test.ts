@@ -33,6 +33,29 @@ describe("appState", () => {
     expect(hydrated.remoteProcesses).toEqual(fallback.remoteProcesses);
   });
 
+  it("recovers from empty or mismatched persisted workspace state", () => {
+    const fallback = createInitialAppSnapshot();
+    const brokenSnapshot = {
+      ...fallback,
+      connections: [],
+      sessions: [
+        {
+          id: "tab-missing",
+          connectionId: "missing-connection",
+          title: "missing",
+          cwd: "/",
+          status: "disconnected",
+          startedAt: new Date().toISOString()
+        }
+      ]
+    } as AppSnapshot;
+
+    const hydrated = hydrateAppSnapshot(brokenSnapshot);
+
+    expect(hydrated.connections.length).toBeGreaterThan(0);
+    expect(hydrated.sessions.every((session) => hydrated.connections.some((connection) => connection.id === session.connectionId))).toBe(true);
+  });
+
   it("groups connections by their declared group", () => {
     const snapshot = createInitialAppSnapshot();
     const grouped = groupConnections(snapshot.connections);

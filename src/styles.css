@@ -581,6 +581,14 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
+.empty-session-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .empty-session-state button {
   display: inline-flex;
   align-items: center;
@@ -594,6 +602,12 @@ textarea:focus-visible {
   cursor: pointer;
   font-weight: 800;
   padding: 0 12px;
+}
+
+.empty-session-state button:last-child {
+  border-color: var(--line);
+  background: #111c24;
+  color: #c7d5df;
 }
 
 .terminal-workbench {

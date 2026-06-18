@@ -25,9 +25,18 @@ export function createInitialAppSnapshot(): AppSnapshot {
 
 export function hydrateAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
   const fallback = createInitialAppSnapshot();
+  const connections = snapshot.connections?.length ? snapshot.connections : fallback.connections;
+  const connectionIds = new Set(connections.map((connection) => connection.id));
+  const sessions = (snapshot.sessions ?? fallback.sessions).filter((session) => connectionIds.has(session.connectionId));
+
   return {
     ...fallback,
     ...snapshot,
+    connections,
+    sessions,
+    quickCommands: snapshot.quickCommands?.length ? snapshot.quickCommands : fallback.quickCommands,
+    remoteFiles: snapshot.remoteFiles ?? fallback.remoteFiles,
+    serverMetrics: snapshot.serverMetrics ?? fallback.serverMetrics,
     keyMappingProfiles: snapshot.keyMappingProfiles ?? fallback.keyMappingProfiles,
     scriptRecordings: snapshot.scriptRecordings ?? fallback.scriptRecordings,
     remoteProcesses: snapshot.remoteProcesses ?? fallback.remoteProcesses

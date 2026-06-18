@@ -202,6 +202,8 @@ const translations = {
     closeSessionTab: "关闭会话标签",
     noOpenSessions: "暂无打开的会话",
     noOpenSessionsDetail: "从左侧选择连接，或点击 + 创建一个新会话。",
+    allSessionsClosed: "所有会话都已关闭",
+    allSessionsClosedDetail: "左侧连接和右侧凭据面板仍然可用。可以重新打开当前连接，或先新建一个连接配置。",
     localProtocol: "本地",
     status: {
       connected: "已连接",
@@ -544,6 +546,8 @@ const translations = {
     closeSessionTab: "Close session tab",
     noOpenSessions: "No open sessions",
     noOpenSessionsDetail: "Select a connection on the left, or click + to create a new session.",
+    allSessionsClosed: "All sessions are closed",
+    allSessionsClosedDetail: "Connections and credential panels are still available. Reopen the current connection or create a new profile.",
     localProtocol: "local",
     status: {
       connected: "connected",
@@ -1406,9 +1410,10 @@ export function App() {
 
   const groupedConnections = useMemo(() => groupConnections(filteredConnections), [filteredConnections]);
 
+  const fallbackConnection = snapshot.connections[0] ?? createInitialAppSnapshot().connections[0];
   const activeConnection = useMemo(
-    () => snapshot.connections.find((connection) => connection.id === activeConnectionId) ?? snapshot.connections[0],
-    [activeConnectionId, snapshot.connections]
+    () => snapshot.connections.find((connection) => connection.id === activeConnectionId) ?? fallbackConnection,
+    [activeConnectionId, fallbackConnection, snapshot.connections]
   );
 
   const activeTab = useMemo(() => {
@@ -1901,13 +1906,12 @@ export function App() {
   };
 
   const startActiveSession = () => {
-    if (!activeTab) {
-      return;
-    }
-
+    const tab = activeTab ?? createSessionForConnection(activeConnection);
+    setActiveTabId(tab.id);
+    setActiveConnectionId(tab.connectionId);
     setSessionStartTokens((current) => ({
       ...current,
-      [activeTab.id]: (current[activeTab.id] ?? 0) + 1
+      [tab.id]: (current[tab.id] ?? 0) + 1
     }));
   };
 
@@ -2786,7 +2790,7 @@ export function App() {
             />
           </div>
           ) : (
-            <EmptySessionState onCreate={createSessionForActiveConnection} />
+            <EmptySessionState onCreate={createSessionForActiveConnection} onCreateConnection={openNewConnectionEditor} />
           )}
           <aside className="ops-panel" aria-label={labels.operationsPanels}>
             {activeConnection.protocol === "ssh" ? (
@@ -3223,17 +3227,23 @@ export function TabStrip({
   );
 }
 
-function EmptySessionState({ onCreate }: { onCreate: () => void }) {
+function EmptySessionState({ onCreate, onCreateConnection }: { onCreate: () => void; onCreateConnection: () => void }) {
   const labels = useUiStrings();
   return (
     <section className="empty-session-state" aria-label={labels.noOpenSessions}>
       <TerminalSquare size={34} aria-hidden="true" />
-      <strong>{labels.noOpenSessions}</strong>
-      <span>{labels.noOpenSessionsDetail}</span>
-      <button type="button" onClick={onCreate}>
-        <Plus size={16} aria-hidden="true" />
-        {labels.newSessionTab}
-      </button>
+      <strong>{labels.allSessionsClosed}</strong>
+      <span>{labels.allSessionsClosedDetail}</span>
+      <div className="empty-session-actions">
+        <button type="button" onClick={onCreate}>
+          <Plus size={16} aria-hidden="true" />
+          {labels.newSessionTab}
+        </button>
+        <button type="button" onClick={onCreateConnection}>
+          <Server size={16} aria-hidden="true" />
+          {labels.newConnection}
+        </button>
+      </div>
     </section>
   );
 }
