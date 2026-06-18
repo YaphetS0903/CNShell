@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { CredentialStore } from "./credentialStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
 import { MetricsService } from "./metricsService.js";
+import { SessionLogStore } from "./sessionLogStore.js";
 import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
 import { WorkspaceStore } from "./workspaceStore.js";
@@ -25,6 +26,7 @@ let credentialStore: CredentialStore | null = null;
 let workspaceStore: WorkspaceStore | null = null;
 let sftpService: SftpService | null = null;
 let metricsService: MetricsService | null = null;
+let sessionLogStore: SessionLogStore | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -43,7 +45,7 @@ function createMainWindow() {
     }
   });
 
-  terminalSessionManager = new TerminalSessionManager(window, knownHostsStore, credentialStore);
+  terminalSessionManager = new TerminalSessionManager(window, knownHostsStore, credentialStore, sessionLogStore);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -59,6 +61,7 @@ app.whenReady().then(() => {
   workspaceStore = new WorkspaceStore(app.getPath("userData"));
   sftpService = new SftpService(knownHostsStore, credentialStore);
   metricsService = new MetricsService(knownHostsStore, credentialStore);
+  sessionLogStore = new SessionLogStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {

@@ -5,6 +5,7 @@ import { Client, type ClientChannel } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { buildSshConnectConfig } from "./sshConnectionConfig.js";
+import type { SessionLogStore } from "./sessionLogStore.js";
 import type {
   StartTerminalSessionRequest,
   TerminalSessionResizeRequest,
@@ -51,7 +52,8 @@ export class TerminalSessionManager {
   constructor(
     private readonly window: BrowserWindow,
     private readonly knownHostsStore: KnownHostsStore | null,
-    private readonly credentialStore: CredentialStore | null
+    private readonly credentialStore: CredentialStore | null,
+    private readonly sessionLogStore: SessionLogStore | null
   ) {}
 
   startLocalSession(request: StartTerminalSessionRequest): TerminalSessionStarted {
@@ -77,6 +79,7 @@ export class TerminalSessionManager {
     this.sessions.set(request.id, { kind: "local", pty });
 
     pty.onData((data) => {
+      this.sessionLogStore?.append(request.id, data);
       this.window.webContents.send("terminal:data", { id: request.id, data });
     });
 
@@ -184,11 +187,15 @@ export class TerminalSessionManager {
               this.sessions.set(request.id, { kind: "ssh", client, stream });
 
               stream.on("data", (data: Buffer) => {
-                this.window.webContents.send("terminal:data", { id: request.id, data: data.toString("utf8") });
+                const output = data.toString("utf8");
+                this.sessionLogStore?.append(request.id, output);
+                this.window.webContents.send("terminal:data", { id: request.id, data: output });
               });
 
               stream.stderr.on("data", (data: Buffer) => {
-                this.window.webContents.send("terminal:data", { id: request.id, data: data.toString("utf8") });
+                const output = data.toString("utf8");
+                this.sessionLogStore?.append(request.id, output);
+                this.window.webContents.send("terminal:data", { id: request.id, data: output });
               });
 
               stream.on("close", () => {

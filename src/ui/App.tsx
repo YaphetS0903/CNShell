@@ -25,6 +25,7 @@ import {
   Zap
 } from "lucide-react";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
@@ -655,6 +656,8 @@ function TerminalPane({
   onReconnect: () => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
+  const [terminalSearch, setTerminalSearch] = useState("");
+  const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
 
   useEffect(() => {
     const host = activeConnection.host;
@@ -673,7 +676,10 @@ function TerminalPane({
     });
 
     const fitAddon = new FitAddon();
+    const activeSearchAddon = new SearchAddon();
     terminal.loadAddon(fitAddon);
+    terminal.loadAddon(activeSearchAddon);
+    setSearchAddon(activeSearchAddon);
     terminal.open(terminalHost);
     fitAddon.fit();
     terminal.writeln("\x1b[1;32mCNshell terminal session starting\x1b[0m");
@@ -768,6 +774,7 @@ function TerminalPane({
       removeErrorListener?.();
       void window.cnshell?.terminal.stop(sessionId);
       onStatusChange(sessionId, "disconnected");
+      setSearchAddon(null);
       terminal.dispose();
     };
   }, [
@@ -799,6 +806,12 @@ function TerminalPane({
     setComposeValue("");
   };
 
+  const findNext = () => {
+    if (terminalSearch.trim()) {
+      searchAddon?.findNext(terminalSearch);
+    }
+  };
+
   return (
     <section className="terminal-workbench" aria-label="Terminal workbench">
       <div className="terminal-toolbar">
@@ -807,6 +820,22 @@ function TerminalPane({
           <span>{activeTab.cwd}</span>
         </div>
         <div className="terminal-tools">
+          <label className="terminal-search">
+            <Search size={15} aria-hidden="true" />
+            <input
+              value={terminalSearch}
+              placeholder="Search"
+              onChange={(event) => setTerminalSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  findNext();
+                }
+              }}
+            />
+          </label>
+          <button type="button" onClick={findNext}>
+            Find
+          </button>
           <button type="button">
             <SplitSquareHorizontal size={16} aria-hidden="true" />
             Split

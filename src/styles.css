@@ -196,6 +196,29 @@ input:focus-visible {
     color 160ms ease;
 }
 
+.terminal-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 34px;
+  width: 170px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #071016;
+  color: var(--text-muted);
+  padding: 0 9px;
+}
+
+.terminal-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+}
+
 .sidebar-actions button:first-child {
   flex: 1;
 }
