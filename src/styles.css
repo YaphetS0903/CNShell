@@ -509,6 +509,64 @@ textarea:focus-visible {
   height: 100%;
 }
 
+.safe-paste-review {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid rgba(255, 135, 135, 0.28);
+  background: rgba(255, 135, 135, 0.08);
+  padding: 9px 12px;
+}
+
+.safe-paste-review div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.safe-paste-review strong {
+  color: #ffd8d8;
+  font-size: 12px;
+}
+
+.safe-paste-review span {
+  overflow: hidden;
+  color: #ffa8a8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.safe-paste-review pre {
+  overflow: hidden;
+  margin: 0;
+  color: #f1f5f8;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.safe-paste-review button {
+  min-height: 30px;
+  border: 1px solid rgba(255, 135, 135, 0.38);
+  border-radius: 6px;
+  background: #2b171b;
+  color: #ffd8d8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.safe-paste-review button:last-child {
+  border-color: var(--line);
+  background: #111c24;
+  color: #c7d5df;
+}
+
 .compose-pane {
   display: grid;
   grid-template-columns: auto 1fr auto;

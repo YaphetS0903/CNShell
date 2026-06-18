@@ -59,6 +59,11 @@ interface TunnelDraft {
   targetPort: string;
 }
 
+interface SafePasteReview {
+  text: string;
+  reasons: string[];
+}
+
 const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
   { value: "local", label: "Local" },
   { value: "remote", label: "Remote" },
@@ -105,6 +110,30 @@ function normalizeSendValue(value: string) {
 
 function getActiveKeyRules(profiles: KeyMappingProfile[]) {
   return profiles.flatMap((profile) => (profile.enabled ? profile.rules.filter((rule) => rule.enabled) : []));
+}
+
+function inspectPastedText(text: string) {
+  const reasons: string[] = [];
+  const trimmed = text.trim();
+  const lines = trimmed.split(/\r?\n/).filter(Boolean);
+
+  if (lines.length > 1) {
+    reasons.push(`${lines.length} lines`);
+  }
+
+  if (/[;&|`$()]/.test(trimmed)) {
+    reasons.push("shell chaining or expansion");
+  }
+
+  if (/\b(rm\s+-[^\n]*[rf]|mkfs|dd\s+if=|chmod\s+-R\s+777|chown\s+-R|shutdown|reboot|:(){:|sudo\s+rm)\b/i.test(trimmed)) {
+    reasons.push("high-risk command");
+  }
+
+  return reasons;
+}
+
+function shouldReviewPaste(text: string) {
+  return inspectPastedText(text).length > 0;
 }
 
 function describeTunnel(tunnel: TunnelInfo) {
@@ -911,6 +940,8 @@ function TerminalPane({
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
   const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
+  const [safePasteReview, setSafePasteReview] = useState<SafePasteReview | null>(null);
+  const [safePasteSessionId, setSafePasteSessionId] = useState("");
 
   useEffect(() => {
     const host = activeConnection.host;
@@ -973,6 +1004,21 @@ function TerminalPane({
       void window.cnshell?.terminal.write(sessionId, data);
     });
 
+    const pasteHandler = (event: ClipboardEvent) => {
+      const text = event.clipboardData?.getData("text/plain") ?? "";
+      if (!text || !shouldReviewPaste(text)) {
+        return;
+      }
+
+      event.preventDefault();
+      setSafePasteSessionId(sessionId);
+      setSafePasteReview({
+        text,
+        reasons: inspectPastedText(text)
+      });
+    };
+    terminal.textarea?.addEventListener("paste", pasteHandler);
+
     const resizeSession = () => {
       fitAddon.fit();
       void window.cnshell?.terminal.resize({
@@ -1031,6 +1077,7 @@ function TerminalPane({
       removeDataListener?.();
       removeExitListener?.();
       removeErrorListener?.();
+      terminal.textarea?.removeEventListener("paste", pasteHandler);
       void window.cnshell?.terminal.stop(sessionId);
       onStatusChange(sessionId, "disconnected");
       setSearchAddon(null);
@@ -1065,6 +1112,21 @@ function TerminalPane({
     if (terminalSearch.trim()) {
       searchAddon?.findNext(terminalSearch);
     }
+  };
+
+  const approveSafePaste = () => {
+    if (!safePasteReview) {
+      return;
+    }
+
+    void window.cnshell?.terminal.write(safePasteSessionId || activeTab.id, safePasteReview.text);
+    setSafePasteReview(null);
+    setSafePasteSessionId("");
+  };
+
+  const cancelSafePaste = () => {
+    setSafePasteReview(null);
+    setSafePasteSessionId("");
   };
 
   return (
@@ -1109,6 +1171,21 @@ function TerminalPane({
         </div>
       </div>
       <div id="terminal-host" className="terminal-host" />
+      {safePasteReview ? (
+        <div className="safe-paste-review" role="alert">
+          <div>
+            <strong>Review paste</strong>
+            <span>{safePasteReview.reasons.join(" / ")}</span>
+          </div>
+          <pre>{safePasteReview.text.slice(0, 420)}</pre>
+          <button type="button" onClick={approveSafePaste}>
+            Paste
+          </button>
+          <button type="button" onClick={cancelSafePaste}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
       <div className="compose-pane">
         <div>
           <Code2 size={16} aria-hidden="true" />
