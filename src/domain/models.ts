@@ -101,6 +101,15 @@ export interface ServerMetric {
   trend: "up" | "down" | "flat";
 }
 
+export interface RemoteProcess {
+  pid: number;
+  ppid: number;
+  cpu: number;
+  memory: number;
+  command: string;
+  args: string;
+}
+
 export interface AppSnapshot {
   connections: ConnectionProfile[];
   sessions: SessionTab[];
@@ -109,4 +118,5 @@ export interface AppSnapshot {
   scriptRecordings: ScriptRecording[];
   remoteFiles: RemoteFileEntry[];
   serverMetrics: ServerMetric[];
+  remoteProcesses: RemoteProcess[];
 }

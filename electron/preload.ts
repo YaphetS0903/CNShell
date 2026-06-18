@@ -6,7 +6,11 @@ import type {
   CredentialStatus,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
+  KillProcessRequest,
+  KillProcessResult,
   ListRemoteDirectoryRequest,
+  ListProcessesRequest,
+  ListProcessesResult,
   RemoteDirectoryListing,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
@@ -83,7 +87,11 @@ const api = {
   },
   metrics: {
     collect: (request: CollectMetricsRequest) =>
-      ipcRenderer.invoke("metrics:collect", request) as Promise<CollectMetricsResult>
+      ipcRenderer.invoke("metrics:collect", request) as Promise<CollectMetricsResult>,
+    listProcesses: (request: ListProcessesRequest) =>
+      ipcRenderer.invoke("metrics:list-processes", request) as Promise<ListProcessesResult>,
+    killProcess: (request: KillProcessRequest) =>
+      ipcRenderer.invoke("metrics:kill-process", request) as Promise<KillProcessResult>
   },
   tunnels: {
     start: (request: StartTunnelRequest) => ipcRenderer.invoke("tunnels:start", request) as Promise<TunnelInfo>,

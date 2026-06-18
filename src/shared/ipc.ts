@@ -1,4 +1,4 @@
-import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, ServerMetric } from "../domain/models.js";
+import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, RemoteProcess, ServerMetric } from "../domain/models.js";
 
 export type TerminalSessionKind = "local" | "ssh";
 
@@ -130,6 +130,24 @@ export interface CollectMetricsResult {
   metrics: ServerMetric[];
 }
 
+export interface ListProcessesRequest {
+  ssh: SshSessionConfig;
+}
+
+export interface ListProcessesResult {
+  processes: RemoteProcess[];
+}
+
+export interface KillProcessRequest {
+  ssh: SshSessionConfig;
+  pid: number;
+  signal?: "TERM" | "KILL";
+}
+
+export interface KillProcessResult {
+  ok: boolean;
+}
+
 export type TunnelMode = "local" | "remote" | "dynamic";
 
 export interface StartTunnelRequest {
@@ -193,6 +211,8 @@ export interface CNshellApi {
   };
   metrics: {
     collect: (request: CollectMetricsRequest) => Promise<CollectMetricsResult>;
+    listProcesses: (request: ListProcessesRequest) => Promise<ListProcessesResult>;
+    killProcess: (request: KillProcessRequest) => Promise<KillProcessResult>;
   };
   tunnels: {
     start: (request: StartTunnelRequest) => Promise<TunnelInfo>;

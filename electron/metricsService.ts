@@ -2,8 +2,16 @@ import { Client } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { connectSshClient } from "./sshConnectionConfig.js";
-import type { CollectMetricsRequest, CollectMetricsResult } from "../src/shared/ipc.js";
-import type { ServerMetric } from "../src/domain/models.js";
+import type {
+  CollectMetricsRequest,
+  CollectMetricsResult,
+  KillProcessRequest,
+  KillProcessResult,
+  ListProcessesRequest,
+  ListProcessesResult,
+  SshSessionConfig
+} from "../src/shared/ipc.js";
+import type { RemoteProcess, ServerMetric } from "../src/domain/models.js";
 
 function execCommand(client: Client, command: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -53,6 +61,27 @@ function parseMetrics(output: string): ServerMetric[] {
   ];
 }
 
+function parseProcesses(output: string): RemoteProcess[] {
+  return output
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(1)
+    .map((line) => {
+      const [pid = "0", ppid = "0", cpu = "0", memory = "0", command = "", ...args] = line.split(/\s+/);
+      return {
+        pid: Number(pid),
+        ppid: Number(ppid),
+        cpu: Number(cpu),
+        memory: Number(memory),
+        command,
+        args: args.join(" ")
+      };
+    })
+    .filter((process) => process.pid > 0)
+    .slice(0, 80);
+}
+
 const METRICS_COMMAND = [
   "read cpu user nice system idle iowait irq softirq steal guest guest_nice < /proc/stat",
   "total=$((user+nice+system+idle+iowait+irq+softirq+steal))",
@@ -68,6 +97,8 @@ const METRICS_COMMAND = [
   "echo PING=${ping_ms:-0}"
 ].join("; ");
 
+const PROCESS_LIST_COMMAND = "ps -eo pid,ppid,pcpu,pmem,comm,args --sort=-pcpu | head -n 81";
+
 export class MetricsService {
   constructor(
     private readonly knownHostsStore: KnownHostsStore | null,
@@ -75,9 +106,28 @@ export class MetricsService {
   ) {}
 
   collect(request: CollectMetricsRequest): Promise<CollectMetricsResult> {
+    return this.withSshClient(request.ssh, (client) =>
+      execCommand(client, METRICS_COMMAND).then((output) => ({ metrics: parseMetrics(output) }))
+    );
+  }
+
+  listProcesses(request: ListProcessesRequest): Promise<ListProcessesResult> {
+    return this.withSshClient(request.ssh, (client) =>
+      execCommand(client, PROCESS_LIST_COMMAND).then((output) => ({ processes: parseProcesses(output) }))
+    );
+  }
+
+  killProcess(request: KillProcessRequest): Promise<KillProcessResult> {
+    const signal = request.signal ?? "TERM";
+    return this.withSshClient(request.ssh, (client) =>
+      execCommand(client, `kill -s ${signal} ${request.pid}`).then(() => ({ ok: true }))
+    );
+  }
+
+  private withSshClient<T>(ssh: SshSessionConfig, action: (client: Client) => Promise<T>): Promise<T> {
     const client = new Client();
 
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let gateways: Client[] = [];
       const closeClient = () => {
         client.end();
@@ -87,7 +137,7 @@ export class MetricsService {
       };
 
       connectSshClient(client, {
-        ssh: request.ssh,
+        ssh,
         credentialStore: this.credentialStore,
         knownHostsStore: this.knownHostsStore,
         onHostKeyVerification: (event) => {
@@ -96,10 +146,10 @@ export class MetricsService {
       })
         .then((connected) => {
           gateways = connected.gateways;
-          execCommand(client, METRICS_COMMAND)
-            .then((output) => {
+          action(client)
+            .then((result) => {
               closeClient();
-              resolve({ metrics: parseMetrics(output) });
+              resolve(result);
             })
             .catch((error: Error) => {
               closeClient();

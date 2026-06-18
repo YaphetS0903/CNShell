@@ -12,7 +12,9 @@ import { WorkspaceStore } from "./workspaceStore.js";
 import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
+  KillProcessRequest,
   ListRemoteDirectoryRequest,
+  ListProcessesRequest,
   ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
@@ -101,6 +103,10 @@ app.whenReady().then(() => {
   ipcMain.handle("sftp:read-file", (_event, request: ReadRemoteFileRequest) => sftpService?.readFile(request));
   ipcMain.handle("sftp:write-file", (_event, request: WriteRemoteFileRequest) => sftpService?.writeFile(request));
   ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
+  ipcMain.handle("metrics:list-processes", (_event, request: ListProcessesRequest) =>
+    metricsService?.listProcesses(request)
+  );
+  ipcMain.handle("metrics:kill-process", (_event, request: KillProcessRequest) => metricsService?.killProcess(request));
   ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
   ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
   ipcMain.handle("logs:read-session", (_event, request: ReadSessionLogRequest) => ({

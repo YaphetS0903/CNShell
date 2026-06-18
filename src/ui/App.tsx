@@ -264,6 +264,9 @@ export function App() {
   const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
   const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [metricsError, setMetricsError] = useState("");
+  const [remoteProcesses, setRemoteProcesses] = useState(snapshot.remoteProcesses);
+  const [processStatus, setProcessStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [processError, setProcessError] = useState("");
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
@@ -680,6 +683,50 @@ export function App() {
       });
   };
 
+  const refreshProcesses = () => {
+    if (activeConnection.protocol !== "ssh") {
+      setRemoteProcesses(snapshot.remoteProcesses);
+      return;
+    }
+
+    setProcessStatus("loading");
+    setProcessError("");
+
+    void window.cnshell?.metrics
+      .listProcesses({
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then((result) => {
+        setRemoteProcesses(result.processes);
+        setProcessStatus("idle");
+      })
+      .catch((error: Error) => {
+        setProcessError(error.message);
+        setProcessStatus("error");
+      });
+  };
+
+  const killProcess = (pid: number) => {
+    if (activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    setProcessStatus("loading");
+    setProcessError("");
+
+    void window.cnshell?.metrics
+      .killProcess({
+        pid,
+        signal: "TERM",
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then(() => refreshProcesses())
+      .catch((error: Error) => {
+        setProcessError(error.message);
+        setProcessStatus("error");
+      });
+  };
+
   const executeCommand = (command: string) => {
     const targetSessionIds = isSyncInputEnabled
       ? sessionTabsWithStatus.filter((session) => session.status !== "error").map((session) => session.id)
@@ -790,6 +837,7 @@ export function App() {
         setSnapshot(hydratedSnapshot);
         setRemoteFileEntries(hydratedSnapshot.remoteFiles);
         setLiveMetrics(hydratedSnapshot.serverMetrics);
+        setRemoteProcesses(hydratedSnapshot.remoteProcesses);
         setActiveConnectionId(hydratedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(hydratedSnapshot.sessions[0]?.id ?? "");
       }
@@ -929,6 +977,13 @@ export function App() {
               onSave={saveRemoteFile}
             />
             <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
+            <ProcessPanel
+              processes={remoteProcesses}
+              status={processStatus}
+              error={processError}
+              onRefresh={refreshProcesses}
+              onKill={killProcess}
+            />
             <TunnelPanel
               draft={tunnelDraft}
               tunnels={tunnels}
@@ -1892,6 +1947,57 @@ function TriggerPanel({ events }: { events: TriggerEvent[] }) {
               <strong>{event.severity}</strong>
               <span>{event.message}</span>
               <small>{event.createdAt}</small>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function ProcessPanel({
+  processes,
+  status,
+  error,
+  onRefresh,
+  onKill
+}: {
+  processes: ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"];
+  status: "idle" | "loading" | "error";
+  error: string;
+  onRefresh: () => void;
+  onKill: (pid: number) => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="Process manager">
+      <div className="panel-heading">
+        <div>
+          <Activity size={16} aria-hidden="true" />
+          <h2>Processes</h2>
+        </div>
+        <button type="button" aria-label="Refresh processes" onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden="true" />
+        </button>
+      </div>
+      {status === "loading" ? <div className="sftp-state">Loading process list...</div> : null}
+      {status === "error" ? (
+        <div className="sftp-state error" role="alert">
+          {error}
+        </div>
+      ) : null}
+      <div className="process-list">
+        {processes.length === 0 ? (
+          <div className="trigger-empty">No process data</div>
+        ) : (
+          processes.map((process) => (
+            <div key={process.pid} className="process-row">
+              <strong>{process.pid}</strong>
+              <span title={process.args || process.command}>{process.command}</span>
+              <small>{process.cpu.toFixed(1)}%</small>
+              <small>{process.memory.toFixed(1)}%</small>
+              <button type="button" onClick={() => onKill(process.pid)}>
+                Term
+              </button>
             </div>
           ))
         )}

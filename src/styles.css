@@ -1601,6 +1601,50 @@ textarea:focus-visible {
   background: var(--accent);
 }
 
+.process-list {
+  display: flex;
+  max-height: 230px;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  padding: 10px 12px 12px;
+}
+
+.process-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 48px 48px auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 7px 8px;
+}
+
+.process-row strong,
+.process-row small {
+  color: #aebdca;
+  font-size: 11px;
+}
+
+.process-row span {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.process-row button {
+  min-height: 28px;
+  border: 1px solid rgba(255, 135, 135, 0.32);
+  border-radius: 6px;
+  background: #24171b;
+  color: #ffd8d8;
+  cursor: pointer;
+  font-size: 11px;
+}
+
 @media (max-width: 1180px) {
   .app-shell {
     grid-template-columns: 276px 1fr;

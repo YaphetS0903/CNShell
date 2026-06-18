@@ -3,6 +3,7 @@ import type {
   KeyMappingProfile,
   QuickCommand,
   RemoteFileEntry,
+  RemoteProcess,
   ScriptRecording,
   ServerMetric,
   SessionTab
@@ -134,3 +135,5 @@ export const serverMetrics: ServerMetric[] = [
   { label: "Disk", value: 74, unit: "%", trend: "up" },
   { label: "Ping", value: 18, unit: "ms", trend: "down" }
 ];
+
+export const remoteProcesses: RemoteProcess[] = [];

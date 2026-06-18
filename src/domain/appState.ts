@@ -4,6 +4,7 @@ import {
   keyMappingProfiles,
   quickCommands,
   remoteFiles,
+  remoteProcesses,
   scriptRecordings,
   serverMetrics,
   sessionTabs
@@ -17,7 +18,8 @@ export function createInitialAppSnapshot(): AppSnapshot {
     keyMappingProfiles,
     scriptRecordings,
     remoteFiles,
-    serverMetrics
+    serverMetrics,
+    remoteProcesses
   };
 }
 
@@ -27,7 +29,8 @@ export function hydrateAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
     ...fallback,
     ...snapshot,
     keyMappingProfiles: snapshot.keyMappingProfiles ?? fallback.keyMappingProfiles,
-    scriptRecordings: snapshot.scriptRecordings ?? fallback.scriptRecordings
+    scriptRecordings: snapshot.scriptRecordings ?? fallback.scriptRecordings,
+    remoteProcesses: snapshot.remoteProcesses ?? fallback.remoteProcesses
   };
 }
 

@@ -51,7 +51,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 
 - [x] ~~Terminal and SFTP same-directory synchronization.~~
 - [x] ~~Remote file editor flow.~~
-- [ ] Process manager.
+- [x] ~~Process manager.~~
 - [ ] Disk/network/process monitoring charts.
 - [ ] ZMODEM upload/download.
 - [ ] Windows RDP connection entries.
@@ -114,4 +114,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement log viewer with filtering.~~
 - [x] ~~Implement terminal and SFTP same-directory synchronization.~~
 - [x] ~~Implement remote file editor flow.~~
+- [x] ~~Implement process manager.~~
 - [ ] Add optional master password vault mode.
