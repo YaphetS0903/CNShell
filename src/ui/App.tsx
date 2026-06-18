@@ -35,6 +35,31 @@ import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
 
+function applyHighlightRules(data: string) {
+  return data
+    .split(/(\r?\n)/)
+    .map((part) => {
+      if (/(\r?\n)/.test(part)) {
+        return part;
+      }
+
+      if (/\b(error|failed|failure|fatal|denied)\b/i.test(part)) {
+        return `\x1b[31m${part}\x1b[0m`;
+      }
+
+      if (/\b(warn|warning|retry|slow)\b/i.test(part)) {
+        return `\x1b[33m${part}\x1b[0m`;
+      }
+
+      if (/\b(success|succeeded|ok|ready|done)\b/i.test(part)) {
+        return `\x1b[32m${part}\x1b[0m`;
+      }
+
+      return part;
+    })
+    .join("");
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
@@ -59,6 +84,7 @@ export function App() {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
+  const [isHighlightEnabled, setIsHighlightEnabled] = useState(true);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -416,8 +442,10 @@ export function App() {
           status={activeTab.status}
           version={appVersion}
           isSyncInputEnabled={isSyncInputEnabled}
+          isHighlightEnabled={isHighlightEnabled}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
           onToggleSyncInput={() => setIsSyncInputEnabled((current) => !current)}
+          onToggleHighlight={() => setIsHighlightEnabled((current) => !current)}
         />
         <TabStrip
           tabs={sessionTabsWithStatus}
@@ -432,6 +460,7 @@ export function App() {
             sshDraft={activeSshDraft}
             useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
+            isHighlightEnabled={isHighlightEnabled}
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
             onDispatchCommand={executeCommand}
@@ -567,15 +596,19 @@ function TopBar({
   status,
   version,
   isSyncInputEnabled,
+  isHighlightEnabled,
   onOpenCommandPalette,
-  onToggleSyncInput
+  onToggleSyncInput,
+  onToggleHighlight
 }: {
   activeConnection: ConnectionProfile;
   status: SessionStatus;
   version: string;
   isSyncInputEnabled: boolean;
+  isHighlightEnabled: boolean;
   onOpenCommandPalette: () => void;
   onToggleSyncInput: () => void;
+  onToggleHighlight: () => void;
 }) {
   return (
     <header className="topbar">
@@ -603,6 +636,15 @@ function TopBar({
           onClick={onToggleSyncInput}
         >
           <SplitSquareHorizontal size={17} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={isHighlightEnabled ? "active" : ""}
+          aria-label="Toggle highlight rules"
+          aria-pressed={isHighlightEnabled}
+          onClick={onToggleHighlight}
+        >
+          <Zap size={17} aria-hidden="true" />
         </button>
         <button type="button" aria-label="Open tunneling manager">
           <Network size={17} aria-hidden="true" />
@@ -656,6 +698,7 @@ function TerminalPane({
   sshDraft,
   useSavedCredential,
   startToken,
+  isHighlightEnabled,
   onStatusChange,
   onReconnect,
   onDispatchCommand
@@ -665,6 +708,7 @@ function TerminalPane({
   sshDraft: { password: string; privateKey: string; passphrase: string };
   useSavedCredential: boolean;
   startToken: number;
+  isHighlightEnabled: boolean;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
   onDispatchCommand: (command: string) => void;
@@ -703,7 +747,7 @@ function TerminalPane({
     const sessionId = activeTab.id;
     const removeDataListener = window.cnshell?.terminal.onData(({ id, data }) => {
       if (id === sessionId) {
-        terminal.write(data);
+        terminal.write(isHighlightEnabled ? applyHighlightRules(data) : data);
       }
     });
 
@@ -799,6 +843,7 @@ function TerminalPane({
     sshDraft.passphrase,
     sshDraft.privateKey,
     useSavedCredential,
+    isHighlightEnabled,
     startToken
   ]);
 
