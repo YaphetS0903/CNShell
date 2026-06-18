@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
   CloudSyncResult,
+  CheckForUpdatesRequest,
   CollectMetricsRequest,
   CollectMetricsResult,
   CredentialStatus,
@@ -39,6 +40,7 @@ import type {
   TransferFileRequest,
   TransferFileResult,
   UnlockCredentialVaultRequest,
+  UpdateStatus,
   WriteRemoteFileRequest,
   WriteRemoteFileResult
 } from "../src/shared/ipc.js";
@@ -136,6 +138,17 @@ const api = {
     exportSettings: (request: ExportCloudSyncRequest) =>
       ipcRenderer.invoke("cloud-sync:export", request) as Promise<CloudSyncResult>,
     importSettings: () => ipcRenderer.invoke("cloud-sync:import") as Promise<CloudSyncResult>
+  },
+  updates: {
+    status: () => ipcRenderer.invoke("updates:status") as Promise<UpdateStatus>,
+    check: (request?: CheckForUpdatesRequest) =>
+      ipcRenderer.invoke("updates:check", request ?? {}) as Promise<UpdateStatus>,
+    quitAndInstall: () => ipcRenderer.invoke("updates:quit-and-install") as Promise<boolean>,
+    onStatus: (callback: (status: UpdateStatus) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: UpdateStatus) => callback(payload);
+      ipcRenderer.on("updates:status", listener);
+      return () => ipcRenderer.off("updates:status", listener);
+    }
   }
 } satisfies CNshellApi;
 

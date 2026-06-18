@@ -257,6 +257,27 @@ export interface CloudSyncResult {
   importedSnapshot?: AppSnapshot;
 }
 
+export type UpdateStatusState =
+  | "idle"
+  | "checking"
+  | "available"
+  | "not-available"
+  | "downloading"
+  | "downloaded"
+  | "error";
+
+export interface UpdateStatus {
+  state: UpdateStatusState;
+  channel: string;
+  version?: string;
+  message?: string;
+  percent?: number;
+}
+
+export interface CheckForUpdatesRequest {
+  channel?: string;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -314,5 +335,11 @@ export interface CNshellApi {
   cloudSync: {
     exportSettings: (request: ExportCloudSyncRequest) => Promise<CloudSyncResult>;
     importSettings: () => Promise<CloudSyncResult>;
+  };
+  updates: {
+    status: () => Promise<UpdateStatus>;
+    check: (request?: CheckForUpdatesRequest) => Promise<UpdateStatus>;
+    quitAndInstall: () => Promise<boolean>;
+    onStatus: (callback: (status: UpdateStatus) => void) => () => void;
   };
 }

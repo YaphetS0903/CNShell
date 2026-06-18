@@ -76,7 +76,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Windows installer packaging.~~
 - [x] ~~macOS packaging.~~
 - [x] ~~Linux packaging.~~
-- [ ] Auto-update channel.
+- [x] ~~Auto-update channel.~~
 - [ ] Crash/error reporting boundary.
 
 ## Current Sprint
@@ -131,4 +131,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Add Windows installer packaging.~~
 - [x] ~~Add macOS packaging.~~
 - [x] ~~Add Linux packaging.~~
-- [ ] Add auto-update channel.
+- [x] ~~Add auto-update channel.~~
+- [ ] Add crash/error reporting boundary.

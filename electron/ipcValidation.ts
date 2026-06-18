@@ -3,6 +3,7 @@ import type {
   JumpHostConfig
 } from "../src/domain/models.js";
 import type {
+  CheckForUpdatesRequest,
   CollectMetricsRequest,
   DisableCredentialVaultRequest,
   EnableCredentialVaultRequest,
@@ -380,5 +381,16 @@ export function validateExportCloudSync(value: unknown): ExportCloudSyncRequest 
   const request = assertRecord(value, "request");
   return {
     snapshot: validateAppSnapshot(request.snapshot)
+  };
+}
+
+export function validateCheckForUpdates(value: unknown): CheckForUpdatesRequest {
+  if (value === undefined) {
+    return {};
+  }
+
+  const request = assertRecord(value, "request");
+  return {
+    channel: assertOptionalString(request.channel, "channel", 40)
   };
 }

@@ -27,6 +27,15 @@
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "YaphetS0903",
+        "repo": "CNShell",
+        "releaseType": "release",
+        "channel": "latest"
+      }
+    ],
     "files": [
       "dist/**",
       "dist-electron/**",
@@ -98,6 +107,7 @@
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-search": "^0.16.0",
     "@xterm/xterm": "^5.5.0",
+    "electron-updater": "^6.3.9",
     "lucide-react": "^0.468.0",
     "node-pty": "^1.1.0",
     "react": "^18.3.1",

@@ -1337,6 +1337,97 @@ textarea:focus-visible {
   font-weight: 800;
 }
 
+.update-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.update-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.update-row label {
+  display: grid;
+  gap: 5px;
+  color: #aebdca;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.update-row select {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0b131a;
+  color: var(--text);
+  padding: 0 9px;
+}
+
+.update-panel button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.update-panel button:disabled {
+  color: #6f7d89;
+  cursor: not-allowed;
+}
+
+.update-message {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 8px;
+}
+
+.update-message strong {
+  color: #d4e0e8;
+  font-size: 12px;
+}
+
+.update-message span {
+  overflow: hidden;
+  color: #8d9dab;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.update-state {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: #94a7b6;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.update-state.available,
+.update-state.downloading,
+.update-state.downloaded {
+  border-color: rgba(77, 171, 247, 0.4);
+  background: rgba(77, 171, 247, 0.12);
+  color: #b9e3ff;
+}
+
+.update-state.error {
+  border-color: rgba(255, 135, 135, 0.4);
+  background: rgba(255, 135, 135, 0.12);
+  color: #ffa8a8;
+}
+
 .file-row:hover,
 .quick-command:hover {
   background: rgba(255, 255, 255, 0.04);

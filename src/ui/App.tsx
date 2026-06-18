@@ -47,7 +47,8 @@ import type {
   RelayInfo,
   SshSessionConfig,
   TunnelInfo,
-  TunnelMode
+  TunnelMode,
+  UpdateStatus
 } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
@@ -359,6 +360,8 @@ export function App() {
   const [auditLines, setAuditLines] = useState<string[]>([]);
   const [auditStatus, setAuditStatus] = useState<"idle" | "loading" | "error">("idle");
   const [cloudSyncStatus, setCloudSyncStatus] = useState("Ready");
+  const [updateChannel, setUpdateChannel] = useState("latest");
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle", channel: "latest" });
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -583,6 +586,19 @@ export function App() {
       .catch((error: Error) => {
         setCloudSyncStatus(error.message);
       });
+  };
+
+  const checkForUpdates = () => {
+    void window.cnshell?.updates
+      .check({ channel: updateChannel })
+      .then(setUpdateStatus)
+      .catch((error: Error) => {
+        setUpdateStatus({ state: "error", channel: updateChannel, message: error.message });
+      });
+  };
+
+  const installDownloadedUpdate = () => {
+    void window.cnshell?.updates.quitAndInstall();
   };
 
   const startActiveSession = () => {
@@ -1159,7 +1175,12 @@ export function App() {
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
     refreshCredentialVaultStatus();
+    void window.cnshell?.updates.status().then(setUpdateStatus);
   }, [refreshCredentialVaultStatus]);
+
+  useEffect(() => {
+    return window.cnshell?.updates.onStatus(setUpdateStatus);
+  }, []);
 
   useEffect(() => {
     void workspaceStorage.loadSnapshot().then((storedSnapshot) => {
@@ -1407,6 +1428,13 @@ export function App() {
               status={cloudSyncStatus}
               onExport={exportCloudSyncSettings}
               onImport={importCloudSyncSettings}
+            />
+            <UpdatePanel
+              channel={updateChannel}
+              status={updateStatus}
+              onChannelChange={setUpdateChannel}
+              onCheck={checkForUpdates}
+              onInstall={installDownloadedUpdate}
             />
           </aside>
         </section>
@@ -3035,6 +3063,55 @@ function CloudSyncPanel({
             Import
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function UpdatePanel({
+  channel,
+  status,
+  onChannelChange,
+  onCheck,
+  onInstall
+}: {
+  channel: string;
+  status: UpdateStatus;
+  onChannelChange: (channel: string) => void;
+  onCheck: () => void;
+  onInstall: () => void;
+}) {
+  const canInstall = status.state === "downloaded";
+  return (
+    <section className="panel-section" aria-label="Updates">
+      <div className="panel-heading">
+        <div>
+          <RefreshCw size={16} aria-hidden="true" />
+          <h2>Updates</h2>
+        </div>
+        <span className={`update-state ${status.state}`}>{status.state}</span>
+      </div>
+      <div className="update-panel">
+        <div className="update-row">
+          <label>
+            <span>Channel</span>
+            <select value={channel} onChange={(event) => onChannelChange(event.target.value)}>
+              <option value="latest">latest</option>
+              <option value="beta">beta</option>
+              <option value="alpha">alpha</option>
+            </select>
+          </label>
+          <button type="button" onClick={onCheck}>
+            Check
+          </button>
+        </div>
+        <div className="update-message">
+          <strong>{status.version ?? status.channel}</strong>
+          <span>{status.message ?? (status.percent !== undefined ? `${status.percent}%` : "Ready")}</span>
+        </div>
+        <button type="button" disabled={!canInstall} onClick={onInstall}>
+          Install update
+        </button>
       </div>
     </section>
   );

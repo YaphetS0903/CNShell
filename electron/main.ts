@@ -12,9 +12,11 @@ import { SessionLogStore } from "./sessionLogStore.js";
 import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
 import { TunnelManager } from "./tunnelManager.js";
+import { UpdateService } from "./updateService.js";
 import { WorkspaceStore } from "./workspaceStore.js";
 import {
   validateAppSnapshot,
+  validateCheckForUpdates,
   validateCollectMetrics,
   validateConnectionId,
   validateDisableVault,
@@ -53,6 +55,7 @@ let sessionLogStore: SessionLogStore | null = null;
 let tunnelManager: TunnelManager | null = null;
 let cloudSyncService: CloudSyncService | null = null;
 let auditLogStore: AuditLogStore | null = null;
+let updateService: UpdateService | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -72,6 +75,7 @@ function createMainWindow() {
   });
 
   terminalSessionManager = new TerminalSessionManager(window, knownHostsStore, credentialStore, sessionLogStore);
+  updateService = new UpdateService(window);
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);
@@ -297,6 +301,14 @@ app.whenReady().then(() => {
   });
   ipcMain.handle("cloud-sync:import", () =>
     withAudit("cloudSync.import", undefined, undefined, () => cloudSyncService?.importSettings())
+  );
+  ipcMain.handle("updates:status", () => updateService?.getStatus());
+  ipcMain.handle("updates:check", (_event, payload: unknown) => {
+    const request = validateCheckForUpdates(payload);
+    return withAudit("updates.check", undefined, request, () => updateService?.check(request));
+  });
+  ipcMain.handle("updates:quit-and-install", () =>
+    withAudit("updates.quitAndInstall", undefined, undefined, () => updateService?.quitAndInstall() ?? false)
   );
   createMainWindow();
 
