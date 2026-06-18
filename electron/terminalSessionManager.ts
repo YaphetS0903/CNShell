@@ -4,6 +4,7 @@ import { spawn, type IPty } from "node-pty";
 import { Client, type ClientChannel } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
+import { buildSshConnectConfig } from "./sshConnectionConfig.js";
 import type {
   StartTerminalSessionRequest,
   TerminalSessionResizeRequest,
@@ -148,15 +149,6 @@ export class TerminalSessionManager {
       throw new Error("SSH configuration is required.");
     }
 
-    const savedSecret = ssh.useSavedCredential ? this.credentialStore?.loadSecret(ssh.connectionId) : undefined;
-    const password = ssh.password || savedSecret?.password;
-    const privateKey = ssh.privateKey || savedSecret?.privateKey;
-    const passphrase = ssh.passphrase || savedSecret?.passphrase;
-
-    if (!password && !privateKey) {
-      throw new Error("SSH password or private key is required.");
-    }
-
     const cols = clampTerminalSize(request.cols, MIN_COLS, MAX_COLS);
     const rows = clampTerminalSize(request.rows, MIN_ROWS, MAX_ROWS);
     const client = new Client();
@@ -220,34 +212,19 @@ export class TerminalSessionManager {
           }
         });
 
-      client.connect({
-        host: ssh.host,
-        port: ssh.port,
-        username: ssh.username,
-        password,
-        privateKey,
-        passphrase,
-        readyTimeout: ssh.readyTimeout ?? 15000,
-        keepaliveInterval: 15000,
-        hostVerifier: (key: Buffer) => {
-          if (!this.knownHostsStore) {
-            return false;
+      client.connect(
+        buildSshConnectConfig({
+          ssh,
+          credentialStore: this.credentialStore,
+          knownHostsStore: this.knownHostsStore,
+          onHostKeyVerification: (event) => {
+            this.window.webContents.send("terminal:host-key-verification", {
+              id: request.id,
+              ...event
+            });
           }
-
-          const verification = this.knownHostsStore.verifyHostKey(ssh.host, ssh.port, key);
-          if (verification.status === "trusted") {
-            return true;
-          }
-
-          this.window.webContents.send("terminal:host-key-verification", {
-            id: request.id,
-            ...verification,
-            keyBase64: key.toString("base64")
-          });
-
-          return false;
-        }
-      });
+        })
+      );
     });
   }
 

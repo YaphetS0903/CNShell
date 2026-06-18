@@ -14,6 +14,7 @@ import {
   MoreHorizontal,
   Network,
   Plus,
+  RefreshCw,
   Search,
   Server,
   Settings,
@@ -44,6 +45,10 @@ export function App() {
   const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
   const [credentialStatuses, setCredentialStatuses] = useState<Record<string, CredentialStatus>>({});
   const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
+  const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
+  const [remotePath, setRemotePath] = useState("/var/www/cnshell");
+  const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [sftpError, setSftpError] = useState("");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -176,6 +181,40 @@ export function App() {
     });
   };
 
+  const refreshRemoteFiles = () => {
+    if (activeConnection.protocol !== "ssh") {
+      setRemoteFileEntries(snapshot.remoteFiles);
+      return;
+    }
+
+    setSftpStatus("loading");
+    setSftpError("");
+
+    void window.cnshell?.sftp
+      .listDirectory({
+        path: remotePath,
+        ssh: {
+          connectionId: activeConnection.id,
+          host: activeConnection.host,
+          port: activeConnection.port,
+          username: activeConnection.username,
+          password: activeSshDraft.password || undefined,
+          privateKey: activeSshDraft.privateKey || undefined,
+          passphrase: activeSshDraft.passphrase || undefined,
+          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
+        }
+      })
+      .then((listing) => {
+        setRemotePath(listing.path);
+        setRemoteFileEntries(listing.entries);
+        setSftpStatus("idle");
+      })
+      .catch((error: Error) => {
+        setSftpError(error.message);
+        setSftpStatus("error");
+      });
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -184,6 +223,7 @@ export function App() {
     void workspaceStorage.loadSnapshot().then((storedSnapshot) => {
       if (storedSnapshot) {
         setSnapshot(storedSnapshot);
+        setRemoteFileEntries(storedSnapshot.remoteFiles);
         setActiveConnectionId(storedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(storedSnapshot.sessions[0]?.id ?? "");
       }
@@ -268,7 +308,14 @@ export function App() {
                 onTrustHost={trustActiveHost}
               />
             ) : null}
-            <FilePanel remoteFiles={snapshot.remoteFiles} />
+            <FilePanel
+              remoteFiles={remoteFileEntries}
+              path={remotePath}
+              status={sftpStatus}
+              error={sftpError}
+              onPathChange={setRemotePath}
+              onRefresh={refreshRemoteFiles}
+            />
             <MetricsPanel metrics={snapshot.serverMetrics} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} />
           </aside>
@@ -710,7 +757,21 @@ function SshCredentialPanel({
   );
 }
 
-function FilePanel({ remoteFiles }: { remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"] }) {
+function FilePanel({
+  remoteFiles,
+  path,
+  status,
+  error,
+  onPathChange,
+  onRefresh
+}: {
+  remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"];
+  path: string;
+  status: "idle" | "loading" | "error";
+  error: string;
+  onPathChange: (path: string) => void;
+  onRefresh: () => void;
+}) {
   return (
     <section className="panel-section file-panel" aria-label="Remote files">
       <div className="panel-heading">
@@ -718,11 +779,20 @@ function FilePanel({ remoteFiles }: { remoteFiles: ReturnType<typeof createIniti
           <FileText size={16} aria-hidden="true" />
           <h2>SFTP</h2>
         </div>
-        <button type="button" aria-label="Upload file">
-          <UploadCloud size={16} aria-hidden="true" />
+        <button type="button" aria-label="Refresh remote files" onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden="true" />
         </button>
       </div>
-      <div className="path-row">/var/www/cnshell</div>
+      <label className="path-row">
+        <span className="sr-only">Remote path</span>
+        <input value={path} onChange={(event) => onPathChange(event.target.value)} />
+      </label>
+      {status === "loading" ? <div className="sftp-state">Loading remote directory...</div> : null}
+      {status === "error" ? (
+        <div className="sftp-state error" role="alert">
+          {error}
+        </div>
+      ) : null}
       <div className="file-list">
         {remoteFiles.map((file) => (
           <button type="button" key={file.id} className="file-row">

@@ -4,6 +4,8 @@ import type {
   CredentialStatus,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
+  ListRemoteDirectoryRequest,
+  RemoteDirectoryListing,
   StartTerminalSessionRequest,
   TerminalDataEvent,
   TerminalErrorEvent,
@@ -56,6 +58,10 @@ const api = {
       ipcRenderer.invoke("credentials:save", request) as Promise<CredentialStatus>,
     delete: (connectionId: string) =>
       ipcRenderer.invoke("credentials:delete", connectionId) as Promise<CredentialStatus>
+  },
+  sftp: {
+    listDirectory: (request: ListRemoteDirectoryRequest) =>
+      ipcRenderer.invoke("sftp:list-directory", request) as Promise<RemoteDirectoryListing>
   }
 } satisfies CNshellApi;
 

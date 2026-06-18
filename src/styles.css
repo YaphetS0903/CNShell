@@ -545,6 +545,8 @@ input:focus-visible {
 }
 
 .path-row {
+  display: flex;
+  align-items: center;
   margin: 12px;
   min-height: 34px;
   border: 1px solid var(--line-soft);
@@ -555,6 +557,33 @@ input:focus-visible {
   font-size: 12px;
   line-height: 34px;
   padding: 0 10px;
+}
+
+.path-row input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.sftp-state {
+  margin: 0 12px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  color: #aebdca;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
+.sftp-state.error {
+  border-color: rgba(255, 135, 135, 0.34);
+  background: rgba(255, 135, 135, 0.08);
+  color: #ffa8a8;
 }
 
 .file-list,

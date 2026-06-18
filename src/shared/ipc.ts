@@ -1,4 +1,4 @@
-import type { AppSnapshot } from "../domain/models.js";
+import type { AppSnapshot, RemoteFileEntry } from "../domain/models.js";
 
 export type TerminalSessionKind = "local" | "ssh";
 
@@ -80,6 +80,16 @@ export interface CredentialStatus {
   updatedAt?: string;
 }
 
+export interface ListRemoteDirectoryRequest {
+  ssh: SshSessionConfig;
+  path: string;
+}
+
+export interface RemoteDirectoryListing {
+  path: string;
+  entries: RemoteFileEntry[];
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -101,5 +111,8 @@ export interface CNshellApi {
     status: (connectionId: string) => Promise<CredentialStatus>;
     save: (request: SaveCredentialRequest) => Promise<CredentialStatus>;
     delete: (connectionId: string) => Promise<CredentialStatus>;
+  };
+  sftp: {
+    listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;
   };
 }
