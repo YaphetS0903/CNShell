@@ -35,6 +35,14 @@ import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
 
+interface TriggerEvent {
+  id: string;
+  sessionId: string;
+  severity: "error" | "warning";
+  message: string;
+  createdAt: string;
+}
+
 function applyHighlightRules(data: string) {
   return data
     .split(/(\r?\n)/)
@@ -58,6 +66,20 @@ function applyHighlightRules(data: string) {
       return part;
     })
     .join("");
+}
+
+function detectTriggerEvents(sessionId: string, data: string): TriggerEvent[] {
+  return data
+    .split(/\r?\n/)
+    .filter((line) => /\b(error|failed|failure|fatal|denied|warning)\b/i.test(line))
+    .slice(-3)
+    .map((line) => ({
+      id: `${sessionId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      sessionId,
+      severity: /\b(warn|warning)\b/i.test(line) ? "warning" : "error",
+      message: line.trim().slice(0, 220),
+      createdAt: new Date().toLocaleTimeString()
+    }));
 }
 
 export function App() {
@@ -85,6 +107,7 @@ export function App() {
   const [commandQuery, setCommandQuery] = useState("");
   const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
   const [isHighlightEnabled, setIsHighlightEnabled] = useState(true);
+  const [triggerEvents, setTriggerEvents] = useState<TriggerEvent[]>([]);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -347,6 +370,14 @@ export function App() {
     setCommandQuery("");
   };
 
+  const addTriggerEvents = useCallback((events: TriggerEvent[]) => {
+    if (events.length === 0) {
+      return;
+    }
+
+    setTriggerEvents((current) => [...events, ...current].slice(0, 8));
+  }, []);
+
   const createSessionForActiveConnection = () => {
     const sessionId = `tab-${activeConnection.id}-${Date.now()}`;
     const nextSession: SessionTab = {
@@ -464,6 +495,7 @@ export function App() {
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
             onDispatchCommand={executeCommand}
+            onTriggerEvents={addTriggerEvents}
           />
           <aside className="ops-panel" aria-label="Operations panels">
             {activeConnection.protocol === "ssh" ? (
@@ -496,6 +528,7 @@ export function App() {
             />
             <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
+            <TriggerPanel events={triggerEvents} />
           </aside>
         </section>
       </section>
@@ -701,7 +734,8 @@ function TerminalPane({
   isHighlightEnabled,
   onStatusChange,
   onReconnect,
-  onDispatchCommand
+  onDispatchCommand,
+  onTriggerEvents
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
@@ -712,6 +746,7 @@ function TerminalPane({
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
   onDispatchCommand: (command: string) => void;
+  onTriggerEvents: (events: TriggerEvent[]) => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
@@ -747,6 +782,7 @@ function TerminalPane({
     const sessionId = activeTab.id;
     const removeDataListener = window.cnshell?.terminal.onData(({ id, data }) => {
       if (id === sessionId) {
+        onTriggerEvents(detectTriggerEvents(sessionId, data));
         terminal.write(isHighlightEnabled ? applyHighlightRules(data) : data);
       }
     });
@@ -844,6 +880,7 @@ function TerminalPane({
     sshDraft.privateKey,
     useSavedCredential,
     isHighlightEnabled,
+    onTriggerEvents,
     startToken
   ]);
 
@@ -1206,6 +1243,33 @@ function QuickCommandPanel({
             <ShieldCheck size={15} aria-label={`${command.scope} scope`} />
           </button>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function TriggerPanel({ events }: { events: TriggerEvent[] }) {
+  return (
+    <section className="panel-section" aria-label="Trigger events">
+      <div className="panel-heading">
+        <div>
+          <Zap size={16} aria-hidden="true" />
+          <h2>Triggers</h2>
+        </div>
+        <span className="poll-rate">{events.length}</span>
+      </div>
+      <div className="trigger-list">
+        {events.length === 0 ? (
+          <div className="trigger-empty">No trigger events</div>
+        ) : (
+          events.map((event) => (
+            <div key={event.id} className={`trigger-row ${event.severity}`}>
+              <strong>{event.severity}</strong>
+              <span>{event.message}</span>
+              <small>{event.createdAt}</small>
+            </div>
+          ))
+        )}
       </div>
     </section>
   );

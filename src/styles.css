@@ -740,6 +740,52 @@ input:focus-visible {
   grid-template-columns: 1fr 18px;
 }
 
+.trigger-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px 12px;
+}
+
+.trigger-empty {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.trigger-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 7px 8px;
+}
+
+.trigger-row strong,
+.trigger-row small {
+  color: #aebdca;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.trigger-row.error strong {
+  color: #ffa8a8;
+}
+
+.trigger-row.warning strong {
+  color: #ffec99;
+}
+
+.trigger-row span {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .file-row:hover,
 .quick-command:hover {
   background: rgba(255, 255, 255, 0.04);
