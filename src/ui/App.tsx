@@ -35,11 +35,6 @@ import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
 
-interface PendingCommand {
-  id: number;
-  command: string;
-}
-
 export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
@@ -61,9 +56,9 @@ export function App() {
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
-  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -314,10 +309,14 @@ export function App() {
   };
 
   const executeCommand = (command: string) => {
-    setPendingCommand({
-      id: Date.now(),
-      command
-    });
+    const targetSessionIds = isSyncInputEnabled
+      ? sessionTabsWithStatus.filter((session) => session.status !== "error").map((session) => session.id)
+      : [activeTab.id];
+
+    for (const sessionId of targetSessionIds) {
+      void window.cnshell?.terminal.write(sessionId, `${command}\r`);
+    }
+
     setIsCommandPaletteOpen(false);
     setCommandQuery("");
   };
@@ -416,7 +415,9 @@ export function App() {
           activeConnection={activeConnection}
           status={activeTab.status}
           version={appVersion}
+          isSyncInputEnabled={isSyncInputEnabled}
           onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+          onToggleSyncInput={() => setIsSyncInputEnabled((current) => !current)}
         />
         <TabStrip
           tabs={sessionTabsWithStatus}
@@ -431,9 +432,9 @@ export function App() {
             sshDraft={activeSshDraft}
             useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
-            pendingCommand={pendingCommand}
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
+            onDispatchCommand={executeCommand}
           />
           <aside className="ops-panel" aria-label="Operations panels">
             {activeConnection.protocol === "ssh" ? (
@@ -565,12 +566,16 @@ function TopBar({
   activeConnection,
   status,
   version,
-  onOpenCommandPalette
+  isSyncInputEnabled,
+  onOpenCommandPalette,
+  onToggleSyncInput
 }: {
   activeConnection: ConnectionProfile;
   status: SessionStatus;
   version: string;
+  isSyncInputEnabled: boolean;
   onOpenCommandPalette: () => void;
+  onToggleSyncInput: () => void;
 }) {
   return (
     <header className="topbar">
@@ -589,6 +594,15 @@ function TopBar({
       <div className="topbar-actions">
         <button type="button" aria-label="Open command palette" onClick={onOpenCommandPalette}>
           <Command size={17} aria-hidden="true" />
+        </button>
+        <button
+          type="button"
+          className={isSyncInputEnabled ? "active" : ""}
+          aria-label="Toggle synchronized input"
+          aria-pressed={isSyncInputEnabled}
+          onClick={onToggleSyncInput}
+        >
+          <SplitSquareHorizontal size={17} aria-hidden="true" />
         </button>
         <button type="button" aria-label="Open tunneling manager">
           <Network size={17} aria-hidden="true" />
@@ -642,18 +656,18 @@ function TerminalPane({
   sshDraft,
   useSavedCredential,
   startToken,
-  pendingCommand,
   onStatusChange,
-  onReconnect
+  onReconnect,
+  onDispatchCommand
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
   sshDraft: { password: string; privateKey: string; passphrase: string };
   useSavedCredential: boolean;
   startToken: number;
-  pendingCommand: PendingCommand | null;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
+  onDispatchCommand: (command: string) => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
@@ -788,21 +802,13 @@ function TerminalPane({
     startToken
   ]);
 
-  useEffect(() => {
-    if (!pendingCommand) {
-      return;
-    }
-
-    void window.cnshell?.terminal.write(activeTab.id, `${pendingCommand.command}\r`);
-  }, [activeTab.id, pendingCommand]);
-
   const sendComposeValue = () => {
     const command = composeValue.trim();
     if (!command) {
       return;
     }
 
-    void window.cnshell?.terminal.write(activeTab.id, `${command}\r`);
+    onDispatchCommand(command);
     setComposeValue("");
   };
 

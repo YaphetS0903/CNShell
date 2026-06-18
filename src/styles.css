@@ -233,6 +233,12 @@ input:focus-visible {
   background: #1d2b36;
 }
 
+.topbar-actions button.active {
+  border-color: rgba(242, 204, 96, 0.55);
+  background: rgba(242, 204, 96, 0.12);
+  color: #ffec99;
+}
+
 .connection-tree {
   display: flex;
   flex: 1;
