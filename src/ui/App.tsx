@@ -28,7 +28,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
-import type { ConnectionProfile, SessionStatus, SessionTab } from "../domain/models";
+import type { ConnectionProfile, SessionStatus, SessionTab, TransferJob } from "../domain/models";
 import type { CredentialStatus, HostKeyVerificationEvent } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
@@ -49,6 +49,9 @@ export function App() {
   const [remotePath, setRemotePath] = useState("/var/www/cnshell");
   const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
   const [sftpError, setSftpError] = useState("");
+  const [transferLocalPath, setTransferLocalPath] = useState("");
+  const [transferRemotePath, setTransferRemotePath] = useState("");
+  const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -215,6 +218,57 @@ export function App() {
       });
   };
 
+  const startTransfer = (direction: "upload" | "download") => {
+    if (activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    const localPath = transferLocalPath.trim();
+    const remoteTransferPath = transferRemotePath.trim();
+    if (!localPath || !remoteTransferPath) {
+      return;
+    }
+
+    const jobId = `${direction}-${Date.now()}`;
+    const job: TransferJob = {
+      id: jobId,
+      direction,
+      localPath,
+      remotePath: remoteTransferPath,
+      status: "running"
+    };
+
+    setTransferJobs((current) => [job, ...current].slice(0, 8));
+
+    void window.cnshell?.sftp
+      .transferFile({
+        direction,
+        localPath,
+        remotePath: remoteTransferPath,
+        ssh: {
+          connectionId: activeConnection.id,
+          host: activeConnection.host,
+          port: activeConnection.port,
+          username: activeConnection.username,
+          password: activeSshDraft.password || undefined,
+          privateKey: activeSshDraft.privateKey || undefined,
+          passphrase: activeSshDraft.passphrase || undefined,
+          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
+        }
+      })
+      .then(() => {
+        setTransferJobs((current) =>
+          current.map((item) => (item.id === jobId ? { ...item, status: "completed", message: "Done" } : item))
+        );
+        refreshRemoteFiles();
+      })
+      .catch((error: Error) => {
+        setTransferJobs((current) =>
+          current.map((item) => (item.id === jobId ? { ...item, status: "error", message: error.message } : item))
+        );
+      });
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -313,8 +367,14 @@ export function App() {
               path={remotePath}
               status={sftpStatus}
               error={sftpError}
+              localPath={transferLocalPath}
+              transferRemotePath={transferRemotePath}
+              transferJobs={transferJobs}
               onPathChange={setRemotePath}
+              onLocalPathChange={setTransferLocalPath}
+              onTransferRemotePathChange={setTransferRemotePath}
               onRefresh={refreshRemoteFiles}
+              onTransfer={startTransfer}
             />
             <MetricsPanel metrics={snapshot.serverMetrics} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} />
@@ -762,15 +822,27 @@ function FilePanel({
   path,
   status,
   error,
+  localPath,
+  transferRemotePath,
+  transferJobs,
   onPathChange,
-  onRefresh
+  onLocalPathChange,
+  onTransferRemotePathChange,
+  onRefresh,
+  onTransfer
 }: {
   remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"];
   path: string;
   status: "idle" | "loading" | "error";
   error: string;
+  localPath: string;
+  transferRemotePath: string;
+  transferJobs: TransferJob[];
   onPathChange: (path: string) => void;
+  onLocalPathChange: (path: string) => void;
+  onTransferRemotePathChange: (path: string) => void;
   onRefresh: () => void;
+  onTransfer: (direction: "upload" | "download") => void;
 }) {
   return (
     <section className="panel-section file-panel" aria-label="Remote files">
@@ -793,6 +865,24 @@ function FilePanel({
           {error}
         </div>
       ) : null}
+      <div className="transfer-box">
+        <label>
+          <span>Local path</span>
+          <input value={localPath} onChange={(event) => onLocalPathChange(event.target.value)} />
+        </label>
+        <label>
+          <span>Remote path</span>
+          <input value={transferRemotePath} onChange={(event) => onTransferRemotePathChange(event.target.value)} />
+        </label>
+        <div className="transfer-actions">
+          <button type="button" onClick={() => onTransfer("upload")}>
+            Upload
+          </button>
+          <button type="button" onClick={() => onTransfer("download")}>
+            Download
+          </button>
+        </div>
+      </div>
       <div className="file-list">
         {remoteFiles.map((file) => (
           <button type="button" key={file.id} className="file-row">
@@ -807,6 +897,17 @@ function FilePanel({
           </button>
         ))}
       </div>
+      {transferJobs.length > 0 ? (
+        <div className="transfer-list">
+          {transferJobs.map((job) => (
+            <div key={job.id} className={`transfer-row ${job.status}`}>
+              <strong>{job.direction}</strong>
+              <span>{job.direction === "upload" ? job.localPath : job.remotePath}</span>
+              <small>{job.message ?? job.status}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </section>
   );
 }

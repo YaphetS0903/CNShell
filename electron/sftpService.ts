@@ -3,7 +3,12 @@ import { Client, type FileEntryWithStats } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { buildSshConnectConfig } from "./sshConnectionConfig.js";
-import type { ListRemoteDirectoryRequest, RemoteDirectoryListing } from "../src/shared/ipc.js";
+import type {
+  ListRemoteDirectoryRequest,
+  RemoteDirectoryListing,
+  TransferFileRequest,
+  TransferFileResult
+} from "../src/shared/ipc.js";
 import type { RemoteFileEntry } from "../src/domain/models.js";
 
 function toRemotePath(parent: string, filename: string) {
@@ -75,6 +80,52 @@ export class SftpService {
                   })
               });
             });
+          });
+        })
+        .on("error", reject)
+        .connect(
+          buildSshConnectConfig({
+            ssh: request.ssh,
+            credentialStore: this.credentialStore,
+            knownHostsStore: this.knownHostsStore,
+            onHostKeyVerification: (event) => {
+              reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
+            }
+          })
+        );
+    });
+  }
+
+  transferFile(request: TransferFileRequest): Promise<TransferFileResult> {
+    const client = new Client();
+
+    return new Promise((resolve, reject) => {
+      const closeClient = () => client.end();
+
+      client
+        .on("ready", () => {
+          client.sftp((sftpError, sftp) => {
+            if (sftpError) {
+              closeClient();
+              reject(sftpError);
+              return;
+            }
+
+            const done = (transferError: Error | null | undefined) => {
+              closeClient();
+              if (transferError) {
+                reject(transferError);
+                return;
+              }
+
+              resolve({ ok: true });
+            };
+
+            if (request.direction === "upload") {
+              sftp.fastPut(request.localPath, request.remotePath, done);
+            } else {
+              sftp.fastGet(request.remotePath, request.localPath, done);
+            }
           });
         })
         .on("error", reject)

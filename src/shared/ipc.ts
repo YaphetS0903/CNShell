@@ -90,6 +90,17 @@ export interface RemoteDirectoryListing {
   entries: RemoteFileEntry[];
 }
 
+export interface TransferFileRequest {
+  ssh: SshSessionConfig;
+  direction: "upload" | "download";
+  localPath: string;
+  remotePath: string;
+}
+
+export interface TransferFileResult {
+  ok: boolean;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -114,5 +125,6 @@ export interface CNshellApi {
   };
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;
+    transferFile: (request: TransferFileRequest) => Promise<TransferFileResult>;
   };
 }

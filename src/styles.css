@@ -586,6 +586,97 @@ input:focus-visible {
   color: #ffa8a8;
 }
 
+.transfer-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 12px 10px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: #0b131a;
+  padding: 10px;
+}
+
+.transfer-box label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: #aebdca;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.transfer-box input {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #071016;
+  color: var(--text);
+  padding: 0 9px;
+}
+
+.transfer-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.transfer-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.transfer-actions button:hover {
+  background: #172530;
+}
+
+.transfer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.transfer-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 6px 8px;
+}
+
+.transfer-row strong,
+.transfer-row small {
+  color: #aebdca;
+  font-size: 11px;
+  text-transform: capitalize;
+}
+
+.transfer-row span {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transfer-row.completed small {
+  color: #8ce99a;
+}
+
+.transfer-row.error small {
+  color: #ffa8a8;
+}
+
 .file-list,
 .quick-list {
   display: flex;

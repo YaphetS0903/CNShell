@@ -44,6 +44,19 @@ export interface RemoteFileEntry {
   mode: string;
 }
 
+export type TransferDirection = "upload" | "download";
+
+export type TransferStatus = "queued" | "running" | "completed" | "error";
+
+export interface TransferJob {
+  id: string;
+  direction: TransferDirection;
+  localPath: string;
+  remotePath: string;
+  status: TransferStatus;
+  message?: string;
+}
+
 export interface ServerMetric {
   label: string;
   value: number;

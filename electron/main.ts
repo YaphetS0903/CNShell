@@ -6,7 +6,12 @@ import { KnownHostsStore } from "./knownHostsStore.js";
 import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
 import { WorkspaceStore } from "./workspaceStore.js";
-import type { HostKeyVerificationEvent, ListRemoteDirectoryRequest, SaveCredentialRequest } from "../src/shared/ipc.js";
+import type {
+  HostKeyVerificationEvent,
+  ListRemoteDirectoryRequest,
+  SaveCredentialRequest,
+  TransferFileRequest
+} from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
 import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "./sessionTypes.js";
 
@@ -78,6 +83,7 @@ app.whenReady().then(() => {
   ipcMain.handle("sftp:list-directory", (_event, request: ListRemoteDirectoryRequest) =>
     sftpService?.listDirectory(request)
   );
+  ipcMain.handle("sftp:transfer-file", (_event, request: TransferFileRequest) => sftpService?.transferFile(request));
   createMainWindow();
 
   app.on("activate", () => {

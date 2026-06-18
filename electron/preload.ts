@@ -11,7 +11,9 @@ import type {
   TerminalErrorEvent,
   TerminalExitEvent,
   TerminalSessionResizeRequest,
-  TerminalSessionStarted
+  TerminalSessionStarted,
+  TransferFileRequest,
+  TransferFileResult
 } from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
 
@@ -61,7 +63,9 @@ const api = {
   },
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) =>
-      ipcRenderer.invoke("sftp:list-directory", request) as Promise<RemoteDirectoryListing>
+      ipcRenderer.invoke("sftp:list-directory", request) as Promise<RemoteDirectoryListing>,
+    transferFile: (request: TransferFileRequest) =>
+      ipcRenderer.invoke("sftp:transfer-file", request) as Promise<TransferFileResult>
   }
 } satisfies CNshellApi;
 
