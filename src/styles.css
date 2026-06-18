@@ -744,6 +744,80 @@ input:focus-visible {
   font-style: normal;
 }
 
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: start center;
+  z-index: 100;
+  background: rgba(2, 6, 10, 0.62);
+  padding-top: 96px;
+}
+
+.command-palette {
+  width: min(620px, calc(100vw - 48px));
+  overflow: hidden;
+  border: 1px solid #31414d;
+  border-radius: 8px;
+  background: #101820;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+}
+
+.palette-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  border-bottom: 1px solid var(--line);
+  color: #8d9dab;
+  padding: 0 14px;
+}
+
+.palette-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.palette-results {
+  max-height: 360px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.palette-results button {
+  display: flex;
+  width: 100%;
+  min-height: 54px;
+  flex-direction: column;
+  gap: 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.palette-results button:hover,
+.palette-results button:focus-visible {
+  background: #182630;
+}
+
+.palette-results small {
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--text-muted);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .poll-rate {
   color: var(--text-muted);
   font-size: 12px;

@@ -34,6 +34,11 @@ import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
 
+interface PendingCommand {
+  id: number;
+  command: string;
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
@@ -55,6 +60,9 @@ export function App() {
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -304,6 +312,15 @@ export function App() {
       });
   };
 
+  const executeCommand = (command: string) => {
+    setPendingCommand({
+      id: Date.now(),
+      command
+    });
+    setIsCommandPaletteOpen(false);
+    setCommandQuery("");
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -372,7 +389,12 @@ export function App() {
         }}
       />
       <section className="workspace" aria-label="CNshell workspace">
-        <TopBar activeConnection={activeConnection} status={activeTab.status} version={appVersion} />
+        <TopBar
+          activeConnection={activeConnection}
+          status={activeTab.status}
+          version={appVersion}
+          onOpenCommandPalette={() => setIsCommandPaletteOpen(true)}
+        />
         <TabStrip tabs={sessionTabsWithStatus} activeTabId={activeTabId} onSelect={setActiveTabId} />
         <section className="workspace-grid">
           <TerminalPane
@@ -381,6 +403,7 @@ export function App() {
             sshDraft={activeSshDraft}
             useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
+            pendingCommand={pendingCommand}
             onStatusChange={setSessionStatus}
           />
           <aside className="ops-panel" aria-label="Operations panels">
@@ -413,10 +436,19 @@ export function App() {
               onTransfer={startTransfer}
             />
             <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
-            <QuickCommandPanel quickCommands={snapshot.quickCommands} />
+            <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
           </aside>
         </section>
       </section>
+      {isCommandPaletteOpen ? (
+        <CommandPalette
+          commands={snapshot.quickCommands}
+          query={commandQuery}
+          onQueryChange={setCommandQuery}
+          onExecute={executeCommand}
+          onClose={() => setIsCommandPaletteOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }
@@ -503,11 +535,13 @@ function ProtocolIcon({ protocol }: { protocol: ConnectionProfile["protocol"] })
 function TopBar({
   activeConnection,
   status,
-  version
+  version,
+  onOpenCommandPalette
 }: {
   activeConnection: ConnectionProfile;
   status: SessionStatus;
   version: string;
+  onOpenCommandPalette: () => void;
 }) {
   return (
     <header className="topbar">
@@ -524,7 +558,7 @@ function TopBar({
         </div>
       </div>
       <div className="topbar-actions">
-        <button type="button" aria-label="Open command palette">
+        <button type="button" aria-label="Open command palette" onClick={onOpenCommandPalette}>
           <Command size={17} aria-hidden="true" />
         </button>
         <button type="button" aria-label="Open tunneling manager">
@@ -577,6 +611,7 @@ function TerminalPane({
   sshDraft,
   useSavedCredential,
   startToken,
+  pendingCommand,
   onStatusChange
 }: {
   activeConnection: ConnectionProfile;
@@ -584,8 +619,11 @@ function TerminalPane({
   sshDraft: { password: string; privateKey: string; passphrase: string };
   useSavedCredential: boolean;
   startToken: number;
+  pendingCommand: PendingCommand | null;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
 }) {
+  const [composeValue, setComposeValue] = useState("");
+
   useEffect(() => {
     const host = activeConnection.host;
     const terminalHost = document.getElementById("terminal-host");
@@ -711,6 +749,24 @@ function TerminalPane({
     startToken
   ]);
 
+  useEffect(() => {
+    if (!pendingCommand) {
+      return;
+    }
+
+    void window.cnshell?.terminal.write(activeTab.id, `${pendingCommand.command}\r`);
+  }, [activeTab.id, pendingCommand]);
+
+  const sendComposeValue = () => {
+    const command = composeValue.trim();
+    if (!command) {
+      return;
+    }
+
+    void window.cnshell?.terminal.write(activeTab.id, `${command}\r`);
+    setComposeValue("");
+  };
+
   return (
     <section className="terminal-workbench" aria-label="Terminal workbench">
       <div className="terminal-toolbar">
@@ -738,8 +794,19 @@ function TerminalPane({
           <Code2 size={16} aria-hidden="true" />
           <span>Compose Pane</span>
         </div>
-        <input placeholder="Draft a command before sending to one or many sessions" />
-        <button type="button">Send</button>
+        <input
+          value={composeValue}
+          placeholder="Draft a command before sending to one or many sessions"
+          onChange={(event) => setComposeValue(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              sendComposeValue();
+            }
+          }}
+        />
+        <button type="button" onClick={sendComposeValue}>
+          Send
+        </button>
       </div>
     </section>
   );
@@ -995,9 +1062,11 @@ function MetricsPanel({
 }
 
 function QuickCommandPanel({
-  quickCommands
+  quickCommands,
+  onExecute
 }: {
   quickCommands: ReturnType<typeof createInitialAppSnapshot>["quickCommands"];
+  onExecute: (command: string) => void;
 }) {
   return (
     <section className="panel-section" aria-label="Quick commands">
@@ -1012,7 +1081,7 @@ function QuickCommandPanel({
       </div>
       <div className="quick-list">
         {quickCommands.map((command) => (
-          <button type="button" key={command.id} className="quick-command">
+          <button type="button" key={command.id} className="quick-command" onClick={() => onExecute(command.command)}>
             <span>
               <strong>{command.title}</strong>
               <small>{command.command}</small>
@@ -1022,5 +1091,58 @@ function QuickCommandPanel({
         ))}
       </div>
     </section>
+  );
+}
+
+function CommandPalette({
+  commands,
+  query,
+  onQueryChange,
+  onExecute,
+  onClose
+}: {
+  commands: ReturnType<typeof createInitialAppSnapshot>["quickCommands"];
+  query: string;
+  onQueryChange: (query: string) => void;
+  onExecute: (command: string) => void;
+  onClose: () => void;
+}) {
+  const filteredCommands = commands.filter((command) => {
+    const haystack = `${command.title} ${command.command}`.toLowerCase();
+    return haystack.includes(query.toLowerCase());
+  });
+
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="command-palette"
+        role="dialog"
+        aria-label="Command palette"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <label className="palette-search">
+          <Search size={17} aria-hidden="true" />
+          <input
+            autoFocus
+            value={query}
+            placeholder="Search quick commands"
+            onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                onClose();
+              }
+            }}
+          />
+        </label>
+        <div className="palette-results">
+          {filteredCommands.map((command) => (
+            <button type="button" key={command.id} onClick={() => onExecute(command.command)}>
+              <strong>{command.title}</strong>
+              <small>{command.command}</small>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }
