@@ -1289,6 +1289,42 @@ textarea:focus-visible {
   border-color: rgba(255, 135, 135, 0.34);
 }
 
+.cloud-sync-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.cloud-sync-state {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  color: #aebdca;
+  font-size: 11px;
+  line-height: 1.45;
+  padding: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cloud-sync-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.cloud-sync-actions button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-weight: 800;
+}
+
 .file-row:hover,
 .quick-command:hover {
   background: rgba(255, 255, 255, 0.04);

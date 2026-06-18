@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { CloudSyncService } from "./cloudSyncService.js";
 import { CredentialStore } from "./credentialStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
 import { MetricsService } from "./metricsService.js";
@@ -13,6 +14,7 @@ import { WorkspaceStore } from "./workspaceStore.js";
 import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
+  ExportCloudSyncRequest,
   KillProcessRequest,
   ListRemoteDirectoryRequest,
   ListProcessesRequest,
@@ -37,6 +39,7 @@ let sftpService: SftpService | null = null;
 let metricsService: MetricsService | null = null;
 let sessionLogStore: SessionLogStore | null = null;
 let tunnelManager: TunnelManager | null = null;
+let cloudSyncService: CloudSyncService | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -73,6 +76,7 @@ app.whenReady().then(() => {
   metricsService = new MetricsService(knownHostsStore, credentialStore);
   sessionLogStore = new SessionLogStore(app.getPath("userData"));
   tunnelManager = new TunnelManager(knownHostsStore, credentialStore);
+  cloudSyncService = new CloudSyncService();
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {
@@ -127,6 +131,10 @@ app.whenReady().then(() => {
     child.unref();
     return { ok: true };
   });
+  ipcMain.handle("cloud-sync:export", (_event, request: ExportCloudSyncRequest) =>
+    cloudSyncService?.exportSettings(request)
+  );
+  ipcMain.handle("cloud-sync:import", () => cloudSyncService?.importSettings());
   createMainWindow();
 
   app.on("activate", () => {

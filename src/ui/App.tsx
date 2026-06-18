@@ -330,6 +330,7 @@ export function App() {
   const [logQuery, setLogQuery] = useState("");
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logStatus, setLogStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [cloudSyncStatus, setCloudSyncStatus] = useState("Ready");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -502,6 +503,42 @@ export function App() {
         setLogStatus("error");
       });
   }, [activeTab.id, logQuery]);
+
+  const exportCloudSyncSettings = () => {
+    setCloudSyncStatus("Exporting encrypted settings");
+    void window.cnshell?.cloudSync
+      .exportSettings({ snapshot })
+      .then((result) => {
+        setCloudSyncStatus(result.ok ? `Exported ${result.path ?? ""}` : "Export canceled");
+      })
+      .catch((error: Error) => {
+        setCloudSyncStatus(error.message);
+      });
+  };
+
+  const importCloudSyncSettings = () => {
+    setCloudSyncStatus("Importing encrypted settings");
+    void window.cnshell?.cloudSync
+      .importSettings()
+      .then((result) => {
+        if (!result.ok || !result.importedSnapshot) {
+          setCloudSyncStatus("Import canceled");
+          return;
+        }
+
+        const importedSnapshot = hydrateAppSnapshot(result.importedSnapshot);
+        setSnapshot(importedSnapshot);
+        setRemoteFileEntries(importedSnapshot.remoteFiles);
+        setLiveMetrics(importedSnapshot.serverMetrics);
+        setRemoteProcesses(importedSnapshot.remoteProcesses);
+        setActiveConnectionId(importedSnapshot.connections[0]?.id ?? "");
+        setActiveTabId(importedSnapshot.sessions[0]?.id ?? "");
+        setCloudSyncStatus(`Imported ${result.path ?? ""}`);
+      })
+      .catch((error: Error) => {
+        setCloudSyncStatus(error.message);
+      });
+  };
 
   const startActiveSession = () => {
     setSessionStartTokens((current) => ({
@@ -1134,6 +1171,11 @@ export function App() {
             />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
+            <CloudSyncPanel
+              status={cloudSyncStatus}
+              onExport={exportCloudSyncSettings}
+              onImport={importCloudSyncSettings}
+            />
           </aside>
         </section>
       </section>
@@ -2575,6 +2617,38 @@ function LogViewerPanel({
               <pre key={`${index}-${line.slice(0, 16)}`}>{line || " "}</pre>
             ))
           )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CloudSyncPanel({
+  status,
+  onExport,
+  onImport
+}: {
+  status: string;
+  onExport: () => void;
+  onImport: () => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="Cloud sync">
+      <div className="panel-heading">
+        <div>
+          <ShieldCheck size={16} aria-hidden="true" />
+          <h2>Cloud Sync</h2>
+        </div>
+      </div>
+      <div className="cloud-sync-panel">
+        <div className="cloud-sync-state">{status}</div>
+        <div className="cloud-sync-actions">
+          <button type="button" onClick={onExport}>
+            Export
+          </button>
+          <button type="button" onClick={onImport}>
+            Import
+          </button>
         </div>
       </div>
     </section>

@@ -191,6 +191,16 @@ export interface OpenRdpResult {
   ok: boolean;
 }
 
+export interface ExportCloudSyncRequest {
+  snapshot: AppSnapshot;
+}
+
+export interface CloudSyncResult {
+  ok: boolean;
+  path?: string;
+  importedSnapshot?: AppSnapshot;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -233,5 +243,9 @@ export interface CNshellApi {
   };
   rdp: {
     open: (request: OpenRdpRequest) => Promise<OpenRdpResult>;
+  };
+  cloudSync: {
+    exportSettings: (request: ExportCloudSyncRequest) => Promise<CloudSyncResult>;
+    importSettings: () => Promise<CloudSyncResult>;
   };
 }

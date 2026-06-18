@@ -55,7 +55,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Disk/network/process monitoring charts.~~
 - [x] ~~ZMODEM upload/download.~~
 - [x] ~~Windows RDP connection entries.~~
-- [ ] Cloud sync for encrypted settings.
+- [x] ~~Cloud sync for encrypted settings.~~
 - [ ] CN Relay service for acceleration and intranet tunneling.
 
 ## Security Milestones
@@ -118,4 +118,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement disk/network/process monitoring charts.~~
 - [x] ~~Implement ZMODEM upload/download controls.~~
 - [x] ~~Implement Windows RDP connection entries.~~
+- [x] ~~Implement cloud sync import/export for encrypted settings.~~
 - [ ] Add optional master password vault mode.

@@ -1,9 +1,11 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
+  CloudSyncResult,
   CollectMetricsRequest,
   CollectMetricsResult,
   CredentialStatus,
+  ExportCloudSyncRequest,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
   KillProcessRequest,
@@ -105,6 +107,11 @@ const api = {
   },
   rdp: {
     open: (request: OpenRdpRequest) => ipcRenderer.invoke("rdp:open", request) as Promise<OpenRdpResult>
+  },
+  cloudSync: {
+    exportSettings: (request: ExportCloudSyncRequest) =>
+      ipcRenderer.invoke("cloud-sync:export", request) as Promise<CloudSyncResult>,
+    importSettings: () => ipcRenderer.invoke("cloud-sync:import") as Promise<CloudSyncResult>
   }
 } satisfies CNshellApi;
 
