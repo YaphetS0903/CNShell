@@ -8,6 +8,8 @@ import type {
   HostKeyVerificationEvent,
   ListRemoteDirectoryRequest,
   RemoteDirectoryListing,
+  ReadRemoteFileRequest,
+  ReadRemoteFileResult,
   ReadSessionLogRequest,
   ReadSessionLogResult,
   StartTerminalSessionRequest,
@@ -19,7 +21,9 @@ import type {
   StartTunnelRequest,
   TunnelInfo,
   TransferFileRequest,
-  TransferFileResult
+  TransferFileResult,
+  WriteRemoteFileRequest,
+  WriteRemoteFileResult
 } from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
 
@@ -71,7 +75,11 @@ const api = {
     listDirectory: (request: ListRemoteDirectoryRequest) =>
       ipcRenderer.invoke("sftp:list-directory", request) as Promise<RemoteDirectoryListing>,
     transferFile: (request: TransferFileRequest) =>
-      ipcRenderer.invoke("sftp:transfer-file", request) as Promise<TransferFileResult>
+      ipcRenderer.invoke("sftp:transfer-file", request) as Promise<TransferFileResult>,
+    readFile: (request: ReadRemoteFileRequest) =>
+      ipcRenderer.invoke("sftp:read-file", request) as Promise<ReadRemoteFileResult>,
+    writeFile: (request: WriteRemoteFileRequest) =>
+      ipcRenderer.invoke("sftp:write-file", request) as Promise<WriteRemoteFileResult>
   },
   metrics: {
     collect: (request: CollectMetricsRequest) =>

@@ -102,6 +102,26 @@ export interface TransferFileResult {
   ok: boolean;
 }
 
+export interface ReadRemoteFileRequest {
+  ssh: SshSessionConfig;
+  remotePath: string;
+}
+
+export interface ReadRemoteFileResult {
+  remotePath: string;
+  content: string;
+}
+
+export interface WriteRemoteFileRequest {
+  ssh: SshSessionConfig;
+  remotePath: string;
+  content: string;
+}
+
+export interface WriteRemoteFileResult {
+  ok: boolean;
+}
+
 export interface CollectMetricsRequest {
   ssh: SshSessionConfig;
 }
@@ -168,6 +188,8 @@ export interface CNshellApi {
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;
     transferFile: (request: TransferFileRequest) => Promise<TransferFileResult>;
+    readFile: (request: ReadRemoteFileRequest) => Promise<ReadRemoteFileResult>;
+    writeFile: (request: WriteRemoteFileRequest) => Promise<WriteRemoteFileResult>;
   };
   metrics: {
     collect: (request: CollectMetricsRequest) => Promise<CollectMetricsResult>;

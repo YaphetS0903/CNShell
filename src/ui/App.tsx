@@ -267,6 +267,10 @@ export function App() {
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
+  const [editorPath, setEditorPath] = useState("");
+  const [editorContent, setEditorContent] = useState("");
+  const [editorStatus, setEditorStatus] = useState<"idle" | "loading" | "saving" | "error" | "saved">("idle");
+  const [editorError, setEditorError] = useState("");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
@@ -604,6 +608,55 @@ export function App() {
       });
   };
 
+  const openRemoteFile = (remoteFilePath: string) => {
+    if (activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    setEditorPath(remoteFilePath);
+    setEditorStatus("loading");
+    setEditorError("");
+
+    void window.cnshell?.sftp
+      .readFile({
+        remotePath: remoteFilePath,
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then((result) => {
+        setEditorPath(result.remotePath);
+        setEditorContent(result.content);
+        setEditorStatus("idle");
+      })
+      .catch((error: Error) => {
+        setEditorError(error.message);
+        setEditorStatus("error");
+      });
+  };
+
+  const saveRemoteFile = () => {
+    if (activeConnection.protocol !== "ssh" || !editorPath) {
+      return;
+    }
+
+    setEditorStatus("saving");
+    setEditorError("");
+
+    void window.cnshell?.sftp
+      .writeFile({
+        remotePath: editorPath,
+        content: editorContent,
+        ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
+      })
+      .then(() => {
+        setEditorStatus("saved");
+        refreshRemoteFiles();
+      })
+      .catch((error: Error) => {
+        setEditorError(error.message);
+        setEditorStatus("error");
+      });
+  };
+
   const refreshMetrics = () => {
     if (activeConnection.protocol !== "ssh") {
       setLiveMetrics(snapshot.serverMetrics);
@@ -865,6 +918,15 @@ export function App() {
               onTransferRemotePathChange={setTransferRemotePath}
               onRefresh={refreshRemoteFiles}
               onTransfer={startTransfer}
+              onOpenFile={openRemoteFile}
+            />
+            <RemoteEditorPanel
+              path={editorPath}
+              content={editorContent}
+              status={editorStatus}
+              error={editorError}
+              onContentChange={setEditorContent}
+              onSave={saveRemoteFile}
             />
             <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
             <TunnelPanel
@@ -1590,7 +1652,8 @@ function FilePanel({
   onLocalPathChange,
   onTransferRemotePathChange,
   onRefresh,
-  onTransfer
+  onTransfer,
+  onOpenFile
 }: {
   remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"];
   path: string;
@@ -1604,6 +1667,7 @@ function FilePanel({
   onTransferRemotePathChange: (path: string) => void;
   onRefresh: () => void;
   onTransfer: (direction: "upload" | "download") => void;
+  onOpenFile: (path: string) => void;
 }) {
   return (
     <section className="panel-section file-panel" aria-label="Remote files">
@@ -1649,7 +1713,19 @@ function FilePanel({
       </div>
       <div className="file-list">
         {remoteFiles.map((file) => (
-          <button type="button" key={file.id} className="file-row">
+          <button
+            type="button"
+            key={file.id}
+            className="file-row"
+            onClick={() => {
+              if (file.type === "directory") {
+                onPathChange(file.path);
+                return;
+              }
+
+              onOpenFile(file.path);
+            }}
+          >
             <Folder size={16} aria-hidden="true" />
             <span>
               <strong>{file.name}</strong>
@@ -1672,6 +1748,48 @@ function FilePanel({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function RemoteEditorPanel({
+  path,
+  content,
+  status,
+  error,
+  onContentChange,
+  onSave
+}: {
+  path: string;
+  content: string;
+  status: "idle" | "loading" | "saving" | "error" | "saved";
+  error: string;
+  onContentChange: (content: string) => void;
+  onSave: () => void;
+}) {
+  return (
+    <section className="panel-section remote-editor" aria-label="Remote file editor">
+      <div className="panel-heading">
+        <div>
+          <Code2 size={16} aria-hidden="true" />
+          <h2>Editor</h2>
+        </div>
+        <button type="button" disabled={!path || status === "loading" || status === "saving"} onClick={onSave}>
+          Save
+        </button>
+      </div>
+      <div className="remote-editor-body">
+        <div className={`editor-status ${status}`}>
+          <span>{path || "No file selected"}</span>
+          <small>{error || status}</small>
+        </div>
+        <textarea
+          value={content}
+          placeholder="Select a remote file from SFTP"
+          disabled={!path || status === "loading"}
+          onChange={(event) => onContentChange(event.target.value)}
+        />
+      </div>
     </section>
   );
 }

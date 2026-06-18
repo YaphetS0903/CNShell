@@ -813,6 +813,69 @@ textarea:focus-visible {
   grid-template-columns: 18px 1fr auto;
 }
 
+.remote-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.remote-editor .panel-heading button {
+  width: auto;
+  padding: 0 10px;
+}
+
+.editor-status {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 0 9px;
+}
+
+.editor-status span {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-status small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.editor-status.error small {
+  color: #ffa8a8;
+}
+
+.editor-status.saved small {
+  color: #8ce99a;
+}
+
+.remote-editor textarea {
+  min-height: 180px;
+  max-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #071016;
+  color: var(--text);
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+  resize: vertical;
+}
+
+.remote-editor textarea:disabled {
+  color: #657381;
+}
+
 .quick-command {
   grid-template-columns: 1fr 18px;
 }

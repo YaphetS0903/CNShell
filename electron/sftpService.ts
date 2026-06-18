@@ -1,13 +1,17 @@
 import path from "node:path";
-import { Client, type FileEntryWithStats } from "ssh2";
+import { Client, type FileEntryWithStats, type SFTPWrapper } from "ssh2";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { connectSshClient } from "./sshConnectionConfig.js";
 import type {
   ListRemoteDirectoryRequest,
+  ReadRemoteFileRequest,
+  ReadRemoteFileResult,
   RemoteDirectoryListing,
   TransferFileRequest,
-  TransferFileResult
+  TransferFileResult,
+  WriteRemoteFileRequest,
+  WriteRemoteFileResult
 } from "../src/shared/ipc.js";
 import type { RemoteFileEntry } from "../src/domain/models.js";
 
@@ -44,66 +48,98 @@ export class SftpService {
   ) {}
 
   listDirectory(request: ListRemoteDirectoryRequest): Promise<RemoteDirectoryListing> {
-    const client = new Client();
     const directoryPath = path.posix.normalize(request.path || "/");
 
-    return new Promise((resolve, reject) => {
-      let gateways: Client[] = [];
-      const closeClient = () => {
-        client.end();
-        for (const gateway of gateways) {
-          gateway.end();
-        }
-      };
+    return this.withSftp(request.ssh, (sftp) =>
+      new Promise((resolve, reject) => {
+        sftp.readdir(directoryPath, (readError, entries) => {
+          if (readError) {
+            reject(readError);
+            return;
+          }
 
-      connectSshClient(client, {
-        ssh: request.ssh,
-        credentialStore: this.credentialStore,
-        knownHostsStore: this.knownHostsStore,
-        onHostKeyVerification: (event) => {
-          reject(new Error(`Host key verification required for ${event.host}:${event.port} (${event.fingerprint}).`));
-        }
-      })
-        .then((connected) => {
-          gateways = connected.gateways;
-          client.sftp((sftpError, sftp) => {
-            if (sftpError) {
-              closeClient();
-              reject(sftpError);
-              return;
-            }
+          resolve({
+            path: directoryPath,
+            entries: entries
+              .filter((entry) => entry.filename !== "." && entry.filename !== "..")
+              .map((entry) => toRemoteFileEntry(directoryPath, entry))
+              .sort((a, b) => {
+                if (a.type !== b.type) {
+                  return a.type === "directory" ? -1 : 1;
+                }
 
-            sftp.readdir(directoryPath, (readError, entries) => {
-              closeClient();
-              if (readError) {
-                reject(readError);
-                return;
-              }
-
-              resolve({
-                path: directoryPath,
-                entries: entries
-                  .filter((entry) => entry.filename !== "." && entry.filename !== "..")
-                  .map((entry) => toRemoteFileEntry(directoryPath, entry))
-                  .sort((a, b) => {
-                    if (a.type !== b.type) {
-                      return a.type === "directory" ? -1 : 1;
-                    }
-
-                    return a.name.localeCompare(b.name);
-                  })
-              });
-            });
+                return a.name.localeCompare(b.name);
+              })
           });
-        })
-        .catch(reject);
-    });
+        });
+      })
+    );
   }
 
   transferFile(request: TransferFileRequest): Promise<TransferFileResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          const done = (transferError: Error | null | undefined) => {
+            if (transferError) {
+              reject(transferError);
+              return;
+            }
+
+            resolve({ ok: true });
+          };
+
+          if (request.direction === "upload") {
+            sftp.fastPut(request.localPath, request.remotePath, done);
+          } else {
+            sftp.fastGet(request.remotePath, request.localPath, done);
+          }
+        })
+    );
+  }
+
+  readFile(request: ReadRemoteFileRequest): Promise<ReadRemoteFileResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.readFile(request.remotePath, "utf8", (error, content) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve({
+              remotePath: request.remotePath,
+              content: content.toString()
+            });
+          });
+        })
+    );
+  }
+
+  writeFile(request: WriteRemoteFileRequest): Promise<WriteRemoteFileResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.writeFile(request.remotePath, request.content, "utf8", (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve({ ok: true });
+          });
+        })
+    );
+  }
+
+  private withSftp<T>(ssh: TransferFileRequest["ssh"], action: (sftp: SFTPWrapper) => Promise<T>) {
     const client = new Client();
 
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       let gateways: Client[] = [];
       const closeClient = () => {
         client.end();
@@ -113,7 +149,7 @@ export class SftpService {
       };
 
       connectSshClient(client, {
-        ssh: request.ssh,
+        ssh,
         credentialStore: this.credentialStore,
         knownHostsStore: this.knownHostsStore,
         onHostKeyVerification: (event) => {
@@ -129,21 +165,7 @@ export class SftpService {
               return;
             }
 
-            const done = (transferError: Error | null | undefined) => {
-              closeClient();
-              if (transferError) {
-                reject(transferError);
-                return;
-              }
-
-              resolve({ ok: true });
-            };
-
-            if (request.direction === "upload") {
-              sftp.fastPut(request.localPath, request.remotePath, done);
-            } else {
-              sftp.fastGet(request.remotePath, request.localPath, done);
-            }
+            action(sftp).then(resolve).catch(reject).finally(closeClient);
           });
         })
         .catch(reject);

@@ -13,10 +13,12 @@ import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
   ListRemoteDirectoryRequest,
+  ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
   StartTunnelRequest,
-  TransferFileRequest
+  TransferFileRequest,
+  WriteRemoteFileRequest
 } from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
 import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "./sessionTypes.js";
@@ -96,6 +98,8 @@ app.whenReady().then(() => {
     sftpService?.listDirectory(request)
   );
   ipcMain.handle("sftp:transfer-file", (_event, request: TransferFileRequest) => sftpService?.transferFile(request));
+  ipcMain.handle("sftp:read-file", (_event, request: ReadRemoteFileRequest) => sftpService?.readFile(request));
+  ipcMain.handle("sftp:write-file", (_event, request: WriteRemoteFileRequest) => sftpService?.writeFile(request));
   ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
   ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
   ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
