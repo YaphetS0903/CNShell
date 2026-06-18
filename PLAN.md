@@ -64,7 +64,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~System-protected encrypted credential storage for secrets.~~
 - [x] ~~Master password option.~~
 - [x] ~~Private key import with passphrase support.~~
-- [ ] IPC input validation.
+- [x] ~~IPC input validation.~~
 - [ ] Audit logging with secret redaction.
 - [ ] Bulk command confirmation.
 
@@ -122,4 +122,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement CN Relay service for acceleration and intranet tunneling.~~
 - [x] ~~Add optional master password vault mode.~~
 - [x] ~~Add private key import with passphrase support.~~
-- [ ] Add IPC input validation.
+- [x] ~~Add IPC input validation.~~
+- [ ] Add audit logging with secret redaction.

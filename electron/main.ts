@@ -12,27 +12,31 @@ import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
 import { TunnelManager } from "./tunnelManager.js";
 import { WorkspaceStore } from "./workspaceStore.js";
-import type {
-  HostKeyVerificationEvent,
-  CollectMetricsRequest,
-  ExportCloudSyncRequest,
-  DisableCredentialVaultRequest,
-  EnableCredentialVaultRequest,
-  KillProcessRequest,
-  ListRemoteDirectoryRequest,
-  ListProcessesRequest,
-  OpenRdpRequest,
-  ReadRemoteFileRequest,
-  ReadSessionLogRequest,
-  SaveCredentialRequest,
-  StartRelayRequest,
-  StartTunnelRequest,
-  TransferFileRequest,
-  UnlockCredentialVaultRequest,
-  WriteRemoteFileRequest
-} from "../src/shared/ipc.js";
-import type { AppSnapshot } from "../src/domain/models.js";
-import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "./sessionTypes.js";
+import {
+  validateAppSnapshot,
+  validateCollectMetrics,
+  validateConnectionId,
+  validateDisableVault,
+  validateEnableVault,
+  validateExportCloudSync,
+  validateHostKeyVerification,
+  validateIpcId,
+  validateKillProcess,
+  validateListProcesses,
+  validateListRemoteDirectory,
+  validateOpenRdp,
+  validateReadRemoteFile,
+  validateReadSessionLog,
+  validateSaveCredential,
+  validateStartRelay,
+  validateStartTerminalSession,
+  validateStartTunnel,
+  validateTerminalResize,
+  validateTerminalWrite,
+  validateTransferFile,
+  validateUnlockVault,
+  validateWriteRemoteFile
+} from "./ipcValidation.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
@@ -113,60 +117,79 @@ app.whenReady().then(() => {
   cloudSyncService = new CloudSyncService();
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
-  ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {
-    workspaceStore?.save(snapshot);
+  ipcMain.handle("workspace:save", (_event, snapshot: unknown) => {
+    workspaceStore?.save(validateAppSnapshot(snapshot));
     return true;
   });
-  ipcMain.handle("terminal:start", (_event, request: StartTerminalSessionRequest) => {
+  ipcMain.handle("terminal:start", (_event, payload: unknown) => {
+    const request = validateStartTerminalSession(payload);
     if (request.kind === "ssh") {
       return terminalSessionManager?.startSshSession(request);
     }
 
     return terminalSessionManager?.startLocalSession(request);
   });
-  ipcMain.handle("terminal:write", (_event, id: string, data: string) => terminalSessionManager?.writeToSession(id, data));
-  ipcMain.handle("terminal:resize", (_event, request: TerminalSessionResizeRequest) =>
-    terminalSessionManager?.resizeSession(request)
+  ipcMain.handle("terminal:write", (_event, id: unknown, data: unknown) => {
+    const request = validateTerminalWrite(id, data);
+    return terminalSessionManager?.writeToSession(request.id, request.data);
+  });
+  ipcMain.handle("terminal:resize", (_event, payload: unknown) =>
+    terminalSessionManager?.resizeSession(validateTerminalResize(payload))
   );
-  ipcMain.handle("terminal:stop", (_event, id: string) => terminalSessionManager?.stopSession(id));
-  ipcMain.handle("terminal:trust-host", (_event, event: HostKeyVerificationEvent) => {
+  ipcMain.handle("terminal:stop", (_event, id: unknown) => terminalSessionManager?.stopSession(validateIpcId(id)));
+  ipcMain.handle("terminal:trust-host", (_event, payload: unknown) => {
+    const event = validateHostKeyVerification(payload);
     knownHostsStore?.trustHost(event.host, event.port, event.fingerprint, event.keyBase64);
     return true;
   });
-  ipcMain.handle("credentials:status", (_event, connectionId: string) => credentialStore?.getStatus(connectionId));
-  ipcMain.handle("credentials:save", (_event, request: SaveCredentialRequest) => credentialStore?.save(request));
-  ipcMain.handle("credentials:delete", (_event, connectionId: string) => credentialStore?.delete(connectionId));
+  ipcMain.handle("credentials:status", (_event, connectionId: unknown) =>
+    credentialStore?.getStatus(validateConnectionId(connectionId))
+  );
+  ipcMain.handle("credentials:save", (_event, payload: unknown) => credentialStore?.save(validateSaveCredential(payload)));
+  ipcMain.handle("credentials:delete", (_event, connectionId: unknown) =>
+    credentialStore?.delete(validateConnectionId(connectionId))
+  );
   ipcMain.handle("credentials:vault-status", () => credentialStore?.getVaultStatus());
-  ipcMain.handle("credentials:enable-vault", (_event, request: EnableCredentialVaultRequest) =>
-    credentialStore?.enableVault(request)
+  ipcMain.handle("credentials:enable-vault", (_event, payload: unknown) =>
+    credentialStore?.enableVault(validateEnableVault(payload))
   );
-  ipcMain.handle("credentials:unlock-vault", (_event, request: UnlockCredentialVaultRequest) =>
-    credentialStore?.unlockVault(request)
+  ipcMain.handle("credentials:unlock-vault", (_event, payload: unknown) =>
+    credentialStore?.unlockVault(validateUnlockVault(payload))
   );
-  ipcMain.handle("credentials:disable-vault", (_event, request: DisableCredentialVaultRequest) =>
-    credentialStore?.disableVault(request)
+  ipcMain.handle("credentials:disable-vault", (_event, payload: unknown) =>
+    credentialStore?.disableVault(validateDisableVault(payload))
   );
   ipcMain.handle("credentials:lock-vault", () => credentialStore?.lockVault());
   ipcMain.handle("credentials:import-private-key", () => importPrivateKeyFile());
-  ipcMain.handle("sftp:list-directory", (_event, request: ListRemoteDirectoryRequest) =>
-    sftpService?.listDirectory(request)
+  ipcMain.handle("sftp:list-directory", (_event, payload: unknown) =>
+    sftpService?.listDirectory(validateListRemoteDirectory(payload))
   );
-  ipcMain.handle("sftp:transfer-file", (_event, request: TransferFileRequest) => sftpService?.transferFile(request));
-  ipcMain.handle("sftp:read-file", (_event, request: ReadRemoteFileRequest) => sftpService?.readFile(request));
-  ipcMain.handle("sftp:write-file", (_event, request: WriteRemoteFileRequest) => sftpService?.writeFile(request));
-  ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
-  ipcMain.handle("metrics:list-processes", (_event, request: ListProcessesRequest) =>
-    metricsService?.listProcesses(request)
+  ipcMain.handle("sftp:transfer-file", (_event, payload: unknown) =>
+    sftpService?.transferFile(validateTransferFile(payload))
   );
-  ipcMain.handle("metrics:kill-process", (_event, request: KillProcessRequest) => metricsService?.killProcess(request));
-  ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
-  ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
-  ipcMain.handle("relay:start", (_event, request: StartRelayRequest) => tunnelManager?.startRelay(request));
-  ipcMain.handle("relay:stop", (_event, id: string) => tunnelManager?.stop(id));
-  ipcMain.handle("logs:read-session", (_event, request: ReadSessionLogRequest) => ({
-    lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
-  }));
-  ipcMain.handle("rdp:open", (_event, request: OpenRdpRequest) => {
+  ipcMain.handle("sftp:read-file", (_event, payload: unknown) => sftpService?.readFile(validateReadRemoteFile(payload)));
+  ipcMain.handle("sftp:write-file", (_event, payload: unknown) =>
+    sftpService?.writeFile(validateWriteRemoteFile(payload))
+  );
+  ipcMain.handle("metrics:collect", (_event, payload: unknown) => metricsService?.collect(validateCollectMetrics(payload)));
+  ipcMain.handle("metrics:list-processes", (_event, payload: unknown) =>
+    metricsService?.listProcesses(validateListProcesses(payload))
+  );
+  ipcMain.handle("metrics:kill-process", (_event, payload: unknown) =>
+    metricsService?.killProcess(validateKillProcess(payload))
+  );
+  ipcMain.handle("tunnels:start", (_event, payload: unknown) => tunnelManager?.start(validateStartTunnel(payload)));
+  ipcMain.handle("tunnels:stop", (_event, id: unknown) => tunnelManager?.stop(validateIpcId(id)));
+  ipcMain.handle("relay:start", (_event, payload: unknown) => tunnelManager?.startRelay(validateStartRelay(payload)));
+  ipcMain.handle("relay:stop", (_event, id: unknown) => tunnelManager?.stop(validateIpcId(id)));
+  ipcMain.handle("logs:read-session", (_event, payload: unknown) => {
+    const request = validateReadSessionLog(payload);
+    return {
+      lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
+    };
+  });
+  ipcMain.handle("rdp:open", (_event, payload: unknown) => {
+    const request = validateOpenRdp(payload);
     if (process.platform !== "win32") {
       throw new Error("RDP launch is only available on Windows.");
     }
@@ -179,8 +202,8 @@ app.whenReady().then(() => {
     child.unref();
     return { ok: true };
   });
-  ipcMain.handle("cloud-sync:export", (_event, request: ExportCloudSyncRequest) =>
-    cloudSyncService?.exportSettings(request)
+  ipcMain.handle("cloud-sync:export", (_event, payload: unknown) =>
+    cloudSyncService?.exportSettings(validateExportCloudSync(payload))
   );
   ipcMain.handle("cloud-sync:import", () => cloudSyncService?.importSettings());
   createMainWindow();
