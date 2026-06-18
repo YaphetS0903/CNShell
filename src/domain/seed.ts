@@ -1,4 +1,11 @@
-import type { ConnectionProfile, QuickCommand, RemoteFileEntry, ServerMetric, SessionTab } from "./models";
+import type {
+  ConnectionProfile,
+  KeyMappingProfile,
+  QuickCommand,
+  RemoteFileEntry,
+  ServerMetric,
+  SessionTab
+} from "./models";
 
 export const connectionProfiles: ConnectionProfile[] = [
   {
@@ -73,6 +80,19 @@ export const quickCommands: QuickCommand[] = [
   { id: "qc-systemctl", title: "Restart service", command: "sudo systemctl restart ${service}", scope: "global" },
   { id: "qc-disk", title: "Disk usage", command: "df -h", scope: "global" },
   { id: "qc-nginx", title: "Nginx errors", command: "sudo tail -n 200 /var/log/nginx/error.log", scope: "group" }
+];
+
+export const keyMappingProfiles: KeyMappingProfile[] = [
+  {
+    id: "keys-default",
+    name: "Default Terminal",
+    enabled: true,
+    rules: [
+      { id: "km-clear", key: "Ctrl+L", send: "\u000c", description: "Clear terminal", enabled: true },
+      { id: "km-interrupt", key: "Ctrl+C", send: "\u0003", description: "Interrupt process", enabled: true },
+      { id: "km-eof", key: "Ctrl+D", send: "\u0004", description: "Send EOF", enabled: true }
+    ]
+  }
 ];
 
 export const remoteFiles: RemoteFileEntry[] = [

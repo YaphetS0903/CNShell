@@ -43,6 +43,21 @@ export interface QuickCommand {
   scope: "global" | "group" | "connection";
 }
 
+export interface KeyMappingProfile {
+  id: string;
+  name: string;
+  enabled: boolean;
+  rules: KeyMappingRule[];
+}
+
+export interface KeyMappingRule {
+  id: string;
+  key: string;
+  send: string;
+  description: string;
+  enabled: boolean;
+}
+
 export interface RemoteFileEntry {
   id: string;
   name: string;
@@ -77,6 +92,7 @@ export interface AppSnapshot {
   connections: ConnectionProfile[];
   sessions: SessionTab[];
   quickCommands: QuickCommand[];
+  keyMappingProfiles: KeyMappingProfile[];
   remoteFiles: RemoteFileEntry[];
   serverMetrics: ServerMetric[];
 }

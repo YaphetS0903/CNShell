@@ -42,7 +42,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Trigger rules for output matching and automatic actions.~~
 - [x] ~~Instant local/remote/dynamic SSH tunneling controls.~~
 - [x] ~~Jump Host Proxy and chained gateway configuration.~~
-- [ ] Key mapping profiles.
+- [x] ~~Key mapping profiles.~~
 - [ ] Safe Paste review for multiline or risky commands.
 - [ ] Script recording and replay.
 - [ ] Log viewer with filtering.
@@ -108,4 +108,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement output trigger detection and recent trigger panel.~~
 - [x] ~~Implement local, remote, and dynamic SSH tunneling controls.~~
 - [x] ~~Implement jump host proxy and chained gateway configuration.~~
+- [x] ~~Implement key mapping profiles and terminal shortcut dispatch.~~
 - [ ] Add optional master password vault mode.

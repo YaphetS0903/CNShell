@@ -40,7 +40,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -49,7 +50,8 @@ button {
 }
 
 button:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 2px solid var(--accent-2);
   outline-offset: 2px;
 }
@@ -879,6 +881,70 @@ input:focus-visible {
 
 .tunnel-row button {
   min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.keymap-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.keymap-profile-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  color: #c7d5df;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 9px;
+}
+
+.keymap-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.keymap-row {
+  display: grid;
+  grid-template-columns: 72px 68px minmax(0, 1fr) 22px auto;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 7px;
+}
+
+.keymap-row input[type="text"],
+.keymap-row input:not([type]) {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #101923;
+  color: var(--text);
+  font-size: 11px;
+  padding: 7px;
+}
+
+.keymap-enabled {
+  display: grid;
+  place-items: center;
+}
+
+.keymap-row button {
+  min-height: 30px;
   border: 1px solid var(--line);
   border-radius: 6px;
   background: #111c24;

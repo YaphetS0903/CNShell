@@ -27,9 +27,17 @@ import {
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
-import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
+import { createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
-import type { ConnectionProfile, JumpHostConfig, SessionStatus, SessionTab, TransferJob } from "../domain/models";
+import type {
+  ConnectionProfile,
+  JumpHostConfig,
+  KeyMappingProfile,
+  KeyMappingRule,
+  SessionStatus,
+  SessionTab,
+  TransferJob
+} from "../domain/models";
 import type { CredentialStatus, HostKeyVerificationEvent, SshSessionConfig, TunnelInfo, TunnelMode } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
@@ -57,9 +65,46 @@ const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
   { value: "dynamic", label: "Dynamic" }
 ];
 
+const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
+
 function parsePort(value: string) {
   const port = Number(value);
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function formatKeyEvent(event: KeyboardEvent) {
+  const parts: string[] = [];
+
+  if (event.ctrlKey) {
+    parts.push("Ctrl");
+  }
+
+  if (event.altKey) {
+    parts.push("Alt");
+  }
+
+  if (event.shiftKey) {
+    parts.push("Shift");
+  }
+
+  if (event.metaKey) {
+    parts.push("Meta");
+  }
+
+  if (!modifierKeys.has(event.key)) {
+    const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
+    parts.push(key);
+  }
+
+  return parts.join("+");
+}
+
+function normalizeSendValue(value: string) {
+  return value.replaceAll("\\r", "\r").replaceAll("\\n", "\n").replaceAll("\\t", "\t").replaceAll("\\e", "\x1b");
+}
+
+function getActiveKeyRules(profiles: KeyMappingProfile[]) {
+  return profiles.flatMap((profile) => (profile.enabled ? profile.rules.filter((rule) => rule.enabled) : []));
 }
 
 function describeTunnel(tunnel: TunnelInfo) {
@@ -224,6 +269,13 @@ export function App() {
       connections: current.connections.map((connection) =>
         connection.id === activeConnection.id ? { ...connection, gateways } : connection
       )
+    }));
+  };
+
+  const updateKeyMappingProfiles = (profiles: KeyMappingProfile[]) => {
+    setSnapshot((current) => ({
+      ...current,
+      keyMappingProfiles: profiles
     }));
   };
 
@@ -500,11 +552,12 @@ export function App() {
   useEffect(() => {
     void workspaceStorage.loadSnapshot().then((storedSnapshot) => {
       if (storedSnapshot) {
-        setSnapshot(storedSnapshot);
-        setRemoteFileEntries(storedSnapshot.remoteFiles);
-        setLiveMetrics(storedSnapshot.serverMetrics);
-        setActiveConnectionId(storedSnapshot.connections[0]?.id ?? "");
-        setActiveTabId(storedSnapshot.sessions[0]?.id ?? "");
+        const hydratedSnapshot = hydrateAppSnapshot(storedSnapshot);
+        setSnapshot(hydratedSnapshot);
+        setRemoteFileEntries(hydratedSnapshot.remoteFiles);
+        setLiveMetrics(hydratedSnapshot.serverMetrics);
+        setActiveConnectionId(hydratedSnapshot.connections[0]?.id ?? "");
+        setActiveTabId(hydratedSnapshot.sessions[0]?.id ?? "");
       }
 
       setIsWorkspaceReady(true);
@@ -583,6 +636,7 @@ export function App() {
             activeTab={activeTab}
             sshDraft={activeSshDraft}
             useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
+            keyMappingProfiles={snapshot.keyMappingProfiles}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
             isHighlightEnabled={isHighlightEnabled}
             onStatusChange={setSessionStatus}
@@ -630,6 +684,7 @@ export function App() {
               onStart={startTunnel}
               onStop={stopTunnel}
             />
+            <KeyMappingPanel profiles={snapshot.keyMappingProfiles} onChange={updateKeyMappingProfiles} />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
           </aside>
@@ -833,6 +888,7 @@ function TerminalPane({
   activeTab,
   sshDraft,
   useSavedCredential,
+  keyMappingProfiles,
   startToken,
   isHighlightEnabled,
   onStatusChange,
@@ -844,6 +900,7 @@ function TerminalPane({
   activeTab: SessionTab;
   sshDraft: { password: string; privateKey: string; passphrase: string };
   useSavedCredential: boolean;
+  keyMappingProfiles: KeyMappingProfile[];
   startToken: number;
   isHighlightEnabled: boolean;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
@@ -878,6 +935,20 @@ function TerminalPane({
     setSearchAddon(activeSearchAddon);
     terminal.open(terminalHost);
     fitAddon.fit();
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") {
+        return true;
+      }
+
+      const key = formatKeyEvent(event);
+      const rule = getActiveKeyRules(keyMappingProfiles).find((item) => item.key === key);
+      if (!rule) {
+        return true;
+      }
+
+      void window.cnshell?.terminal.write(activeTab.id, normalizeSendValue(rule.send));
+      return false;
+    });
     terminal.writeln("\x1b[1;32mCNshell terminal session starting\x1b[0m");
     terminal.writeln(`Profile: ${activeConnection.username}@${host}`);
     terminal.writeln("");
@@ -973,6 +1044,7 @@ function TerminalPane({
     sshDraft.password,
     sshDraft.passphrase,
     sshDraft.privateKey,
+    keyMappingProfiles,
     useSavedCredential,
     isHighlightEnabled,
     onTriggerEvents,
@@ -1529,6 +1601,122 @@ function TunnelPanel({
           ))
         )}
       </div>
+    </section>
+  );
+}
+
+function KeyMappingPanel({
+  profiles,
+  onChange
+}: {
+  profiles: KeyMappingProfile[];
+  onChange: (profiles: KeyMappingProfile[]) => void;
+}) {
+  const activeProfile = profiles[0];
+
+  const updateProfile = (patch: Partial<KeyMappingProfile>) => {
+    if (!activeProfile) {
+      return;
+    }
+
+    onChange(profiles.map((profile) => (profile.id === activeProfile.id ? { ...profile, ...patch } : profile)));
+  };
+
+  const updateRule = (ruleId: string, patch: Partial<KeyMappingRule>) => {
+    if (!activeProfile) {
+      return;
+    }
+
+    updateProfile({
+      rules: activeProfile.rules.map((rule) => (rule.id === ruleId ? { ...rule, ...patch } : rule))
+    });
+  };
+
+  const addRule = () => {
+    if (!activeProfile) {
+      return;
+    }
+
+    updateProfile({
+      rules: [
+        ...activeProfile.rules,
+        {
+          id: `key-rule-${Date.now()}`,
+          key: "Ctrl+K",
+          send: "\\r",
+          description: "Custom mapping",
+          enabled: true
+        }
+      ]
+    });
+  };
+
+  const removeRule = (ruleId: string) => {
+    if (!activeProfile) {
+      return;
+    }
+
+    updateProfile({
+      rules: activeProfile.rules.filter((rule) => rule.id !== ruleId)
+    });
+  };
+
+  return (
+    <section className="panel-section" aria-label="Key mapping profiles">
+      <div className="panel-heading">
+        <div>
+          <Command size={16} aria-hidden="true" />
+          <h2>Key Map</h2>
+        </div>
+        <button type="button" aria-label="Add key mapping" onClick={addRule}>
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      </div>
+      {activeProfile ? (
+        <div className="keymap-panel">
+          <label className="keymap-profile-toggle">
+            <input
+              type="checkbox"
+              checked={activeProfile.enabled}
+              onChange={(event) => updateProfile({ enabled: event.target.checked })}
+            />
+            <span>{activeProfile.name}</span>
+          </label>
+          <div className="keymap-list">
+            {activeProfile.rules.map((rule) => (
+              <div key={rule.id} className="keymap-row">
+                <input
+                  value={rule.key}
+                  aria-label={`${rule.description} shortcut`}
+                  onChange={(event) => updateRule(rule.id, { key: event.target.value })}
+                />
+                <input
+                  value={rule.send}
+                  aria-label={`${rule.description} send sequence`}
+                  onChange={(event) => updateRule(rule.id, { send: event.target.value })}
+                />
+                <input
+                  value={rule.description}
+                  aria-label="Key mapping description"
+                  onChange={(event) => updateRule(rule.id, { description: event.target.value })}
+                />
+                <label className="keymap-enabled">
+                  <input
+                    type="checkbox"
+                    checked={rule.enabled}
+                    onChange={(event) => updateRule(rule.id, { enabled: event.target.checked })}
+                  />
+                </label>
+                <button type="button" onClick={() => removeRule(rule.id)}>
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="trigger-empty">No key mapping profile</div>
+      )}
     </section>
   );
 }
