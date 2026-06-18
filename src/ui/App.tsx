@@ -243,6 +243,9 @@ export function App() {
   const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
   const [recordingLastInputAt, setRecordingLastInputAt] = useState<number | null>(null);
   const [recordingEvents, setRecordingEvents] = useState<ScriptRecordingEvent[]>([]);
+  const [logQuery, setLogQuery] = useState("");
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logStatus, setLogStatus] = useState<"idle" | "loading" | "error">("idle");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -379,6 +382,24 @@ export function App() {
       }, delay);
     }
   };
+
+  const refreshSessionLog = useCallback(() => {
+    setLogStatus("loading");
+    void window.cnshell?.logs
+      .readSession({
+        sessionId: activeTab.id,
+        query: logQuery,
+        limit: 300
+      })
+      .then((result) => {
+        setLogLines(result.lines);
+        setLogStatus("idle");
+      })
+      .catch(() => {
+        setLogLines([]);
+        setLogStatus("error");
+      });
+  }, [activeTab.id, logQuery]);
 
   const startActiveSession = () => {
     setSessionStartTokens((current) => ({
@@ -687,6 +708,10 @@ export function App() {
     }
   }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus]);
 
+  useEffect(() => {
+    refreshSessionLog();
+  }, [refreshSessionLog]);
+
   if (!isWorkspaceReady) {
     return (
       <main className="app-shell loading-shell">
@@ -794,6 +819,13 @@ export function App() {
               onStart={startScriptRecording}
               onStop={stopScriptRecording}
               onReplay={replayScriptRecording}
+            />
+            <LogViewerPanel
+              query={logQuery}
+              lines={logLines}
+              status={logStatus}
+              onQueryChange={setLogQuery}
+              onRefresh={refreshSessionLog}
             />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
@@ -1932,6 +1964,55 @@ function ScriptRecorderPanel({
                   Replay
                 </button>
               </div>
+            ))
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function LogViewerPanel({
+  query,
+  lines,
+  status,
+  onQueryChange,
+  onRefresh
+}: {
+  query: string;
+  lines: string[];
+  status: "idle" | "loading" | "error";
+  onQueryChange: (query: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="Log viewer">
+      <div className="panel-heading">
+        <div>
+          <FileText size={16} aria-hidden="true" />
+          <h2>Logs</h2>
+        </div>
+        <button type="button" aria-label="Refresh session log" onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="log-viewer">
+        <input
+          value={query}
+          placeholder="Filter log lines"
+          onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              onRefresh();
+            }
+          }}
+        />
+        <div className={`log-lines ${status}`}>
+          {lines.length === 0 ? (
+            <div className="trigger-empty">{status === "loading" ? "Loading logs" : "No matching log lines"}</div>
+          ) : (
+            lines.map((line, index) => (
+              <pre key={`${index}-${line.slice(0, 16)}`}>{line || " "}</pre>
             ))
           )}
         </div>

@@ -13,6 +13,7 @@ import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
   ListRemoteDirectoryRequest,
+  ReadSessionLogRequest,
   SaveCredentialRequest,
   StartTunnelRequest,
   TransferFileRequest
@@ -98,6 +99,9 @@ app.whenReady().then(() => {
   ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
   ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
   ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
+  ipcMain.handle("logs:read-session", (_event, request: ReadSessionLogRequest) => ({
+    lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
+  }));
   createMainWindow();
 
   app.on("activate", () => {

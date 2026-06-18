@@ -17,4 +17,18 @@ export class SessionLogStore {
     const filePath = path.join(this.logDir, `${sanitizeSessionId(sessionId)}.log`);
     fs.appendFileSync(filePath, data);
   }
+
+  read(sessionId: string, query = "", limit = 300) {
+    const filePath = path.join(this.logDir, `${sanitizeSessionId(sessionId)}.log`);
+    if (!fs.existsSync(filePath)) {
+      return [];
+    }
+
+    const normalizedQuery = query.trim().toLowerCase();
+    return fs
+      .readFileSync(filePath, "utf8")
+      .split(/\r?\n/)
+      .filter((line) => (normalizedQuery ? line.toLowerCase().includes(normalizedQuery) : true))
+      .slice(-Math.max(1, Math.min(limit, 1000)));
+  }
 }

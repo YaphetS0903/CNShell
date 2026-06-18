@@ -1106,6 +1106,49 @@ textarea:focus-visible {
   font-size: 11px;
 }
 
+.log-viewer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+}
+
+.log-viewer input {
+  min-height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0b131a;
+  color: var(--text);
+  padding: 0 9px;
+}
+
+.log-lines {
+  display: flex;
+  max-height: 220px;
+  min-height: 92px;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #071016;
+  padding: 8px;
+}
+
+.log-lines pre {
+  margin: 0;
+  color: #c9d7e2;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-lines.error {
+  border-color: rgba(255, 135, 135, 0.34);
+}
+
 .file-row:hover,
 .quick-command:hover {
   background: rgba(255, 255, 255, 0.04);

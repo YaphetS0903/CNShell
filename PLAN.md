@@ -45,7 +45,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Key mapping profiles.~~
 - [x] ~~Safe Paste review for multiline or risky commands.~~
 - [x] ~~Script recording and replay.~~
-- [ ] Log viewer with filtering.
+- [x] ~~Log viewer with filtering.~~
 
 ## FinalShell-Inspired Workflow Milestones
 
@@ -111,4 +111,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement key mapping profiles and terminal shortcut dispatch.~~
 - [x] ~~Implement Safe Paste review for multiline or risky commands.~~
 - [x] ~~Implement script recording and replay.~~
+- [x] ~~Implement log viewer with filtering.~~
 - [ ] Add optional master password vault mode.

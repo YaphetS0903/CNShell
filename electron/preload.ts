@@ -8,6 +8,8 @@ import type {
   HostKeyVerificationEvent,
   ListRemoteDirectoryRequest,
   RemoteDirectoryListing,
+  ReadSessionLogRequest,
+  ReadSessionLogResult,
   StartTerminalSessionRequest,
   TerminalDataEvent,
   TerminalErrorEvent,
@@ -78,6 +80,10 @@ const api = {
   tunnels: {
     start: (request: StartTunnelRequest) => ipcRenderer.invoke("tunnels:start", request) as Promise<TunnelInfo>,
     stop: (id: string) => ipcRenderer.invoke("tunnels:stop", id) as Promise<boolean>
+  },
+  logs: {
+    readSession: (request: ReadSessionLogRequest) =>
+      ipcRenderer.invoke("logs:read-session", request) as Promise<ReadSessionLogResult>
   }
 } satisfies CNshellApi;
 

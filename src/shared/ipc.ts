@@ -133,6 +133,16 @@ export interface TunnelInfo {
   message?: string;
 }
 
+export interface ReadSessionLogRequest {
+  sessionId: string;
+  query?: string;
+  limit?: number;
+}
+
+export interface ReadSessionLogResult {
+  lines: string[];
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -165,5 +175,8 @@ export interface CNshellApi {
   tunnels: {
     start: (request: StartTunnelRequest) => Promise<TunnelInfo>;
     stop: (id: string) => Promise<boolean>;
+  };
+  logs: {
+    readSession: (request: ReadSessionLogRequest) => Promise<ReadSessionLogResult>;
   };
 }
