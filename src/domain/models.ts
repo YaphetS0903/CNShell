@@ -1,0 +1,60 @@
+export type ConnectionProtocol = "ssh" | "rdp" | "local";
+
+export type AuthMethod = "password" | "privateKey" | "agent";
+
+export interface ConnectionProfile {
+  id: string;
+  name: string;
+  group: string;
+  protocol: ConnectionProtocol;
+  host: string;
+  port: number;
+  username: string;
+  authMethod: AuthMethod;
+  color: string;
+  tags: string[];
+  lastConnectedAt?: string;
+}
+
+export type SessionStatus = "connected" | "connecting" | "disconnected" | "error";
+
+export interface SessionTab {
+  id: string;
+  connectionId: string;
+  title: string;
+  cwd: string;
+  status: SessionStatus;
+  startedAt: string;
+}
+
+export interface QuickCommand {
+  id: string;
+  title: string;
+  command: string;
+  scope: "global" | "group" | "connection";
+}
+
+export interface RemoteFileEntry {
+  id: string;
+  name: string;
+  path: string;
+  type: "file" | "directory" | "symlink";
+  size: number;
+  modifiedAt: string;
+  mode: string;
+}
+
+export interface ServerMetric {
+  label: string;
+  value: number;
+  unit: "%" | "MB" | "GB" | "ms";
+  trend: "up" | "down" | "flat";
+}
+
+export interface AppSnapshot {
+  connections: ConnectionProfile[];
+  sessions: SessionTab[];
+  quickCommands: QuickCommand[];
+  remoteFiles: RemoteFileEntry[];
+  serverMetrics: ServerMetric[];
+}

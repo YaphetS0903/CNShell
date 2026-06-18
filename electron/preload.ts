@@ -1,0 +1,33 @@
+import { contextBridge, ipcRenderer } from "electron";
+import type {
+  CNshellApi,
+  StartTerminalSessionRequest,
+  TerminalDataEvent,
+  TerminalExitEvent,
+  TerminalSessionResizeRequest,
+  TerminalSessionStarted
+} from "../src/shared/ipc.js";
+
+const api = {
+  getVersion: () => ipcRenderer.invoke("app:get-version") as Promise<string>,
+  terminal: {
+    start: (request: StartTerminalSessionRequest) =>
+      ipcRenderer.invoke("terminal:start", request) as Promise<TerminalSessionStarted>,
+    write: (id: string, data: string) => ipcRenderer.invoke("terminal:write", id, data) as Promise<boolean>,
+    resize: (request: TerminalSessionResizeRequest) =>
+      ipcRenderer.invoke("terminal:resize", request) as Promise<boolean>,
+    stop: (id: string) => ipcRenderer.invoke("terminal:stop", id) as Promise<boolean>,
+    onData: (callback: (event: TerminalDataEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalDataEvent) => callback(payload);
+      ipcRenderer.on("terminal:data", listener);
+      return () => ipcRenderer.off("terminal:data", listener);
+    },
+    onExit: (callback: (event: TerminalExitEvent) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: TerminalExitEvent) => callback(payload);
+      ipcRenderer.on("terminal:exit", listener);
+      return () => ipcRenderer.off("terminal:exit", listener);
+    }
+  }
+} satisfies CNshellApi;
+
+contextBridge.exposeInMainWorld("cnshell", api);

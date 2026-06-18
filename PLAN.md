@@ -1,0 +1,95 @@
+# CNshell Development Plan
+
+CNshell is a desktop SSH and server operations client inspired by FinalShell's integrated SSH/SFTP/monitoring workflow and Xshell's professional terminal productivity features. This project will implement comparable workflows from scratch and will not copy proprietary code, branding, icons, UI assets, or unique text from closed-source products.
+
+## Source Research Summary
+
+- FinalShell public feature surface: SSH client, Windows remote desktop entry points, multi-tab sessions, SFTP side-by-side with terminal directory sync, command suggestions/history, dynamic parameters, quick commands, built-in editor, local/remote port forwarding, proxy support, compression, ZMODEM, no-agent server monitoring, cloud sync, acceleration, and intranet tunneling.
+- FinalShell public technical hints: update notes mention Java 17, JediTerm, and JSch usage. These are useful as directional clues, not implementation constraints.
+- Xshell public feature surface: Session Manager, Tab Manager, Compose Pane, synchronized input, Quick Commands, Highlight Sets, master password, key mappings, X11 forwarding, scripting/recording/triggers, Jump Host Proxy, Instant Tunneling, remote file manager, SCP, OpenSSH CA support, local CMD/PowerShell/WSL sessions, Telnet, Serial, RDP, and log viewer.
+- CNshell technical direction: start with Electron + React + TypeScript for fast desktop iteration, use xterm.js for terminal rendering, Node/Electron main process for SSH/SFTP/PTY integrations, and keep IPC boundaries explicit for security.
+
+## Product Principles
+
+- Operational density first: show hosts, terminal, file transfer, and monitoring without marketing-style layout.
+- Safe by default: verify host keys, isolate renderer privileges, protect credentials, and warn on dangerous bulk commands.
+- Familiar terminal behavior: keyboard-first, predictable focus, stable tab management, searchable output, configurable shortcuts.
+- Extensible architecture: SSH, SFTP, RDP, tunneling, monitoring, and sync should remain separate service modules.
+
+## MVP Milestones
+
+- [x] ~~Create a trackable project plan document.~~
+- [x] ~~Scaffold Electron + React + TypeScript desktop app.~~
+- [x] ~~Create core workspace layout: connection sidebar, tab strip, terminal area, SFTP panel, monitoring panel.~~
+- [x] ~~Add typed domain models for connections, sessions, quick commands, transfers, and metrics.~~
+- [x] ~~Add secure Electron IPC boundary through preload APIs.~~
+- [x] ~~Render a first terminal surface with xterm.js.~~
+- [ ] Add local connection storage abstraction.
+- [ ] Add first SSH connection service boundary.
+- [x] ~~Implement connect/disconnect lifecycle in the UI.~~
+- [ ] Implement SFTP remote file listing.
+- [ ] Implement basic upload/download transfer queue.
+- [ ] Implement no-agent server metrics collection.
+- [ ] Implement Quick Commands and command palette.
+- [ ] Implement session tabs and reconnect states.
+- [ ] Implement logging and terminal search.
+
+## Xshell-Inspired Workflow Milestones
+
+- [ ] Compose Pane for multi-line command drafting.
+- [ ] Synchronized input across selected sessions.
+- [ ] Highlight Sets for terminal output rules.
+- [ ] Trigger rules for output matching and automatic actions.
+- [ ] Instant local/remote/dynamic SSH tunneling controls.
+- [ ] Jump Host Proxy and chained gateway configuration.
+- [ ] Key mapping profiles.
+- [ ] Safe Paste review for multiline or risky commands.
+- [ ] Script recording and replay.
+- [ ] Log viewer with filtering.
+
+## FinalShell-Inspired Workflow Milestones
+
+- [ ] Terminal and SFTP same-directory synchronization.
+- [ ] Remote file editor flow.
+- [ ] Process manager.
+- [ ] Disk/network/process monitoring charts.
+- [ ] ZMODEM upload/download.
+- [ ] Windows RDP connection entries.
+- [ ] Cloud sync for encrypted settings.
+- [ ] CN Relay service for acceleration and intranet tunneling.
+
+## Security Milestones
+
+- [ ] Host key verification and known_hosts management.
+- [ ] System keychain integration for secrets.
+- [ ] Master password option.
+- [ ] Private key import with passphrase support.
+- [ ] IPC input validation.
+- [ ] Audit logging with secret redaction.
+- [ ] Bulk command confirmation.
+
+## Engineering Milestones
+
+- [ ] Unit tests for connection models and storage.
+- [ ] IPC contract tests.
+- [ ] Renderer component tests for core workflow states.
+- [ ] Windows installer packaging.
+- [ ] macOS packaging.
+- [ ] Linux packaging.
+- [ ] Auto-update channel.
+- [ ] Crash/error reporting boundary.
+
+## Current Sprint
+
+- [x] ~~Create `PLAN.md` and initial milestone checklist.~~
+- [x] ~~Create desktop application scaffold.~~
+- [x] ~~Build first static CNshell workspace.~~
+- [x] ~~Add typed seed data and UI state.~~
+- [x] ~~Verify TypeScript and production build.~~
+- [x] ~~Mark completed sprint items in this document.~~
+- [x] ~~Add terminal session IPC contracts.~~
+- [x] ~~Add `node-pty` and `ssh2` dependencies.~~
+- [x] ~~Wire local shell session output into xterm.js.~~
+- [x] ~~Smoke test Electron desktop startup.~~
+- [ ] Add SSH connection service implementation.
+- [ ] Wire SSH session output into xterm.js.
