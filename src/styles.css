@@ -80,6 +80,40 @@ textarea:focus-visible {
   place-items: center;
 }
 
+.boot-error-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  background: #0b1117;
+  color: var(--text);
+  padding: 24px;
+}
+
+.boot-error-shell section {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  max-width: 520px;
+  text-align: center;
+}
+
+.boot-error-shell span {
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.boot-error-shell button {
+  min-height: 38px;
+  border: 1px solid rgba(77, 171, 247, 0.55);
+  border-radius: 7px;
+  background: #123149;
+  color: #d7efff;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
 .workspace-loading {
   display: grid;
   justify-items: center;
@@ -532,9 +566,274 @@ textarea:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(780px, 1fr) 392px;
+  grid-template-columns: 316px minmax(680px, 1fr) 392px;
   min-height: 0;
   flex: 1;
+}
+
+.server-status-rail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  background: #0f171f;
+  color: #d8e3eb;
+  padding: 10px;
+}
+
+.server-sync-row,
+.server-ip-row,
+.server-basic-lines {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.server-sync-row {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  color: #bcc9d3;
+}
+
+.server-sync-row svg {
+  color: #8b99a4;
+}
+
+.server-ip-row {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.server-ip-row strong {
+  overflow: hidden;
+  color: #f3f8fb;
+  font-family: "Cascadia Code", Consolas, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.server-ip-row button,
+.system-info-button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #121e27;
+  color: #cbd8e2;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.server-ip-row button:hover,
+.system-info-button:hover {
+  border-color: rgba(77, 171, 247, 0.55);
+  background: #172939;
+  color: #e8f5ff;
+}
+
+.system-info-button {
+  width: 100%;
+  background: #e9f2f8;
+  color: #10202c;
+}
+
+.server-basic-lines {
+  color: #c4d0d9;
+}
+
+.usage-stack {
+  display: grid;
+  gap: 7px;
+}
+
+.usage-meter {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 74px;
+  align-items: center;
+  gap: 8px;
+  min-height: 24px;
+  font-size: 12px;
+}
+
+.usage-meter span {
+  color: #d7e2ea;
+}
+
+.usage-meter > div {
+  overflow: hidden;
+  height: 20px;
+  border: 1px solid #2d3943;
+  background: #162129;
+}
+
+.usage-meter em {
+  display: block;
+  height: 100%;
+  background: #8bd39a;
+}
+
+.usage-meter:nth-child(2) em {
+  background: #f0bd92;
+}
+
+.usage-meter:nth-child(3) em {
+  background: #a6b8c7;
+}
+
+.usage-meter strong {
+  overflow: hidden;
+  color: #cbd8e2;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-process-table,
+.filesystem-mini-table,
+.system-process-table,
+.system-filesystem-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #2a3742;
+  background: #0b131a;
+}
+
+.mini-process-table div {
+  display: grid;
+  grid-template-columns: 64px 54px minmax(0, 1fr);
+  min-height: 25px;
+}
+
+.mini-process-table div:first-child,
+.filesystem-mini-table div:first-child {
+  background: #2f79b7;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.mini-process-table span,
+.mini-process-table strong,
+.filesystem-mini-table span,
+.filesystem-mini-table strong {
+  overflow: hidden;
+  min-width: 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  line-height: 25px;
+  padding: 0 5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mini-process-table div:not(:first-child):nth-child(even),
+.filesystem-mini-table div:not(:first-child):nth-child(even) {
+  background: #111e27;
+}
+
+.mini-process-table strong {
+  color: #dce8f0;
+  font-weight: 700;
+}
+
+.network-mini-chart {
+  display: grid;
+  grid-template-rows: 28px 86px;
+  overflow: hidden;
+  border: 1px solid #2a3742;
+  background: #0b131a;
+}
+
+.network-mini-chart > div:first-child {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid #2a3742;
+  color: #dce8f0;
+  font-size: 12px;
+  padding: 0 6px;
+}
+
+.network-mini-chart strong {
+  overflow: hidden;
+  color: #f3f8fb;
+  font-weight: 800;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.network-bars {
+  display: flex;
+  align-items: end;
+  gap: 3px;
+  padding: 8px;
+}
+
+.network-bars span {
+  width: 100%;
+  max-height: 62px;
+  min-height: 4px;
+  background: linear-gradient(180deg, #f5b58e 0%, #f08f70 100%);
+}
+
+.latency-box {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid #2a3742;
+  background: #0b131a;
+  color: #dce8f0;
+  padding: 0 8px;
+}
+
+.latency-box strong {
+  color: #72b9ff;
+  font-family: "Cascadia Code", Consolas, monospace;
+}
+
+.latency-box span {
+  color: #aab8c3;
+  font-size: 12px;
+}
+
+.filesystem-mini-table {
+  align-content: start;
+}
+
+.filesystem-mini-table div {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 94px;
+  min-height: 26px;
+}
+
+.filesystem-mini-table div:not(:first-child) em {
+  position: absolute;
+  right: 6px;
+  bottom: 3px;
+  z-index: 0;
+  height: 4px;
+  max-width: 82px;
+  background: rgba(107, 198, 155, 0.45);
+}
+
+.filesystem-mini-table div:not(:first-child) strong,
+.filesystem-mini-table div:not(:first-child) span {
+  position: relative;
+  z-index: 1;
+}
+
+.rail-status {
+  color: #ffec99;
+  font-size: 12px;
 }
 
 .main-workbench {
@@ -768,6 +1067,179 @@ textarea:focus-visible {
   border-color: var(--line);
   background: #111c24;
   color: #c7d5df;
+}
+
+.system-info-workspace {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-right: 1px solid var(--line);
+  background: #f6f8fa;
+  color: #17232e;
+  padding: 18px;
+}
+
+.system-info-workspace > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  border-bottom: 1px solid #cdd6df;
+  padding-bottom: 10px;
+}
+
+.system-info-workspace > header > div,
+.system-info-workspace > header button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.system-info-workspace h2,
+.system-info-workspace h3 {
+  margin: 0;
+  color: #101820;
+}
+
+.system-info-workspace h2 {
+  font-size: 16px;
+}
+
+.system-info-workspace h3 {
+  font-size: 14px;
+}
+
+.system-info-workspace > header button {
+  min-height: 34px;
+  border: 1px solid #b8c5cf;
+  border-radius: 5px;
+  background: #ffffff;
+  color: #17232e;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 10px;
+}
+
+.system-info-workspace > header button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.system-info-workspace .sftp-state {
+  margin: 10px 0 0;
+  background: #fff4f4;
+  color: #9b2c2c;
+}
+
+.system-info-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
+  gap: 0;
+  margin-top: 14px;
+  border: 1px solid #cdd6df;
+  background: #ffffff;
+}
+
+.system-info-list div {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  min-height: 36px;
+  border-bottom: 1px solid #e1e7ec;
+}
+
+.system-info-list div:nth-last-child(-n + 2) {
+  border-bottom: 0;
+}
+
+.system-info-list strong,
+.system-info-list span {
+  overflow: hidden;
+  min-width: 0;
+  line-height: 36px;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-info-list strong {
+  border-right: 1px solid #e1e7ec;
+  background: #f0f4f7;
+  color: #2a3a47;
+  font-size: 12px;
+}
+
+.system-info-list span {
+  color: #14212c;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+}
+
+.system-info-section {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.system-filesystem-table,
+.system-process-table {
+  border-color: #cdd6df;
+  background: #ffffff;
+}
+
+.system-filesystem-table div {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) 132px minmax(160px, 0.8fr);
+  align-items: center;
+  min-height: 34px;
+  border-bottom: 1px solid #e1e7ec;
+  padding: 0 10px;
+}
+
+.system-filesystem-table div:last-child,
+.system-process-table div:last-child {
+  border-bottom: 0;
+}
+
+.system-filesystem-table strong,
+.system-filesystem-table span,
+.system-process-table strong,
+.system-process-table span,
+.system-process-table small {
+  overflow: hidden;
+  min-width: 0;
+  color: #17232e;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.system-filesystem-table em {
+  display: block;
+  overflow: hidden;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8ee;
+}
+
+.system-filesystem-table i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f9e44;
+}
+
+.system-process-table div {
+  display: grid;
+  grid-template-columns: 58px minmax(120px, 0.9fr) 68px 68px minmax(180px, 1.4fr);
+  align-items: center;
+  min-height: 32px;
+  gap: 8px;
+  border-bottom: 1px solid #e1e7ec;
+  padding: 0 10px;
 }
 
 .compose-pane {
@@ -3149,6 +3621,32 @@ textarea:focus-visible {
   }
 
   .workspace-grid {
-    grid-template-columns: minmax(560px, 1fr) 332px;
+    grid-template-columns: 284px minmax(540px, 1fr) 332px;
+  }
+}
+
+@media (max-width: 980px) {
+  body {
+    min-width: 900px;
+  }
+
+  .app-shell {
+    grid-template-columns: 248px 1fr;
+  }
+
+  .workspace-grid {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+
+  .ops-panel {
+    display: none;
+  }
+
+  .system-info-list {
+    grid-template-columns: 1fr;
+  }
+
+  .system-info-list div:nth-last-child(-n + 2) {
+    border-bottom: 1px solid #e1e7ec;
   }
 }

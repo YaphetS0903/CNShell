@@ -12,6 +12,7 @@ describe("appState", () => {
     expect(snapshot.keyMappingProfiles.length).toBeGreaterThan(0);
     expect(snapshot.remoteFiles.length).toBeGreaterThan(0);
     expect(snapshot.serverMetrics.length).toBeGreaterThan(0);
+    expect(snapshot.systemInfo.filesystems.length).toBeGreaterThan(0);
     expect(snapshot.remoteProcesses).toEqual([]);
   });
 
@@ -30,7 +31,22 @@ describe("appState", () => {
     expect(hydrated.connections).toHaveLength(1);
     expect(hydrated.keyMappingProfiles).toEqual(fallback.keyMappingProfiles);
     expect(hydrated.scriptRecordings).toEqual(fallback.scriptRecordings);
+    expect(hydrated.systemInfo).toEqual(fallback.systemInfo);
     expect(hydrated.remoteProcesses).toEqual(fallback.remoteProcesses);
+  });
+
+  it("restores a home session when persisted sessions are empty", () => {
+    const fallback = createInitialAppSnapshot();
+    const hydrated = hydrateAppSnapshot({
+      ...fallback,
+      sessions: []
+    });
+
+    expect(hydrated.sessions).toHaveLength(1);
+    expect(hydrated.sessions[0]).toEqual(expect.objectContaining({
+      connectionId: hydrated.connections[0].id,
+      status: "disconnected"
+    }));
   });
 
   it("recovers from empty or mismatched persisted workspace state", () => {

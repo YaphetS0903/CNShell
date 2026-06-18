@@ -1,4 +1,4 @@
-import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, RemoteProcess, ServerMetric } from "../domain/models.js";
+import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, RemoteProcess, ServerMetric, SystemInfo } from "../domain/models.js";
 
 export type AppLanguage = "zh-CN" | "en-US";
 
@@ -178,6 +178,7 @@ export interface CollectMetricsRequest {
 
 export interface CollectMetricsResult {
   metrics: ServerMetric[];
+  systemInfo?: SystemInfo;
 }
 
 export interface ListProcessesRequest {

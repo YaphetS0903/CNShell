@@ -116,6 +116,15 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Update renderer tests for the FinalShell-style file table/tree workflow.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Phase 5 FinalShell-Style Server Status Sprint
+
+- [x] ~~Harden the last-session close path so CNshell never reopens to a black workspace.~~
+- [x] ~~Add a FinalShell-style server status rail with IP, uptime, load, CPU, memory, swap, processes, network, latency, and filesystems.~~
+- [x] ~~Add a clickable System Information workspace tab for OS, kernel, CPU, memory, swap, network, filesystems, and processes.~~
+- [x] ~~Auto-refresh status data after SSH connects and keep the visible rail in sync.~~
+- [x] ~~Update tests for workspace recovery and the new status/system-info components.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

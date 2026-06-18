@@ -101,6 +101,38 @@ export interface ServerMetric {
   trend: "up" | "down" | "flat";
 }
 
+export interface FileSystemUsage {
+  path: string;
+  used: string;
+  total: string;
+  percent: number;
+}
+
+export interface NetworkSample {
+  at: string;
+  inboundKb: number;
+  outboundKb: number;
+}
+
+export interface SystemInfo {
+  os: string;
+  kernel: string;
+  kernelVersion: string;
+  architecture: string;
+  hostname: string;
+  cpuModel: string;
+  cpuCores: number;
+  uptimeDays: number;
+  loadAverage: string;
+  memoryUsed: string;
+  memoryTotal: string;
+  swapUsed: string;
+  swapTotal: string;
+  networkInterface: string;
+  filesystems: FileSystemUsage[];
+  networkSamples: NetworkSample[];
+}
+
 export interface RemoteProcess {
   pid: number;
   ppid: number;
@@ -118,5 +150,6 @@ export interface AppSnapshot {
   scriptRecordings: ScriptRecording[];
   remoteFiles: RemoteFileEntry[];
   serverMetrics: ServerMetric[];
+  systemInfo: SystemInfo;
   remoteProcesses: RemoteProcess[];
 }

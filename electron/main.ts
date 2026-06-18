@@ -157,6 +157,16 @@ function createMainWindow() {
 
   terminalSessionManager = new TerminalSessionManager(window, knownHostsStore, credentialStore, sessionLogStore);
   updateService = new UpdateService(window);
+  window.webContents.on("render-process-gone", (_event, details) => {
+    errorReportStore?.record("renderer", new Error(`Renderer process gone: ${details.reason}`));
+    if (!window.isDestroyed()) {
+      window.reload();
+    }
+  });
+
+  window.webContents.on("unresponsive", () => {
+    errorReportStore?.record("renderer", new Error("Renderer process became unresponsive."));
+  });
 
   if (isDev && process.env.VITE_DEV_SERVER_URL) {
     void window.loadURL(process.env.VITE_DEV_SERVER_URL);

@@ -6,6 +6,7 @@ import type {
   RemoteProcess,
   ScriptRecording,
   ServerMetric,
+  SystemInfo,
   SessionTab
 } from "./models";
 
@@ -147,5 +148,34 @@ export const serverMetrics: ServerMetric[] = [
   { label: "Disk", value: 74, unit: "%", trend: "up" },
   { label: "Ping", value: 18, unit: "ms", trend: "down" }
 ];
+
+export const systemInfo: SystemInfo = {
+  os: "Ubuntu 22.04 LTS",
+  kernel: "Linux",
+  kernelVersion: "5.15.0",
+  architecture: "x86_64",
+  hostname: "prod-web-01",
+  cpuModel: "Intel Xeon",
+  cpuCores: 4,
+  uptimeDays: 97,
+  loadAverage: "0.75, 0.92, 0.91",
+  memoryUsed: "6.3G",
+  memoryTotal: "23.4G",
+  swapUsed: "0",
+  swapTotal: "0",
+  networkInterface: "enp0s6",
+  filesystems: [
+    { path: "/dev", used: "11.7G", total: "11.7G", percent: 100 },
+    { path: "/run", used: "2.3G", total: "2.3G", percent: 100 },
+    { path: "/", used: "59.1G", total: "96.7G", percent: 61 },
+    { path: "/dev/shm", used: "9.4G", total: "11.7G", percent: 80 }
+  ],
+  networkSamples: [
+    { at: "23:44:00", inboundKb: 8, outboundKb: 2 },
+    { at: "23:44:05", inboundKb: 16, outboundKb: 4 },
+    { at: "23:44:10", inboundKb: 31, outboundKb: 7 },
+    { at: "23:44:15", inboundKb: 22, outboundKb: 3 }
+  ]
+};
 
 export const remoteProcesses: RemoteProcess[] = [];

@@ -1,4 +1,4 @@
-import type { AppSnapshot, ConnectionProfile } from "./models";
+import type { AppSnapshot, ConnectionProfile, SessionTab } from "./models";
 import {
   connectionProfiles,
   keyMappingProfiles,
@@ -7,8 +7,20 @@ import {
   remoteProcesses,
   scriptRecordings,
   serverMetrics,
+  systemInfo,
   sessionTabs
 } from "./seed";
+
+export function createHomeSessionForConnection(connection: ConnectionProfile): SessionTab {
+  return {
+    id: `tab-${connection.id}-home`,
+    connectionId: connection.id,
+    title: connection.name,
+    cwd: connection.protocol === "local" ? "~" : "/",
+    status: "disconnected",
+    startedAt: new Date().toISOString()
+  };
+}
 
 export function createInitialAppSnapshot(): AppSnapshot {
   return {
@@ -19,6 +31,7 @@ export function createInitialAppSnapshot(): AppSnapshot {
     scriptRecordings,
     remoteFiles,
     serverMetrics,
+    systemInfo,
     remoteProcesses
   };
 }
@@ -27,7 +40,9 @@ export function hydrateAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
   const fallback = createInitialAppSnapshot();
   const connections = snapshot.connections?.length ? snapshot.connections : fallback.connections;
   const connectionIds = new Set(connections.map((connection) => connection.id));
-  const sessions = (snapshot.sessions ?? fallback.sessions).filter((session) => connectionIds.has(session.connectionId));
+  const persistedSessions = snapshot.sessions === undefined ? fallback.sessions : snapshot.sessions;
+  const validSessions = persistedSessions.filter((session) => connectionIds.has(session.connectionId));
+  const sessions = validSessions.length ? validSessions : [createHomeSessionForConnection(connections[0])];
 
   return {
     ...fallback,
@@ -37,6 +52,7 @@ export function hydrateAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
     quickCommands: snapshot.quickCommands?.length ? snapshot.quickCommands : fallback.quickCommands,
     remoteFiles: snapshot.remoteFiles ?? fallback.remoteFiles,
     serverMetrics: snapshot.serverMetrics ?? fallback.serverMetrics,
+    systemInfo: snapshot.systemInfo ?? fallback.systemInfo,
     keyMappingProfiles: snapshot.keyMappingProfiles ?? fallback.keyMappingProfiles,
     scriptRecordings: snapshot.scriptRecordings ?? fallback.scriptRecordings,
     remoteProcesses: snapshot.remoteProcesses ?? fallback.remoteProcesses

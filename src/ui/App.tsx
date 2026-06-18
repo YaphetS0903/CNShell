@@ -25,6 +25,7 @@ import {
   FolderOpen,
   HardDrive,
   Home,
+  Info,
   KeyRound,
   LayoutDashboard,
   Monitor,
@@ -48,7 +49,7 @@ import {
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
-import { createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "../domain/appState";
+import { createHomeSessionForConnection, createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type {
   ConnectionProfile,
@@ -142,6 +143,7 @@ interface MetricHistoryPoint {
 type ZmodemMode = "idle" | "upload" | "download" | "detected";
 type Language = "zh-CN" | "en-US";
 type PanelFocusKey = "credentials" | "tunnels" | "zmodem" | "logs";
+type WorkspaceView = "terminal" | "systemInfo";
 
 interface AppErrorBoundaryState {
   error?: Error;
@@ -227,6 +229,30 @@ const translations = {
       dynamic: "动态"
     },
     terminalWorkbench: "终端工作区",
+    systemInfo: "系统信息",
+    systemInfoTabTitle: (host: string) => `系统信息-${host}`,
+    closeSystemInfoTab: "关闭系统信息标签",
+    syncStatus: "同步状态",
+    copyIp: "复制",
+    runningDays: (days: number) => `运行 ${days} 天`,
+    loadAverage: "负载",
+    memory: "内存",
+    swap: "交换",
+    highUsageProcesses: "高占用进程",
+    networkInterface: "网络接口",
+    localNetwork: "本机",
+    filesystem: "文件系统",
+    filesystemPath: "路径",
+    filesystemAvailableSize: "可用/大小",
+    operatingSystem: "操作系统",
+    kernel: "内核",
+    kernelVersion: "内核版本",
+    architecture: "硬件架构",
+    hostname: "主机名称",
+    cpu: "CPU",
+    cpuUsage: "CPU占用",
+    networkPort: "网络接口",
+    noSystemInfo: "暂无系统信息，连接后点击刷新监控即可获取。",
     terminalStarting: "CNshell 终端会话正在启动",
     profileLabel: "配置",
     sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
@@ -571,6 +597,30 @@ const translations = {
       dynamic: "Dynamic"
     },
     terminalWorkbench: "Terminal workbench",
+    systemInfo: "System information",
+    systemInfoTabTitle: (host: string) => `System info-${host}`,
+    closeSystemInfoTab: "Close system information tab",
+    syncStatus: "Sync status",
+    copyIp: "Copy",
+    runningDays: (days: number) => `${days} days`,
+    loadAverage: "Load",
+    memory: "Memory",
+    swap: "Swap",
+    highUsageProcesses: "Top processes",
+    networkInterface: "Network interface",
+    localNetwork: "Local",
+    filesystem: "Filesystem",
+    filesystemPath: "Path",
+    filesystemAvailableSize: "Available/Size",
+    operatingSystem: "Operating system",
+    kernel: "Kernel",
+    kernelVersion: "Kernel version",
+    architecture: "Architecture",
+    hostname: "Hostname",
+    cpu: "CPU",
+    cpuUsage: "CPU usage",
+    networkPort: "Network interface",
+    noSystemInfo: "No system information yet. Connect and refresh metrics to collect it.",
     terminalStarting: "CNshell terminal session starting",
     profileLabel: "Profile",
     sessionExited: (code: number | null) => `Session exited with code ${code}.`,
@@ -1223,6 +1273,46 @@ function metricValue(metrics: ReturnType<typeof createInitialAppSnapshot>["serve
   return metrics.find((metric) => metric.label === label)?.value ?? 0;
 }
 
+function metricDisplay(metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"], label: string) {
+  const metric = metrics.find((item) => item.label === label);
+  return metric ? `${metric.value}${metric.unit}` : "0%";
+}
+
+function splitMemoryValue(value: string) {
+  return value && value !== "0" ? value : "0";
+}
+
+function parseStorageValue(value: string) {
+  const match = value.trim().match(/^([\d.]+)\s*([KMGTPE]?i?B?|B)?$/i);
+  if (!match) {
+    return 0;
+  }
+
+  const amount = Number(match[1]);
+  const unit = (match[2] || "").toUpperCase().replace("IB", "").replace("B", "");
+  const multipliers: Record<string, number> = {
+    "": 1,
+    K: 1024,
+    M: 1024 ** 2,
+    G: 1024 ** 3,
+    T: 1024 ** 4,
+    P: 1024 ** 5,
+    E: 1024 ** 6
+  };
+
+  return Number.isFinite(amount) ? amount * (multipliers[unit] ?? 1) : 0;
+}
+
+function storageUsagePercent(used: string, total: string) {
+  const usedBytes = parseStorageValue(used);
+  const totalBytes = parseStorageValue(total);
+  return totalBytes > 0 ? Math.round((usedBytes / totalBytes) * 100) : 0;
+}
+
+function filesystemDisplay(fileSystem: { used: string; total: string }) {
+  return `${fileSystem.used}/${fileSystem.total}`;
+}
+
 function describeTunnel(tunnel: TunnelInfo) {
   const bind = `${tunnel.bindHost}:${tunnel.bindPort}`;
 
@@ -1340,6 +1430,7 @@ export function App() {
   const [remoteOperationDraft, setRemoteOperationDraft] = useState<RemoteOperationDraft | null>(null);
   const [remoteOperationError, setRemoteOperationError] = useState("");
   const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
+  const [systemInfo, setSystemInfo] = useState(snapshot.systemInfo);
   const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [metricsError, setMetricsError] = useState("");
   const [metricHistory, setMetricHistory] = useState<MetricHistoryPoint[]>([]);
@@ -1392,10 +1483,12 @@ export function App() {
   const [cloudSyncStatus, setCloudSyncStatus] = useState(() => translations["zh-CN"].ready);
   const [updateChannel, setUpdateChannel] = useState("latest");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle", channel: "latest" });
+  const [workspaceView, setWorkspaceView] = useState<WorkspaceView>("terminal");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
   const lastAutoRefreshKeyRef = useRef("");
+  const lastAutoStatusRefreshKeyRef = useRef("");
   const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
     credentials: null,
     tunnels: null,
@@ -1439,6 +1532,9 @@ export function App() {
     () => sessionTabsWithStatus.find((session) => session.id === splitTabId),
     [sessionTabsWithStatus, splitTabId]
   );
+  const activeTabSessionId = activeTab?.id ?? "";
+  const activeTabCwd = activeTab?.cwd ?? "/";
+  const activeTabStatus = activeTab?.status;
 
   const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
     setSessionStatuses((current) => ({
@@ -1882,6 +1978,7 @@ export function App() {
         setSnapshot(importedSnapshot);
         setRemoteFileEntries(importedSnapshot.remoteFiles);
         setLiveMetrics(importedSnapshot.serverMetrics);
+        setSystemInfo(importedSnapshot.systemInfo);
         setRemoteProcesses(importedSnapshot.remoteProcesses);
         setActiveConnectionId(importedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(importedSnapshot.sessions[0]?.id ?? "");
@@ -2255,7 +2352,7 @@ export function App() {
       });
   };
 
-  const appendMetricHistory = (
+  const appendMetricHistory = useCallback((
     metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"],
     processCount = remoteProcesses.length
   ) => {
@@ -2273,9 +2370,9 @@ export function App() {
         }
       ].slice(-20)
     );
-  };
+  }, [remoteProcesses.length]);
 
-  const refreshMetrics = () => {
+  const refreshMetrics = useCallback(() => {
     if (activeConnection.protocol !== "ssh") {
       setLiveMetrics(snapshot.serverMetrics);
       return;
@@ -2290,6 +2387,12 @@ export function App() {
       })
       .then((result) => {
         setLiveMetrics(result.metrics);
+        if (result.systemInfo) {
+          setSystemInfo((current) => ({
+            ...result.systemInfo!,
+            networkSamples: [...current.networkSamples, ...result.systemInfo!.networkSamples].slice(-24)
+          }));
+        }
         appendMetricHistory(result.metrics);
         setMetricsStatus("idle");
       })
@@ -2297,9 +2400,9 @@ export function App() {
         setMetricsError(error.message);
         setMetricsStatus("error");
       });
-  };
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, snapshot.serverMetrics]);
 
-  const refreshProcesses = () => {
+  const refreshProcesses = useCallback(() => {
     if (activeConnection.protocol !== "ssh") {
       setRemoteProcesses(snapshot.remoteProcesses);
       return;
@@ -2321,7 +2424,7 @@ export function App() {
         setProcessError(error.message);
         setProcessStatus("error");
       });
-  };
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, liveMetrics, snapshot.remoteProcesses]);
 
   const killProcess = (pid: number) => {
     if (activeConnection.protocol !== "ssh") {
@@ -2540,18 +2643,26 @@ export function App() {
   };
 
   const closeSessionTab = (sessionId: string) => {
-    const remainingSessions = snapshot.sessions.filter((session) => session.id !== sessionId);
+    const closingSessions = snapshot.sessions;
+    const remainingSessions = closingSessions.filter((session) => session.id !== sessionId);
+    const resetSession = remainingSessions.length === 0 ? createHomeSessionForConnection(activeConnection) : null;
     const fallbackSession =
-      remainingSessions.find((session) => session.connectionId === activeConnection.id) ?? remainingSessions[0];
+      remainingSessions.find((session) => session.connectionId === activeConnection.id) ?? remainingSessions[0] ?? resetSession;
 
     void window.cnshell?.terminal.stop(sessionId);
-    setSnapshot((current) => ({
-      ...current,
-      sessions: current.sessions.filter((session) => session.id !== sessionId)
-    }));
+    setSnapshot((current) => {
+      const nextSessions = current.sessions.filter((session) => session.id !== sessionId);
+      return {
+        ...current,
+        sessions: resetSession && nextSessions.length === 0 ? [resetSession] : nextSessions
+      };
+    });
     setSessionStatuses((current) => {
       const next = { ...current };
       delete next[sessionId];
+      if (resetSession) {
+        next[resetSession.id] = "disconnected";
+      }
       return next;
     });
     setSessionStartTokens((current) => {
@@ -2559,11 +2670,12 @@ export function App() {
       delete next[sessionId];
       return next;
     });
-    if (activeTabId === sessionId) {
-      setActiveTabId(fallbackSession?.id ?? "");
-      if (fallbackSession) {
-        setActiveConnectionId(fallbackSession.connectionId);
-      }
+    if (fallbackSession && (activeTabId === sessionId || resetSession || !closingSessions.some((session) => session.id === activeTabId))) {
+      setActiveTabId(fallbackSession.id);
+      setActiveConnectionId(fallbackSession.connectionId);
+    }
+    if (resetSession) {
+      setWorkspaceView("terminal");
     }
     if (splitTabId === sessionId) {
       setSplitTabId("");
@@ -2599,6 +2711,7 @@ export function App() {
         setSnapshot(hydratedSnapshot);
         setRemoteFileEntries(hydratedSnapshot.remoteFiles);
         setLiveMetrics(hydratedSnapshot.serverMetrics);
+        setSystemInfo(hydratedSnapshot.systemInfo);
         setRemoteProcesses(hydratedSnapshot.remoteProcesses);
         setActiveConnectionId(hydratedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(hydratedSnapshot.sessions[0]?.id ?? "");
@@ -2643,22 +2756,42 @@ export function App() {
   }, [refreshErrorReports]);
 
   useEffect(() => {
-    setRemotePath(activeTab?.cwd || "/");
-  }, [activeTab?.cwd, activeTab?.id]);
+    setRemotePath(activeTabCwd);
+  }, [activeTabCwd, activeTabSessionId]);
 
   useEffect(() => {
-    if (!activeTab || activeConnection.protocol !== "ssh" || activeTab.status !== "connected") {
+    if (!activeTabSessionId || activeConnection.protocol !== "ssh" || activeTabStatus !== "connected") {
       return;
     }
 
-    const refreshKey = `${activeTab.id}:${remotePath}`;
+    const refreshKey = `${activeTabSessionId}:${remotePath}`;
     if (lastAutoRefreshKeyRef.current === refreshKey) {
       return;
     }
 
     lastAutoRefreshKeyRef.current = refreshKey;
     refreshRemoteFiles(remotePath);
-  }, [activeConnection.protocol, activeTab, refreshRemoteFiles, remotePath]);
+  }, [activeConnection.protocol, activeTabSessionId, activeTabStatus, refreshRemoteFiles, remotePath]);
+
+  useEffect(() => {
+    if (!activeTabSessionId || activeConnection.protocol !== "ssh" || activeTabStatus !== "connected") {
+      return;
+    }
+
+    const refreshKey = `${activeConnection.id}:${activeTabSessionId}`;
+    if (lastAutoStatusRefreshKeyRef.current !== refreshKey) {
+      lastAutoStatusRefreshKeyRef.current = refreshKey;
+      refreshMetrics();
+      refreshProcesses();
+    }
+
+    const intervalId = window.setInterval(() => {
+      refreshMetrics();
+      refreshProcesses();
+    }, 10000);
+
+    return () => window.clearInterval(intervalId);
+  }, [activeConnection.id, activeConnection.protocol, activeTabSessionId, activeTabStatus, refreshMetrics, refreshProcesses]);
 
   if (!isWorkspaceReady) {
     return (
@@ -2711,12 +2844,34 @@ export function App() {
         <TabStrip
           tabs={sessionTabsWithStatus}
           activeTabId={activeTabId}
+          workspaceView={workspaceView}
+          systemInfoTitle={labels.systemInfoTabTitle(activeConnection.name)}
           onSelect={setActiveTabId}
+          onSelectSystemInfo={() => setWorkspaceView("systemInfo")}
+          onCloseSystemInfo={() => setWorkspaceView("terminal")}
           onCreate={createSessionForActiveConnection}
           onClose={closeSessionTab}
         />
         <section className="workspace-grid">
-          {activeTab ? (
+          <ServerStatusRail
+            connection={activeConnection}
+            metrics={liveMetrics}
+            systemInfo={systemInfo}
+            processes={remoteProcesses}
+            status={metricsStatus}
+            onOpenSystemInfo={() => setWorkspaceView("systemInfo")}
+          />
+          {workspaceView === "systemInfo" ? (
+            <SystemInfoWorkspace
+              connection={activeConnection}
+              metrics={liveMetrics}
+              systemInfo={systemInfo}
+              processes={remoteProcesses}
+              status={metricsStatus}
+              error={metricsError}
+              onRefresh={refreshMetrics}
+            />
+          ) : activeTab ? (
           <div className="main-workbench">
             <div className={`terminal-split-layout ${splitTab ? "active" : ""}`}>
               <TerminalPane
@@ -3189,13 +3344,21 @@ function TopBar({
 export function TabStrip({
   tabs,
   activeTabId,
+  workspaceView = "terminal",
+  systemInfoTitle,
   onSelect,
+  onSelectSystemInfo = () => undefined,
+  onCloseSystemInfo = () => undefined,
   onCreate,
   onClose
 }: {
   tabs: SessionTab[];
   activeTabId: string;
+  workspaceView?: WorkspaceView;
+  systemInfoTitle?: string;
   onSelect: (tabId: string) => void;
+  onSelectSystemInfo?: () => void;
+  onCloseSystemInfo?: () => void;
   onCreate: () => void;
   onClose: (tabId: string) => void;
 }) {
@@ -3220,6 +3383,17 @@ export function TabStrip({
           </button>
         </div>
       ))}
+      {workspaceView === "systemInfo" ? (
+        <div className="session-tab active">
+          <button type="button" role="tab" aria-selected="true" className="session-tab-main" onClick={onSelectSystemInfo}>
+            <Info size={15} aria-hidden="true" />
+            <span>{systemInfoTitle ?? labels.systemInfo}</span>
+          </button>
+          <button type="button" className="session-tab-close" aria-label={labels.closeSystemInfoTab} onClick={onCloseSystemInfo}>
+            <X size={13} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
       <button type="button" className="new-tab" aria-label={labels.newSessionTab} onClick={onCreate}>
         <Plus size={16} aria-hidden="true" />
       </button>
@@ -3244,6 +3418,212 @@ function EmptySessionState({ onCreate, onCreateConnection }: { onCreate: () => v
           {labels.newConnection}
         </button>
       </div>
+    </section>
+  );
+}
+
+export function ServerStatusRail({
+  connection,
+  metrics,
+  systemInfo,
+  processes,
+  status,
+  onOpenSystemInfo
+}: {
+  connection: ConnectionProfile;
+  metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"];
+  systemInfo: ReturnType<typeof createInitialAppSnapshot>["systemInfo"];
+  processes: ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"];
+  status: "idle" | "loading" | "error";
+  onOpenSystemInfo: () => void;
+}) {
+  const labels = useUiStrings();
+  const cpu = metricValue(metrics, "CPU");
+  const memory = metricValue(metrics, "Memory");
+  const swapPercent = storageUsagePercent(systemInfo.swapUsed, systemInfo.swapTotal);
+  const topProcesses = processes.slice(0, 4);
+  const latestNetwork = systemInfo.networkSamples.at(-1);
+
+  return (
+    <aside className="server-status-rail" aria-label={labels.serverMetrics}>
+      <div className="server-sync-row">
+        <span>{labels.syncStatus}</span>
+        <Circle size={9} fill="currentColor" aria-hidden="true" />
+      </div>
+      <div className="server-ip-row">
+        <span>IP</span>
+        <strong>{connection.host}</strong>
+        <button type="button" onClick={() => void navigator.clipboard?.writeText(connection.host)}>
+          {labels.copyIp}
+        </button>
+      </div>
+      <button type="button" className="system-info-button" onClick={onOpenSystemInfo}>
+        {labels.systemInfo}
+      </button>
+      <div className="server-basic-lines">
+        <span>{labels.runningDays(systemInfo.uptimeDays)}</span>
+        <span>
+          {labels.loadAverage} {systemInfo.loadAverage || "-"}
+        </span>
+      </div>
+      <div className="usage-stack">
+        <UsageMeter label={labels.cpu} value={cpu} detail={`${cpu}%`} />
+        <UsageMeter
+          label={labels.memory}
+          value={memory}
+          detail={`${splitMemoryValue(systemInfo.memoryUsed)}/${splitMemoryValue(systemInfo.memoryTotal)}`}
+        />
+        <UsageMeter
+          label={labels.swap}
+          value={swapPercent}
+          detail={`${splitMemoryValue(systemInfo.swapUsed)}/${splitMemoryValue(systemInfo.swapTotal)}`}
+        />
+      </div>
+      <div className="mini-process-table">
+        <div>
+          <span>{labels.memory}</span>
+          <span>CPU</span>
+          <span>{labels.commandTab}</span>
+        </div>
+        {(topProcesses.length ? topProcesses : [{ pid: 0, ppid: 0, cpu: 0, memory: 0, command: "-", args: "" }]).map((process) => (
+          <div key={`${process.pid}-${process.command}`}>
+            <span>{process.memory ? `${process.memory.toFixed(0)}%` : "-"}</span>
+            <span>{process.cpu ? `${process.cpu.toFixed(1)}%` : "-"}</span>
+            <strong>{process.command}</strong>
+          </div>
+        ))}
+      </div>
+      <div className="network-mini-chart">
+        <div>
+          <span>up {latestNetwork?.outboundKb ?? 0}K</span>
+          <span>down {latestNetwork?.inboundKb ?? 0}K</span>
+          <strong>{systemInfo.networkInterface || labels.localNetwork}</strong>
+        </div>
+        <div className="network-bars">
+          {systemInfo.networkSamples.slice(-18).map((sample, index) => (
+            <span
+              key={`${sample.at}-${index}`}
+              style={{ height: `${Math.max(4, Math.min(60, sample.inboundKb + sample.outboundKb))}%` }}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="latency-box">
+        <strong>{metricDisplay(metrics, "Ping")}</strong>
+        <span>{labels.localNetwork}</span>
+      </div>
+      <div className="filesystem-mini-table">
+        <div>
+          <span>{labels.filesystemPath}</span>
+          <span>{labels.filesystemAvailableSize}</span>
+        </div>
+        {systemInfo.filesystems.slice(0, 10).map((fileSystem) => (
+          <div key={fileSystem.path}>
+            <strong>{fileSystem.path}</strong>
+            <span>{filesystemDisplay(fileSystem)}</span>
+            <em style={{ width: `${Math.min(100, fileSystem.percent)}%` }} />
+          </div>
+        ))}
+      </div>
+      {status === "loading" ? <small className="rail-status">{labels.collectingMetrics}</small> : null}
+    </aside>
+  );
+}
+
+function UsageMeter({ label, value, detail }: { label: string; value: number; detail: string }) {
+  return (
+    <div className="usage-meter">
+      <span>{label}</span>
+      <div>
+        <em style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+      </div>
+      <strong>{detail}</strong>
+    </div>
+  );
+}
+
+export function SystemInfoWorkspace({
+  connection,
+  metrics,
+  systemInfo,
+  processes,
+  status,
+  error,
+  onRefresh
+}: {
+  connection: ConnectionProfile;
+  metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"];
+  systemInfo: ReturnType<typeof createInitialAppSnapshot>["systemInfo"];
+  processes: ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"];
+  status: "idle" | "loading" | "error";
+  error: string;
+  onRefresh: () => void;
+}) {
+  const labels = useUiStrings();
+  const details = [
+    [labels.operatingSystem, systemInfo.os || "-"],
+    [labels.kernel, systemInfo.kernel || "-"],
+    [labels.kernelVersion, systemInfo.kernelVersion || "-"],
+    [labels.architecture, systemInfo.architecture || "-"],
+    [labels.hostname, systemInfo.hostname || connection.host],
+    [labels.cpu, `${systemInfo.cpuModel || "-"} ${systemInfo.cpuCores ? `(${systemInfo.cpuCores})` : ""}`],
+    [labels.cpuUsage, metricDisplay(metrics, "CPU")],
+    [labels.memory, `${systemInfo.memoryUsed}/${systemInfo.memoryTotal}`],
+    [labels.swap, `${systemInfo.swapUsed}/${systemInfo.swapTotal}`],
+    [labels.networkPort, systemInfo.networkInterface || "-"]
+  ];
+  const hasSystemInfo = Boolean(systemInfo.os || systemInfo.kernel || systemInfo.hostname || systemInfo.filesystems.length);
+
+  return (
+    <section className="system-info-workspace" aria-label={labels.systemInfo}>
+      <header>
+        <div>
+          <Info size={18} aria-hidden="true" />
+          <h2>{labels.systemInfoTabTitle(connection.name)}</h2>
+        </div>
+        <button type="button" onClick={onRefresh} disabled={status === "loading"}>
+          <RefreshCw size={15} aria-hidden="true" />
+          {labels.refreshMetrics}
+        </button>
+      </header>
+      {status === "error" ? <div className="sftp-state error">{error}</div> : null}
+      {!hasSystemInfo ? <div className="sftp-state">{labels.noSystemInfo}</div> : null}
+      <div className="system-info-list">
+        {details.map(([label, value]) => (
+          <div key={label}>
+            <strong>{label}</strong>
+            <span>{value}</span>
+          </div>
+        ))}
+      </div>
+      <section className="system-info-section">
+        <h3>{labels.filesystem}</h3>
+        <div className="system-filesystem-table">
+          {systemInfo.filesystems.map((fileSystem) => (
+            <div key={fileSystem.path}>
+              <strong>{fileSystem.path}</strong>
+              <span>{filesystemDisplay(fileSystem)}</span>
+              <em>
+                <i style={{ width: `${Math.min(100, fileSystem.percent)}%` }} />
+              </em>
+            </div>
+          ))}
+        </div>
+      </section>
+      <section className="system-info-section">
+        <h3>{labels.highUsageProcesses}</h3>
+        <div className="system-process-table">
+          {(processes.length ? processes.slice(0, 12) : [{ pid: 0, ppid: 0, cpu: 0, memory: 0, command: "-", args: labels.noProcessData }]).map((process) => (
+            <div key={`${process.pid}-${process.command}-${process.args}`}>
+              <span>{process.pid || "-"}</span>
+              <strong>{process.command}</strong>
+              <span>{process.cpu ? `${process.cpu.toFixed(1)}%` : "-"}</span>
+              <span>{process.memory ? `${process.memory.toFixed(1)}%` : "-"}</span>
+              <small>{process.args}</small>
+            </div>
+          ))}
+        </div>
+      </section>
     </section>
   );
 }

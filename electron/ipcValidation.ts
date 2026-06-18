@@ -170,6 +170,9 @@ export function validateAppSnapshot(value: unknown): AppSnapshot {
   assertArray(snapshot.quickCommands, "snapshot.quickCommands", 500);
   assertArray(snapshot.remoteFiles, "snapshot.remoteFiles", 5000);
   assertArray(snapshot.serverMetrics, "snapshot.serverMetrics", 200);
+  if (snapshot.systemInfo !== undefined) {
+    assertRecord(snapshot.systemInfo, "snapshot.systemInfo");
+  }
   if (snapshot.keyMappingProfiles !== undefined) {
     assertArray(snapshot.keyMappingProfiles, "snapshot.keyMappingProfiles", 200);
   }

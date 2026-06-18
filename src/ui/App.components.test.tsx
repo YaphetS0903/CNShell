@@ -10,9 +10,11 @@ import {
   QuickCommandManagerDialog,
   QuickCommandPanel,
   RemoteOperationDialog,
+  ServerStatusRail,
+  SystemInfoWorkspace,
   TabStrip
 } from "./App";
-import { quickCommands } from "../domain/seed";
+import { connectionProfiles, quickCommands, serverMetrics, systemInfo } from "../domain/seed";
 
 vi.mock("@xterm/addon-fit", () => ({ FitAddon: class FitAddon {} }));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: class SearchAddon {} }));
@@ -200,6 +202,48 @@ describe("renderer workflow components", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Close session tab" }));
     expect(onClose).toHaveBeenCalledWith("tab-1");
+  });
+
+  it("opens the FinalShell-style system information entry from the server rail", () => {
+    const onOpenSystemInfo = vi.fn();
+    render(
+      <ServerStatusRail
+        connection={connectionProfiles[0]}
+        metrics={serverMetrics}
+        systemInfo={systemInfo}
+        processes={[{ pid: 101, ppid: 1, cpu: 20.3, memory: 5.1, command: "nginx", args: "worker" }]}
+        status="idle"
+        onOpenSystemInfo={onOpenSystemInfo}
+      />
+    );
+
+    expect(screen.getByText(connectionProfiles[0].host)).toBeInTheDocument();
+    expect(screen.getByText("enp0s6")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "System information" }));
+
+    expect(onOpenSystemInfo).toHaveBeenCalledOnce();
+  });
+
+  it("renders a detailed system information workspace", () => {
+    const onRefresh = vi.fn();
+    render(
+      <SystemInfoWorkspace
+        connection={connectionProfiles[0]}
+        metrics={serverMetrics}
+        systemInfo={systemInfo}
+        processes={[{ pid: 101, ppid: 1, cpu: 20.3, memory: 5.1, command: "nginx", args: "worker" }]}
+        status="idle"
+        error=""
+        onRefresh={onRefresh}
+      />
+    );
+
+    expect(screen.getByText("Ubuntu 22.04 LTS")).toBeInTheDocument();
+    expect(screen.getByText("5.15.0")).toBeInTheDocument();
+    expect(screen.getByText("nginx")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Refresh metrics/i }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
   });
 
   it("exposes SFTP file management actions", () => {
