@@ -12,6 +12,7 @@ import type {
   ListProcessesRequest,
   ListRemoteDirectoryRequest,
   OpenRdpRequest,
+  ReadAuditLogRequest,
   ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
@@ -353,6 +354,14 @@ export function validateReadSessionLog(value: unknown): ReadSessionLogRequest {
   const request = assertRecord(value, "request");
   return {
     sessionId: validateSessionId(request.sessionId),
+    query: assertOptionalString(request.query, "query", MAX_LOG_QUERY_LENGTH),
+    limit: request.limit === undefined ? undefined : assertInteger(request.limit, "limit", 1, 5000)
+  };
+}
+
+export function validateReadAuditLog(value: unknown): ReadAuditLogRequest {
+  const request = assertRecord(value, "request");
+  return {
     query: assertOptionalString(request.query, "query", MAX_LOG_QUERY_LENGTH),
     limit: request.limit === undefined ? undefined : assertInteger(request.limit, "limit", 1, 5000)
   };

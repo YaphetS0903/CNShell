@@ -19,6 +19,8 @@ import type {
   ListProcessesResult,
   OpenRdpRequest,
   OpenRdpResult,
+  ReadAuditLogRequest,
+  ReadAuditLogResult,
   RemoteDirectoryListing,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
@@ -123,7 +125,9 @@ const api = {
   },
   logs: {
     readSession: (request: ReadSessionLogRequest) =>
-      ipcRenderer.invoke("logs:read-session", request) as Promise<ReadSessionLogResult>
+      ipcRenderer.invoke("logs:read-session", request) as Promise<ReadSessionLogResult>,
+    readAudit: (request: ReadAuditLogRequest) =>
+      ipcRenderer.invoke("logs:read-audit", request) as Promise<ReadAuditLogResult>
   },
   rdp: {
     open: (request: OpenRdpRequest) => ipcRenderer.invoke("rdp:open", request) as Promise<OpenRdpResult>

@@ -349,6 +349,9 @@ export function App() {
   const [logQuery, setLogQuery] = useState("");
   const [logLines, setLogLines] = useState<string[]>([]);
   const [logStatus, setLogStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [auditQuery, setAuditQuery] = useState("");
+  const [auditLines, setAuditLines] = useState<string[]>([]);
+  const [auditStatus, setAuditStatus] = useState<"idle" | "loading" | "error">("idle");
   const [cloudSyncStatus, setCloudSyncStatus] = useState("Ready");
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
@@ -522,6 +525,23 @@ export function App() {
         setLogStatus("error");
       });
   }, [activeTab.id, logQuery]);
+
+  const refreshAuditLog = useCallback(() => {
+    setAuditStatus("loading");
+    void window.cnshell?.logs
+      .readAudit({
+        query: auditQuery,
+        limit: 300
+      })
+      .then((result) => {
+        setAuditLines(result.lines);
+        setAuditStatus("idle");
+      })
+      .catch(() => {
+        setAuditLines([]);
+        setAuditStatus("error");
+      });
+  }, [auditQuery]);
 
   const exportCloudSyncSettings = () => {
     setCloudSyncStatus("Exporting encrypted settings");
@@ -1156,6 +1176,10 @@ export function App() {
   }, [refreshSessionLog]);
 
   useEffect(() => {
+    refreshAuditLog();
+  }, [refreshAuditLog]);
+
+  useEffect(() => {
     setRemotePath(activeTab.cwd || "/");
   }, [activeTab.cwd, activeTab.id]);
 
@@ -1330,11 +1354,24 @@ export function App() {
               onReplay={replayScriptRecording}
             />
             <LogViewerPanel
+              title="Logs"
+              refreshLabel="Refresh session log"
+              emptyText="No matching log lines"
               query={logQuery}
               lines={logLines}
               status={logStatus}
               onQueryChange={setLogQuery}
               onRefresh={refreshSessionLog}
+            />
+            <LogViewerPanel
+              title="Audit"
+              refreshLabel="Refresh audit log"
+              emptyText="No audit entries"
+              query={auditQuery}
+              lines={auditLines}
+              status={auditStatus}
+              onQueryChange={setAuditQuery}
+              onRefresh={refreshAuditLog}
             />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
@@ -2874,12 +2911,18 @@ function ScriptRecorderPanel({
 }
 
 function LogViewerPanel({
+  title,
+  refreshLabel,
+  emptyText,
   query,
   lines,
   status,
   onQueryChange,
   onRefresh
 }: {
+  title: string;
+  refreshLabel: string;
+  emptyText: string;
   query: string;
   lines: string[];
   status: "idle" | "loading" | "error";
@@ -2887,13 +2930,13 @@ function LogViewerPanel({
   onRefresh: () => void;
 }) {
   return (
-    <section className="panel-section" aria-label="Log viewer">
+    <section className="panel-section" aria-label={title}>
       <div className="panel-heading">
         <div>
           <FileText size={16} aria-hidden="true" />
-          <h2>Logs</h2>
+          <h2>{title}</h2>
         </div>
-        <button type="button" aria-label="Refresh session log" onClick={onRefresh}>
+        <button type="button" aria-label={refreshLabel} onClick={onRefresh}>
           <RefreshCw size={16} aria-hidden="true" />
         </button>
       </div>
@@ -2910,7 +2953,7 @@ function LogViewerPanel({
         />
         <div className={`log-lines ${status}`}>
           {lines.length === 0 ? (
-            <div className="trigger-empty">{status === "loading" ? "Loading logs" : "No matching log lines"}</div>
+            <div className="trigger-empty">{status === "loading" ? "Loading logs" : emptyText}</div>
           ) : (
             lines.map((line, index) => (
               <pre key={`${index}-${line.slice(0, 16)}`}>{line || " "}</pre>

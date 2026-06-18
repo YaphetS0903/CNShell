@@ -3,6 +3,7 @@ import fs from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { AuditLogStore, sanitizeAuditTarget, summarizeTerminalWrite, summarizeWorkspace } from "./auditLogStore.js";
 import { CloudSyncService } from "./cloudSyncService.js";
 import { CredentialStore } from "./credentialStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
@@ -25,6 +26,7 @@ import {
   validateListProcesses,
   validateListRemoteDirectory,
   validateOpenRdp,
+  validateReadAuditLog,
   validateReadRemoteFile,
   validateReadSessionLog,
   validateSaveCredential,
@@ -50,6 +52,7 @@ let metricsService: MetricsService | null = null;
 let sessionLogStore: SessionLogStore | null = null;
 let tunnelManager: TunnelManager | null = null;
 let cloudSyncService: CloudSyncService | null = null;
+let auditLogStore: AuditLogStore | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -106,6 +109,33 @@ async function importPrivateKeyFile() {
   };
 }
 
+async function withAudit<T>(
+  action: string,
+  target: string | undefined,
+  details: unknown,
+  operation: () => T | Promise<T>
+): Promise<T> {
+  try {
+    const result = await operation();
+    auditLogStore?.record({
+      action,
+      status: "ok",
+      target: target ? sanitizeAuditTarget(target) : undefined,
+      details
+    });
+    return result;
+  } catch (error) {
+    auditLogStore?.record({
+      action,
+      status: "error",
+      target: target ? sanitizeAuditTarget(target) : undefined,
+      details,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    throw error;
+  }
+}
+
 app.whenReady().then(() => {
   knownHostsStore = new KnownHostsStore(app.getPath("userData"));
   credentialStore = new CredentialStore(app.getPath("userData"));
@@ -115,77 +145,132 @@ app.whenReady().then(() => {
   sessionLogStore = new SessionLogStore(app.getPath("userData"));
   tunnelManager = new TunnelManager(knownHostsStore, credentialStore);
   cloudSyncService = new CloudSyncService();
+  auditLogStore = new AuditLogStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: unknown) => {
-    workspaceStore?.save(validateAppSnapshot(snapshot));
-    return true;
+    const validatedSnapshot = validateAppSnapshot(snapshot);
+    return withAudit("workspace.save", undefined, summarizeWorkspace(validatedSnapshot), () => {
+      workspaceStore?.save(validatedSnapshot);
+      return true;
+    });
   });
   ipcMain.handle("terminal:start", (_event, payload: unknown) => {
     const request = validateStartTerminalSession(payload);
-    if (request.kind === "ssh") {
-      return terminalSessionManager?.startSshSession(request);
-    }
+    return withAudit("terminal.start", request.id, { kind: request.kind, ssh: request.ssh }, () => {
+      if (request.kind === "ssh") {
+        return terminalSessionManager?.startSshSession(request);
+      }
 
-    return terminalSessionManager?.startLocalSession(request);
+      return terminalSessionManager?.startLocalSession(request);
+    });
   });
   ipcMain.handle("terminal:write", (_event, id: unknown, data: unknown) => {
     const request = validateTerminalWrite(id, data);
-    return terminalSessionManager?.writeToSession(request.id, request.data);
+    return withAudit("terminal.write", request.id, summarizeTerminalWrite(request.id, request.data), () =>
+      terminalSessionManager?.writeToSession(request.id, request.data)
+    );
   });
   ipcMain.handle("terminal:resize", (_event, payload: unknown) =>
     terminalSessionManager?.resizeSession(validateTerminalResize(payload))
   );
-  ipcMain.handle("terminal:stop", (_event, id: unknown) => terminalSessionManager?.stopSession(validateIpcId(id)));
+  ipcMain.handle("terminal:stop", (_event, id: unknown) => {
+    const sessionId = validateIpcId(id);
+    return withAudit("terminal.stop", sessionId, { id: sessionId }, () => terminalSessionManager?.stopSession(sessionId));
+  });
   ipcMain.handle("terminal:trust-host", (_event, payload: unknown) => {
     const event = validateHostKeyVerification(payload);
-    knownHostsStore?.trustHost(event.host, event.port, event.fingerprint, event.keyBase64);
-    return true;
+    return withAudit("terminal.trustHost", event.id, event, () => {
+      knownHostsStore?.trustHost(event.host, event.port, event.fingerprint, event.keyBase64);
+      return true;
+    });
   });
   ipcMain.handle("credentials:status", (_event, connectionId: unknown) =>
     credentialStore?.getStatus(validateConnectionId(connectionId))
   );
-  ipcMain.handle("credentials:save", (_event, payload: unknown) => credentialStore?.save(validateSaveCredential(payload)));
-  ipcMain.handle("credentials:delete", (_event, connectionId: unknown) =>
-    credentialStore?.delete(validateConnectionId(connectionId))
-  );
+  ipcMain.handle("credentials:save", (_event, payload: unknown) => {
+    const request = validateSaveCredential(payload);
+    return withAudit("credentials.save", request.connectionId, request, () => credentialStore?.save(request));
+  });
+  ipcMain.handle("credentials:delete", (_event, connectionId: unknown) => {
+    const validatedConnectionId = validateConnectionId(connectionId);
+    return withAudit("credentials.delete", validatedConnectionId, { connectionId: validatedConnectionId }, () =>
+      credentialStore?.delete(validatedConnectionId)
+    );
+  });
   ipcMain.handle("credentials:vault-status", () => credentialStore?.getVaultStatus());
-  ipcMain.handle("credentials:enable-vault", (_event, payload: unknown) =>
-    credentialStore?.enableVault(validateEnableVault(payload))
+  ipcMain.handle("credentials:enable-vault", (_event, payload: unknown) => {
+    const request = validateEnableVault(payload);
+    return withAudit("credentials.enableVault", undefined, request, () => credentialStore?.enableVault(request));
+  });
+  ipcMain.handle("credentials:unlock-vault", (_event, payload: unknown) => {
+    const request = validateUnlockVault(payload);
+    return withAudit("credentials.unlockVault", undefined, request, () => credentialStore?.unlockVault(request));
+  });
+  ipcMain.handle("credentials:disable-vault", (_event, payload: unknown) => {
+    const request = validateDisableVault(payload);
+    return withAudit("credentials.disableVault", undefined, request, () => credentialStore?.disableVault(request));
+  });
+  ipcMain.handle("credentials:lock-vault", () =>
+    withAudit("credentials.lockVault", undefined, undefined, () => credentialStore?.lockVault())
   );
-  ipcMain.handle("credentials:unlock-vault", (_event, payload: unknown) =>
-    credentialStore?.unlockVault(validateUnlockVault(payload))
+  ipcMain.handle("credentials:import-private-key", () =>
+    withAudit("credentials.importPrivateKey", undefined, undefined, () => importPrivateKeyFile())
   );
-  ipcMain.handle("credentials:disable-vault", (_event, payload: unknown) =>
-    credentialStore?.disableVault(validateDisableVault(payload))
-  );
-  ipcMain.handle("credentials:lock-vault", () => credentialStore?.lockVault());
-  ipcMain.handle("credentials:import-private-key", () => importPrivateKeyFile());
-  ipcMain.handle("sftp:list-directory", (_event, payload: unknown) =>
-    sftpService?.listDirectory(validateListRemoteDirectory(payload))
-  );
-  ipcMain.handle("sftp:transfer-file", (_event, payload: unknown) =>
-    sftpService?.transferFile(validateTransferFile(payload))
-  );
-  ipcMain.handle("sftp:read-file", (_event, payload: unknown) => sftpService?.readFile(validateReadRemoteFile(payload)));
-  ipcMain.handle("sftp:write-file", (_event, payload: unknown) =>
-    sftpService?.writeFile(validateWriteRemoteFile(payload))
-  );
-  ipcMain.handle("metrics:collect", (_event, payload: unknown) => metricsService?.collect(validateCollectMetrics(payload)));
-  ipcMain.handle("metrics:list-processes", (_event, payload: unknown) =>
-    metricsService?.listProcesses(validateListProcesses(payload))
-  );
-  ipcMain.handle("metrics:kill-process", (_event, payload: unknown) =>
-    metricsService?.killProcess(validateKillProcess(payload))
-  );
-  ipcMain.handle("tunnels:start", (_event, payload: unknown) => tunnelManager?.start(validateStartTunnel(payload)));
-  ipcMain.handle("tunnels:stop", (_event, id: unknown) => tunnelManager?.stop(validateIpcId(id)));
-  ipcMain.handle("relay:start", (_event, payload: unknown) => tunnelManager?.startRelay(validateStartRelay(payload)));
-  ipcMain.handle("relay:stop", (_event, id: unknown) => tunnelManager?.stop(validateIpcId(id)));
+  ipcMain.handle("sftp:list-directory", (_event, payload: unknown) => {
+    const request = validateListRemoteDirectory(payload);
+    return withAudit("sftp.listDirectory", request.ssh.connectionId, request, () => sftpService?.listDirectory(request));
+  });
+  ipcMain.handle("sftp:transfer-file", (_event, payload: unknown) => {
+    const request = validateTransferFile(payload);
+    return withAudit("sftp.transferFile", request.ssh.connectionId, request, () => sftpService?.transferFile(request));
+  });
+  ipcMain.handle("sftp:read-file", (_event, payload: unknown) => {
+    const request = validateReadRemoteFile(payload);
+    return withAudit("sftp.readFile", request.ssh.connectionId, request, () => sftpService?.readFile(request));
+  });
+  ipcMain.handle("sftp:write-file", (_event, payload: unknown) => {
+    const request = validateWriteRemoteFile(payload);
+    return withAudit("sftp.writeFile", request.ssh.connectionId, request, () => sftpService?.writeFile(request));
+  });
+  ipcMain.handle("metrics:collect", (_event, payload: unknown) => {
+    const request = validateCollectMetrics(payload);
+    return withAudit("metrics.collect", request.ssh.connectionId, request, () => metricsService?.collect(request));
+  });
+  ipcMain.handle("metrics:list-processes", (_event, payload: unknown) => {
+    const request = validateListProcesses(payload);
+    return withAudit("metrics.listProcesses", request.ssh.connectionId, request, () => metricsService?.listProcesses(request));
+  });
+  ipcMain.handle("metrics:kill-process", (_event, payload: unknown) => {
+    const request = validateKillProcess(payload);
+    return withAudit("metrics.killProcess", request.ssh.connectionId, request, () => metricsService?.killProcess(request));
+  });
+  ipcMain.handle("tunnels:start", (_event, payload: unknown) => {
+    const request = validateStartTunnel(payload);
+    return withAudit("tunnels.start", request.id, request, () => tunnelManager?.start(request));
+  });
+  ipcMain.handle("tunnels:stop", (_event, id: unknown) => {
+    const tunnelId = validateIpcId(id);
+    return withAudit("tunnels.stop", tunnelId, { id: tunnelId }, () => tunnelManager?.stop(tunnelId));
+  });
+  ipcMain.handle("relay:start", (_event, payload: unknown) => {
+    const request = validateStartRelay(payload);
+    return withAudit("relay.start", request.id, request, () => tunnelManager?.startRelay(request));
+  });
+  ipcMain.handle("relay:stop", (_event, id: unknown) => {
+    const relayId = validateIpcId(id);
+    return withAudit("relay.stop", relayId, { id: relayId }, () => tunnelManager?.stop(relayId));
+  });
   ipcMain.handle("logs:read-session", (_event, payload: unknown) => {
     const request = validateReadSessionLog(payload);
     return {
       lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
+    };
+  });
+  ipcMain.handle("logs:read-audit", (_event, payload: unknown) => {
+    const request = validateReadAuditLog(payload);
+    return {
+      lines: auditLogStore?.read(request.query, request.limit) ?? []
     };
   });
   ipcMain.handle("rdp:open", (_event, payload: unknown) => {
@@ -194,18 +279,25 @@ app.whenReady().then(() => {
       throw new Error("RDP launch is only available on Windows.");
     }
 
-    const target = `${request.host}:${request.port || 3389}`;
-    const child = spawn("mstsc.exe", [`/v:${target}`], {
-      detached: true,
-      stdio: "ignore"
+    return withAudit("rdp.open", request.host, request, () => {
+      const target = `${request.host}:${request.port || 3389}`;
+      const child = spawn("mstsc.exe", [`/v:${target}`], {
+        detached: true,
+        stdio: "ignore"
+      });
+      child.unref();
+      return { ok: true };
     });
-    child.unref();
-    return { ok: true };
   });
-  ipcMain.handle("cloud-sync:export", (_event, payload: unknown) =>
-    cloudSyncService?.exportSettings(validateExportCloudSync(payload))
+  ipcMain.handle("cloud-sync:export", (_event, payload: unknown) => {
+    const request = validateExportCloudSync(payload);
+    return withAudit("cloudSync.export", undefined, summarizeWorkspace(request.snapshot), () =>
+      cloudSyncService?.exportSettings(request)
+    );
+  });
+  ipcMain.handle("cloud-sync:import", () =>
+    withAudit("cloudSync.import", undefined, undefined, () => cloudSyncService?.importSettings())
   );
-  ipcMain.handle("cloud-sync:import", () => cloudSyncService?.importSettings());
   createMainWindow();
 
   app.on("activate", () => {
