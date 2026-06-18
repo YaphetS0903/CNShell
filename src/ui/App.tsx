@@ -34,6 +34,8 @@ import type {
   JumpHostConfig,
   KeyMappingProfile,
   KeyMappingRule,
+  ScriptRecording,
+  ScriptRecordingEvent,
   SessionStatus,
   SessionTab,
   TransferJob
@@ -237,6 +239,10 @@ export function App() {
     targetPort: "80"
   });
   const [tunnels, setTunnels] = useState<TunnelInfo[]>([]);
+  const [isRecordingScript, setIsRecordingScript] = useState(false);
+  const [recordingStartedAt, setRecordingStartedAt] = useState<number | null>(null);
+  const [recordingLastInputAt, setRecordingLastInputAt] = useState<number | null>(null);
+  const [recordingEvents, setRecordingEvents] = useState<ScriptRecordingEvent[]>([]);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -306,6 +312,72 @@ export function App() {
       ...current,
       keyMappingProfiles: profiles
     }));
+  };
+
+  const appendRecordingInput = (input: string) => {
+    if (!isRecordingScript || !input) {
+      return;
+    }
+
+    const now = Date.now();
+    const delayMs = recordingLastInputAt ? Math.min(now - recordingLastInputAt, 5000) : 0;
+    setRecordingLastInputAt(now);
+    setRecordingEvents((current) => [
+      ...current,
+      {
+        id: `script-event-${now}-${current.length}`,
+        input,
+        delayMs
+      }
+    ]);
+  };
+
+  const sendTerminalInput = (sessionId: string, input: string, options: { record?: boolean } = {}) => {
+    if (options.record !== false) {
+      appendRecordingInput(input);
+    }
+
+    void window.cnshell?.terminal.write(sessionId, input);
+  };
+
+  const startScriptRecording = () => {
+    const now = Date.now();
+    setIsRecordingScript(true);
+    setRecordingStartedAt(now);
+    setRecordingLastInputAt(now);
+    setRecordingEvents([]);
+  };
+
+  const stopScriptRecording = () => {
+    if (recordingEvents.length > 0) {
+      const createdAt = new Date(recordingStartedAt ?? Date.now()).toISOString();
+      const recording: ScriptRecording = {
+        id: `script-${Date.now()}`,
+        name: `Recording ${new Date().toLocaleTimeString()}`,
+        createdAt,
+        events: recordingEvents
+      };
+
+      setSnapshot((current) => ({
+        ...current,
+        scriptRecordings: [recording, ...current.scriptRecordings].slice(0, 12)
+      }));
+    }
+
+    setIsRecordingScript(false);
+    setRecordingStartedAt(null);
+    setRecordingLastInputAt(null);
+    setRecordingEvents([]);
+  };
+
+  const replayScriptRecording = (recording: ScriptRecording) => {
+    let delay = 0;
+    for (const event of recording.events) {
+      delay += Math.min(event.delayMs, 3000);
+      window.setTimeout(() => {
+        sendTerminalInput(activeTab.id, event.input, { record: false });
+      }, delay);
+    }
   };
 
   const startActiveSession = () => {
@@ -481,7 +553,7 @@ export function App() {
       : [activeTab.id];
 
     for (const sessionId of targetSessionIds) {
-      void window.cnshell?.terminal.write(sessionId, `${command}\r`);
+      sendTerminalInput(sessionId, `${command}\r`);
     }
 
     setIsCommandPaletteOpen(false);
@@ -671,6 +743,7 @@ export function App() {
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
             onDispatchCommand={executeCommand}
+            onTerminalInput={sendTerminalInput}
             onTriggerEvents={addTriggerEvents}
           />
           <aside className="ops-panel" aria-label="Operations panels">
@@ -714,6 +787,14 @@ export function App() {
               onStop={stopTunnel}
             />
             <KeyMappingPanel profiles={snapshot.keyMappingProfiles} onChange={updateKeyMappingProfiles} />
+            <ScriptRecorderPanel
+              isRecording={isRecordingScript}
+              eventCount={recordingEvents.length}
+              recordings={snapshot.scriptRecordings}
+              onStart={startScriptRecording}
+              onStop={stopScriptRecording}
+              onReplay={replayScriptRecording}
+            />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
           </aside>
@@ -923,6 +1004,7 @@ function TerminalPane({
   onStatusChange,
   onReconnect,
   onDispatchCommand,
+  onTerminalInput,
   onTriggerEvents
 }: {
   activeConnection: ConnectionProfile;
@@ -935,6 +1017,7 @@ function TerminalPane({
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
   onDispatchCommand: (command: string) => void;
+  onTerminalInput: (sessionId: string, input: string, options?: { record?: boolean }) => void;
   onTriggerEvents: (events: TriggerEvent[]) => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
@@ -977,7 +1060,7 @@ function TerminalPane({
         return true;
       }
 
-      void window.cnshell?.terminal.write(activeTab.id, normalizeSendValue(rule.send));
+      onTerminalInput(activeTab.id, normalizeSendValue(rule.send));
       return false;
     });
     terminal.writeln("\x1b[1;32mCNshell terminal session starting\x1b[0m");
@@ -1001,7 +1084,7 @@ function TerminalPane({
     });
 
     const dataDisposable = terminal.onData((data) => {
-      void window.cnshell?.terminal.write(sessionId, data);
+      onTerminalInput(sessionId, data);
     });
 
     const pasteHandler = (event: ClipboardEvent) => {
@@ -1094,6 +1177,7 @@ function TerminalPane({
     keyMappingProfiles,
     useSavedCredential,
     isHighlightEnabled,
+    onTerminalInput,
     onTriggerEvents,
     startToken
   ]);
@@ -1119,7 +1203,7 @@ function TerminalPane({
       return;
     }
 
-    void window.cnshell?.terminal.write(safePasteSessionId || activeTab.id, safePasteReview.text);
+    onTerminalInput(safePasteSessionId || activeTab.id, safePasteReview.text);
     setSafePasteReview(null);
     setSafePasteSessionId("");
   };
@@ -1794,6 +1878,64 @@ function KeyMappingPanel({
       ) : (
         <div className="trigger-empty">No key mapping profile</div>
       )}
+    </section>
+  );
+}
+
+function ScriptRecorderPanel({
+  isRecording,
+  eventCount,
+  recordings,
+  onStart,
+  onStop,
+  onReplay
+}: {
+  isRecording: boolean;
+  eventCount: number;
+  recordings: ScriptRecording[];
+  onStart: () => void;
+  onStop: () => void;
+  onReplay: (recording: ScriptRecording) => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="Script recorder">
+      <div className="panel-heading">
+        <div>
+          <FileText size={16} aria-hidden="true" />
+          <h2>Scripts</h2>
+        </div>
+        <span className={`recording-pill ${isRecording ? "active" : ""}`}>{isRecording ? "rec" : "idle"}</span>
+      </div>
+      <div className="script-recorder">
+        <div className="script-actions">
+          <button type="button" disabled={isRecording} onClick={onStart}>
+            Record
+          </button>
+          <button type="button" disabled={!isRecording} onClick={onStop}>
+            Stop
+          </button>
+          <span>{eventCount} events</span>
+        </div>
+        <div className="script-list">
+          {recordings.length === 0 ? (
+            <div className="trigger-empty">No recorded scripts</div>
+          ) : (
+            recordings.slice(0, 4).map((recording) => (
+              <div key={recording.id} className="script-row">
+                <div>
+                  <strong>{recording.name}</strong>
+                  <small>
+                    {recording.events.length} events / {new Date(recording.createdAt).toLocaleDateString()}
+                  </small>
+                </div>
+                <button type="button" onClick={() => onReplay(recording)}>
+                  Replay
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
     </section>
   );
 }

@@ -1,5 +1,13 @@
 import type { AppSnapshot, ConnectionProfile } from "./models";
-import { connectionProfiles, keyMappingProfiles, quickCommands, remoteFiles, serverMetrics, sessionTabs } from "./seed";
+import {
+  connectionProfiles,
+  keyMappingProfiles,
+  quickCommands,
+  remoteFiles,
+  scriptRecordings,
+  serverMetrics,
+  sessionTabs
+} from "./seed";
 
 export function createInitialAppSnapshot(): AppSnapshot {
   return {
@@ -7,6 +15,7 @@ export function createInitialAppSnapshot(): AppSnapshot {
     sessions: sessionTabs,
     quickCommands,
     keyMappingProfiles,
+    scriptRecordings,
     remoteFiles,
     serverMetrics
   };
@@ -17,7 +26,8 @@ export function hydrateAppSnapshot(snapshot: AppSnapshot): AppSnapshot {
   return {
     ...fallback,
     ...snapshot,
-    keyMappingProfiles: snapshot.keyMappingProfiles ?? fallback.keyMappingProfiles
+    keyMappingProfiles: snapshot.keyMappingProfiles ?? fallback.keyMappingProfiles,
+    scriptRecordings: snapshot.scriptRecordings ?? fallback.scriptRecordings
   };
 }
 

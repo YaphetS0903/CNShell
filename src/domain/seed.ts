@@ -3,6 +3,7 @@ import type {
   KeyMappingProfile,
   QuickCommand,
   RemoteFileEntry,
+  ScriptRecording,
   ServerMetric,
   SessionTab
 } from "./models";
@@ -94,6 +95,8 @@ export const keyMappingProfiles: KeyMappingProfile[] = [
     ]
   }
 ];
+
+export const scriptRecordings: ScriptRecording[] = [];
 
 export const remoteFiles: RemoteFileEntry[] = [
   {

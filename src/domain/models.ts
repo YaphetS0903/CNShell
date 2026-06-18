@@ -58,6 +58,19 @@ export interface KeyMappingRule {
   enabled: boolean;
 }
 
+export interface ScriptRecording {
+  id: string;
+  name: string;
+  createdAt: string;
+  events: ScriptRecordingEvent[];
+}
+
+export interface ScriptRecordingEvent {
+  id: string;
+  input: string;
+  delayMs: number;
+}
+
 export interface RemoteFileEntry {
   id: string;
   name: string;
@@ -93,6 +106,7 @@ export interface AppSnapshot {
   sessions: SessionTab[];
   quickCommands: QuickCommand[];
   keyMappingProfiles: KeyMappingProfile[];
+  scriptRecordings: ScriptRecording[];
   remoteFiles: RemoteFileEntry[];
   serverMetrics: ServerMetric[];
 }
