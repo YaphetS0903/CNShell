@@ -5,9 +5,12 @@ import {
   BulkCommandConfirmation,
   CommandPalette,
   ConnectionEditorDialog,
+  FilePanel,
   LogViewerPanel,
   QuickCommandManagerDialog,
-  QuickCommandPanel
+  QuickCommandPanel,
+  RemoteOperationDialog,
+  TabStrip
 } from "./App";
 import { quickCommands } from "../domain/seed";
 
@@ -172,5 +175,91 @@ describe("renderer workflow components", () => {
     expect(onDraftChange).toHaveBeenCalledWith(expect.objectContaining({ title: "Disk free" }));
     expect(onSave).toHaveBeenCalledOnce();
     expect(onDelete).toHaveBeenCalledWith("qc-disk");
+  });
+
+  it("closes session tabs from the tab strip", () => {
+    const onClose = vi.fn();
+    render(
+      <TabStrip
+        tabs={[
+          {
+            id: "tab-1",
+            connectionId: "prod-web-01",
+            title: "prod-web-01",
+            cwd: "/",
+            status: "connected",
+            startedAt: new Date().toISOString()
+          }
+        ]}
+        activeTabId="tab-1"
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onClose={onClose}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Close session tab" }));
+    expect(onClose).toHaveBeenCalledWith("tab-1");
+  });
+
+  it("exposes SFTP file management actions", () => {
+    const onCreateDirectory = vi.fn();
+    const onRenamePath = vi.fn();
+    const onDeletePath = vi.fn();
+    render(
+      <FilePanel
+        remoteFiles={[
+          {
+            id: "/var/www/app.log",
+            name: "app.log",
+            path: "/var/www/app.log",
+            type: "file",
+            size: 1024,
+            modifiedAt: "2026-06-18T00:00:00.000Z",
+            mode: "-rw-r--r--"
+          }
+        ]}
+        path="/var/www"
+        status="idle"
+        error=""
+        localPath=""
+        transferRemotePath=""
+        transferJobs={[]}
+        onPathChange={vi.fn()}
+        onLocalPathChange={vi.fn()}
+        onTransferRemotePathChange={vi.fn()}
+        onRefresh={vi.fn()}
+        onTransfer={vi.fn()}
+        onOpenFile={vi.fn()}
+        onCreateDirectory={onCreateDirectory}
+        onRenamePath={onRenamePath}
+        onDeletePath={onDeletePath}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New directory" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(onCreateDirectory).toHaveBeenCalledOnce();
+    expect(onRenamePath).toHaveBeenCalledWith("/var/www/app.log");
+    expect(onDeletePath).toHaveBeenCalledWith("/var/www/app.log");
+  });
+
+  it("confirms remote delete operations", () => {
+    const onConfirm = vi.fn();
+    render(
+      <RemoteOperationDialog
+        draft={{ type: "delete", targetPath: "/var/www/app.log", value: "" }}
+        error=""
+        onChange={vi.fn()}
+        onConfirm={onConfirm}
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("Delete /var/www/app.log?")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    expect(onConfirm).toHaveBeenCalledOnce();
   });
 });

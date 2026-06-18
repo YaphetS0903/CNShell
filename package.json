@@ -2,6 +2,7 @@
   "name": "cnshell",
   "version": "0.1.0",
   "description": "CNshell desktop SSH, SFTP, and server operations client.",
+  "author": "YaphetS0903",
   "main": "dist-electron/electron/main.js",
   "private": true,
   "type": "module",
@@ -23,6 +24,7 @@
   "build": {
     "appId": "cn.cnshell.desktop",
     "productName": "CNshell",
+    "icon": "build/icon",
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "release"

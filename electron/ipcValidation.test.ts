@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   IpcValidationError,
+  validateCreateRemoteDirectory,
+  validateDeleteRemotePath,
+  validateRenameRemotePath,
   validateSaveCredential,
   validateStartRelay,
   validateStartTerminalSession,
@@ -133,5 +136,17 @@ describe("IPC validation contracts", () => {
         content: "x".repeat(5 * 1024 * 1024 + 1)
       })
     ).toThrow(IpcValidationError);
+  });
+
+  it("validates remote path management requests", () => {
+    expect(validateCreateRemoteDirectory({ ssh, remotePath: "/var/www/new" })).toMatchObject({
+      remotePath: "/var/www/new"
+    });
+    expect(validateRenameRemotePath({ ssh, oldPath: "/tmp/a", newPath: "/tmp/b" })).toMatchObject({
+      oldPath: "/tmp/a",
+      newPath: "/tmp/b"
+    });
+    expect(validateDeleteRemotePath({ ssh, remotePath: "/tmp/b" })).toMatchObject({ remotePath: "/tmp/b" });
+    expect(() => validateCreateRemoteDirectory({ ssh, remotePath: "" })).toThrow(IpcValidationError);
   });
 });

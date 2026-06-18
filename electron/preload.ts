@@ -6,8 +6,10 @@ import type {
   CheckForUpdatesRequest,
   CollectMetricsRequest,
   CollectMetricsResult,
+  CreateRemoteDirectoryRequest,
   CredentialStatus,
   CredentialVaultStatus,
+  DeleteRemotePathRequest,
   DisableCredentialVaultRequest,
   EnableCredentialVaultRequest,
   ExportCloudSyncRequest,
@@ -26,7 +28,9 @@ import type {
   ReadErrorReportRequest,
   ReadErrorReportResult,
   RemoteDirectoryListing,
+  RemotePathOperationResult,
   RendererErrorReportRequest,
+  RenameRemotePathRequest,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
   ReadSessionLogRequest,
@@ -112,7 +116,13 @@ const api = {
     readFile: (request: ReadRemoteFileRequest) =>
       ipcRenderer.invoke("sftp:read-file", request) as Promise<ReadRemoteFileResult>,
     writeFile: (request: WriteRemoteFileRequest) =>
-      ipcRenderer.invoke("sftp:write-file", request) as Promise<WriteRemoteFileResult>
+      ipcRenderer.invoke("sftp:write-file", request) as Promise<WriteRemoteFileResult>,
+    createDirectory: (request: CreateRemoteDirectoryRequest) =>
+      ipcRenderer.invoke("sftp:create-directory", request) as Promise<RemotePathOperationResult>,
+    renamePath: (request: RenameRemotePathRequest) =>
+      ipcRenderer.invoke("sftp:rename-path", request) as Promise<RemotePathOperationResult>,
+    deletePath: (request: DeleteRemotePathRequest) =>
+      ipcRenderer.invoke("sftp:delete-path", request) as Promise<RemotePathOperationResult>
   },
   metrics: {
     collect: (request: CollectMetricsRequest) =>

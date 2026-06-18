@@ -4,9 +4,13 @@ import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import { connectSshClient } from "./sshConnectionConfig.js";
 import type {
+  CreateRemoteDirectoryRequest,
+  DeleteRemotePathRequest,
   ListRemoteDirectoryRequest,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
+  RemotePathOperationResult,
+  RenameRemotePathRequest,
   RemoteDirectoryListing,
   TransferFileRequest,
   TransferFileResult,
@@ -131,6 +135,71 @@ export class SftpService {
             }
 
             resolve({ ok: true });
+          });
+        })
+    );
+  }
+
+  createDirectory(request: CreateRemoteDirectoryRequest): Promise<RemotePathOperationResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.mkdir(path.posix.normalize(request.remotePath), (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve({ ok: true });
+          });
+        })
+    );
+  }
+
+  renamePath(request: RenameRemotePathRequest): Promise<RemotePathOperationResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          sftp.rename(path.posix.normalize(request.oldPath), path.posix.normalize(request.newPath), (error) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+
+            resolve({ ok: true });
+          });
+        })
+    );
+  }
+
+  deletePath(request: DeleteRemotePathRequest): Promise<RemotePathOperationResult> {
+    return this.withSftp(
+      request.ssh,
+      (sftp) =>
+        new Promise((resolve, reject) => {
+          const remotePath = path.posix.normalize(request.remotePath);
+          sftp.stat(remotePath, (statError, stats) => {
+            if (statError) {
+              reject(statError);
+              return;
+            }
+
+            const finish = (error: Error | null | undefined) => {
+              if (error) {
+                reject(error);
+                return;
+              }
+
+              resolve({ ok: true });
+            };
+
+            if (stats.isDirectory()) {
+              sftp.rmdir(remotePath, finish);
+            } else {
+              sftp.unlink(remotePath, finish);
+            }
           });
         })
     );

@@ -21,6 +21,8 @@ import {
   validateCheckForUpdates,
   validateCollectMetrics,
   validateConnectionId,
+  validateCreateRemoteDirectory,
+  validateDeleteRemotePath,
   validateDisableVault,
   validateEnableVault,
   validateExportCloudSync,
@@ -35,6 +37,7 @@ import {
   validateReadRemoteFile,
   validateReadSessionLog,
   validateRendererErrorReport,
+  validateRenameRemotePath,
   validateSaveCredential,
   validateStartRelay,
   validateStartTerminalSession,
@@ -141,6 +144,7 @@ function createMainWindow() {
     minWidth: 1120,
     minHeight: 720,
     title: "CNshell",
+    icon: path.join(__dirname, "../../build/icon.ico"),
     backgroundColor: "#0b1117",
     titleBarStyle: "hiddenInset",
     webPreferences: {
@@ -321,6 +325,20 @@ app.whenReady().then(() => {
   ipcMain.handle("sftp:write-file", (_event, payload: unknown) => {
     const request = validateWriteRemoteFile(payload);
     return withAudit("sftp.writeFile", request.ssh.connectionId, request, () => sftpService?.writeFile(request));
+  });
+  ipcMain.handle("sftp:create-directory", (_event, payload: unknown) => {
+    const request = validateCreateRemoteDirectory(payload);
+    return withAudit("sftp.createDirectory", request.ssh.connectionId, request, () =>
+      sftpService?.createDirectory(request)
+    );
+  });
+  ipcMain.handle("sftp:rename-path", (_event, payload: unknown) => {
+    const request = validateRenameRemotePath(payload);
+    return withAudit("sftp.renamePath", request.ssh.connectionId, request, () => sftpService?.renamePath(request));
+  });
+  ipcMain.handle("sftp:delete-path", (_event, payload: unknown) => {
+    const request = validateDeleteRemotePath(payload);
+    return withAudit("sftp.deletePath", request.ssh.connectionId, request, () => sftpService?.deletePath(request));
   });
   ipcMain.handle("metrics:collect", (_event, payload: unknown) => {
     const request = validateCollectMetrics(payload);

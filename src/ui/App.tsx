@@ -118,6 +118,12 @@ interface QuickCommandFormDraft {
   scope: QuickCommand["scope"];
 }
 
+interface RemoteOperationDraft {
+  type: "mkdir" | "rename" | "delete";
+  targetPath: string;
+  value: string;
+}
+
 interface MetricHistoryPoint {
   at: string;
   cpu: number;
@@ -187,6 +193,7 @@ const translations = {
     focusPanel: (panel: string) => `定位到${panel}`,
     sessionTabs: "会话标签",
     newSessionTab: "新建会话标签",
+    closeSessionTab: "关闭会话标签",
     localProtocol: "本地",
     status: {
       connected: "已连接",
@@ -219,8 +226,8 @@ const translations = {
     find: "查找",
     split: "分屏",
     unsplit: "合并",
-    splitPaneEnabled: "分屏视图已开启",
-    splitPaneHint: "右侧镜像当前会话，方便对照日志和命令输出。",
+    splitPaneEnabled: "真实分屏会话已开启",
+    splitPaneHint: "右侧会启动独立会话，可同时执行不同命令。",
     reconnect: "重连",
     moreTerminalActions: "更多终端操作",
     terminalActions: "终端操作",
@@ -281,6 +288,17 @@ const translations = {
     remoteFiles: "远程文件",
     cwdSync: "目录同步",
     refreshRemoteFiles: "刷新远程文件",
+    createRemoteDirectory: "新建目录",
+    renameRemotePath: "重命名",
+    deleteRemotePath: "删除",
+    remoteName: "远程名称",
+    remoteOperation: "远程文件操作",
+    directoryName: "目录名称",
+    newPathName: "新名称或路径",
+    confirmDeleteRemotePath: (name: string) => `确认删除 ${name}？`,
+    remotePathRequired: "请输入远程路径。",
+    remoteNameRequired: "请输入名称。",
+    remoteOperationCompleted: "远程操作已完成",
     remotePath: "远程路径",
     loadingRemoteDirectory: "正在加载远程目录...",
     localPath: "本地路径",
@@ -495,6 +513,7 @@ const translations = {
     focusPanel: (panel: string) => `Focus ${panel}`,
     sessionTabs: "Session tabs",
     newSessionTab: "Open new session tab",
+    closeSessionTab: "Close session tab",
     localProtocol: "local",
     status: {
       connected: "connected",
@@ -527,8 +546,8 @@ const translations = {
     find: "Find",
     split: "Split",
     unsplit: "Unsplit",
-    splitPaneEnabled: "Split view enabled",
-    splitPaneHint: "The right pane mirrors this session for comparing logs and command output.",
+    splitPaneEnabled: "Real split session enabled",
+    splitPaneHint: "The right pane starts an independent session for separate commands.",
     reconnect: "Reconnect",
     moreTerminalActions: "More terminal actions",
     terminalActions: "Terminal actions",
@@ -589,6 +608,17 @@ const translations = {
     remoteFiles: "Remote files",
     cwdSync: "cwd sync",
     refreshRemoteFiles: "Refresh remote files",
+    createRemoteDirectory: "New directory",
+    renameRemotePath: "Rename",
+    deleteRemotePath: "Delete",
+    remoteName: "Remote name",
+    remoteOperation: "Remote file operation",
+    directoryName: "Directory name",
+    newPathName: "New name or path",
+    confirmDeleteRemotePath: (name: string) => `Delete ${name}?`,
+    remotePathRequired: "Enter a remote path.",
+    remoteNameRequired: "Enter a name.",
+    remoteOperationCompleted: "Remote operation completed",
     remotePath: "Remote path",
     loadingRemoteDirectory: "Loading remote directory...",
     localPath: "Local path",
@@ -984,6 +1014,13 @@ function normalizeRemotePath(path: string) {
   return `/${parts.join("/")}`;
 }
 
+function parentRemotePath(path: string) {
+  const normalized = normalizeRemotePath(path);
+  const parts = normalized.split("/").filter(Boolean);
+  parts.pop();
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+}
+
 function inferDirectoryFromCommand(command: string, currentPath: string) {
   const trimmed = command.trim();
   const match = /^cd(?:\s+(.+))?$/.exec(trimmed);
@@ -1134,6 +1171,7 @@ export function App() {
   const [connectionFormError, setConnectionFormError] = useState("");
   const [quickCommandDraft, setQuickCommandDraft] = useState<QuickCommandFormDraft | null>(null);
   const [quickCommandFormError, setQuickCommandFormError] = useState("");
+  const [splitTabId, setSplitTabId] = useState("");
   const [activeConnectionId, setActiveConnectionId] = useState(snapshot.connections[0].id);
   const [activeTabId, setActiveTabId] = useState(snapshot.sessions[0].id);
   const [appVersion, setAppVersion] = useState("dev");
@@ -1152,6 +1190,8 @@ export function App() {
   const [remotePath, setRemotePath] = useState("/var/www/cnshell");
   const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
   const [sftpError, setSftpError] = useState("");
+  const [remoteOperationDraft, setRemoteOperationDraft] = useState<RemoteOperationDraft | null>(null);
+  const [remoteOperationError, setRemoteOperationError] = useState("");
   const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
   const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [metricsError, setMetricsError] = useState("");
@@ -1245,6 +1285,11 @@ export function App() {
         status: sessionStatuses[session.id] ?? session.status
       })),
     [sessionStatuses, snapshot.sessions]
+  );
+
+  const splitTab = useMemo(
+    () => sessionTabsWithStatus.find((session) => session.id === splitTabId),
+    [sessionTabsWithStatus, splitTabId]
   );
 
   const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
@@ -1676,6 +1721,13 @@ export function App() {
     }));
   };
 
+  const startSession = (sessionId: string) => {
+    setSessionStartTokens((current) => ({
+      ...current,
+      [sessionId]: (current[sessionId] ?? 0) + 1
+    }));
+  };
+
   const trustActiveHost = () => {
     const prompt = hostKeyPrompts[activeTab.id];
     if (!prompt || prompt.status === "changed") {
@@ -1966,6 +2018,70 @@ export function App() {
       });
   };
 
+  const openCreateRemoteDirectory = () => {
+    setRemoteOperationError("");
+    setRemoteOperationDraft({ type: "mkdir", targetPath: remotePath, value: "" });
+  };
+
+  const openRenameRemotePath = (remoteFilePath: string) => {
+    setRemoteOperationError("");
+    setRemoteOperationDraft({
+      type: "rename",
+      targetPath: remoteFilePath,
+      value: remoteFilePath.split("/").filter(Boolean).at(-1) ?? remoteFilePath
+    });
+  };
+
+  const openDeleteRemotePath = (remoteFilePath: string) => {
+    setRemoteOperationError("");
+    setRemoteOperationDraft({ type: "delete", targetPath: remoteFilePath, value: "" });
+  };
+
+  const runRemoteOperation = () => {
+    if (!remoteOperationDraft || activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    const ssh = createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential));
+    const targetPath = remoteOperationDraft.targetPath.trim();
+    const value = remoteOperationDraft.value.trim();
+    if (!targetPath) {
+      setRemoteOperationError(labels.remotePathRequired);
+      return;
+    }
+
+    setSftpStatus("loading");
+    setSftpError("");
+    setRemoteOperationError("");
+
+    const operation =
+      remoteOperationDraft.type === "mkdir"
+        ? value
+          ? window.cnshell?.sftp.createDirectory({ ssh, remotePath: normalizeRemotePath(`${targetPath}/${value}`) })
+          : Promise.reject(new Error(labels.remoteNameRequired))
+        : remoteOperationDraft.type === "rename"
+          ? value
+            ? window.cnshell?.sftp.renamePath({
+                ssh,
+                oldPath: targetPath,
+                newPath: value.includes("/") ? normalizeRemotePath(value) : normalizeRemotePath(`${parentRemotePath(targetPath)}/${value}`)
+              })
+            : Promise.reject(new Error(labels.remoteNameRequired))
+          : window.cnshell?.sftp.deletePath({ ssh, remotePath: targetPath });
+
+    void operation
+      ?.then(() => {
+        setRemoteOperationDraft(null);
+        setSftpStatus("idle");
+        setSftpError("");
+        refreshRemoteFiles();
+      })
+      .catch((error: Error) => {
+        setRemoteOperationError(error.message);
+        setSftpStatus("error");
+      });
+  };
+
   const appendMetricHistory = (
     metrics: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"],
     processCount = remoteProcesses.length
@@ -2218,13 +2334,13 @@ export function App() {
     });
   };
 
-  const createSessionForActiveConnection = () => {
-    const sessionId = `tab-${activeConnection.id}-${Date.now()}`;
+  const createSessionForConnection = (connection: ConnectionProfile, titleSuffix = "") => {
+    const sessionId = `tab-${connection.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const nextSession: SessionTab = {
       id: sessionId,
-      connectionId: activeConnection.id,
-      title: activeConnection.name,
-      cwd: activeConnection.protocol === "local" ? "~" : "/",
+      connectionId: connection.id,
+      title: `${connection.name}${titleSuffix}`,
+      cwd: connection.protocol === "local" ? "~" : "/",
       status: "disconnected",
       startedAt: new Date().toISOString()
     };
@@ -2237,7 +2353,56 @@ export function App() {
       ...current,
       [sessionId]: "disconnected"
     }));
-    setActiveTabId(sessionId);
+    return nextSession;
+  };
+
+  const createSessionForActiveConnection = () => {
+    const nextSession = createSessionForConnection(activeConnection);
+    setActiveTabId(nextSession.id);
+  };
+
+  const closeSessionTab = (sessionId: string) => {
+    if (snapshot.sessions.length <= 1) {
+      return;
+    }
+
+    const remainingSessions = snapshot.sessions.filter((session) => session.id !== sessionId);
+    const fallbackSession =
+      remainingSessions.find((session) => session.connectionId === activeConnection.id) ?? remainingSessions[0];
+
+    void window.cnshell?.terminal.stop(sessionId);
+    setSnapshot((current) => ({
+      ...current,
+      sessions: current.sessions.filter((session) => session.id !== sessionId)
+    }));
+    setSessionStatuses((current) => {
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+    setSessionStartTokens((current) => {
+      const next = { ...current };
+      delete next[sessionId];
+      return next;
+    });
+    if (activeTabId === sessionId) {
+      setActiveTabId(fallbackSession.id);
+      setActiveConnectionId(fallbackSession.connectionId);
+    }
+    if (splitTabId === sessionId) {
+      setSplitTabId("");
+    }
+  };
+
+  const createSplitSession = () => {
+    if (splitTabId) {
+      setSplitTabId("");
+      return;
+    }
+
+    const nextSession = createSessionForConnection(activeConnection, " split");
+    setSplitTabId(nextSession.id);
+    window.setTimeout(() => startSession(nextSession.id), 0);
   };
 
   useEffect(() => {
@@ -2358,25 +2523,52 @@ export function App() {
           activeTabId={activeTabId}
           onSelect={setActiveTabId}
           onCreate={createSessionForActiveConnection}
+          onClose={closeSessionTab}
         />
         <section className="workspace-grid">
-          <TerminalPane
-            activeConnection={activeConnection}
-            activeTab={activeTab}
-            sshDraft={activeSshDraft}
-            useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
-            keyMappingProfiles={snapshot.keyMappingProfiles}
-            startToken={sessionStartTokens[activeTab.id] ?? 0}
-            isHighlightEnabled={isHighlightEnabled}
-            zmodemMode={zmodemMode}
-            onStatusChange={setSessionStatus}
-            onReconnect={startActiveSession}
-            onFocusPanel={focusPanel}
-            onDispatchCommand={executeCommand}
-            onTerminalInput={sendTerminalInput}
-            onTriggerEvents={addTriggerEvents}
-            onZmodemDetected={handleZmodemDetected}
-          />
+          <div className={`terminal-split-layout ${splitTab ? "active" : ""}`}>
+            <TerminalPane
+              activeConnection={activeConnection}
+              activeTab={activeTab}
+              sshDraft={activeSshDraft}
+              useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
+              keyMappingProfiles={snapshot.keyMappingProfiles}
+              startToken={sessionStartTokens[activeTab.id] ?? 0}
+              isHighlightEnabled={isHighlightEnabled}
+              isSplitActive={Boolean(splitTab)}
+              zmodemMode={zmodemMode}
+              onStatusChange={setSessionStatus}
+              onReconnect={startActiveSession}
+              onSplit={createSplitSession}
+              onFocusPanel={focusPanel}
+              onDispatchCommand={executeCommand}
+              onTerminalInput={sendTerminalInput}
+              onTriggerEvents={addTriggerEvents}
+              onZmodemDetected={handleZmodemDetected}
+            />
+            {splitTab ? (
+              <TerminalPane
+                activeConnection={activeConnection}
+                activeTab={splitTab}
+                sshDraft={activeSshDraft}
+                useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
+                keyMappingProfiles={snapshot.keyMappingProfiles}
+                startToken={sessionStartTokens[splitTab.id] ?? 0}
+                isHighlightEnabled={isHighlightEnabled}
+                isSplitActive
+                isSecondaryPane
+                zmodemMode={zmodemMode}
+                onStatusChange={setSessionStatus}
+                onReconnect={() => startSession(splitTab.id)}
+                onSplit={createSplitSession}
+                onFocusPanel={focusPanel}
+                onDispatchCommand={(command) => sendTerminalInput(splitTab.id, `${command}\r`)}
+                onTerminalInput={sendTerminalInput}
+                onTriggerEvents={addTriggerEvents}
+                onZmodemDetected={handleZmodemDetected}
+              />
+            ) : null}
+          </div>
           <aside className="ops-panel" aria-label={labels.operationsPanels}>
             {activeConnection.protocol === "ssh" ? (
               <SshCredentialPanel
@@ -2423,6 +2615,9 @@ export function App() {
               onRefresh={refreshRemoteFiles}
               onTransfer={startTransfer}
               onOpenFile={openRemoteFile}
+              onCreateDirectory={openCreateRemoteDirectory}
+              onRenamePath={openRenameRemotePath}
+              onDeletePath={openDeleteRemotePath}
             />
             <ZmodemPanel
               panelRef={setPanelRef("zmodem")}
@@ -2594,6 +2789,15 @@ export function App() {
           onSave={saveQuickCommandDraft}
           onDelete={deleteQuickCommand}
           onClose={() => setQuickCommandDraft(null)}
+        />
+      ) : null}
+      {remoteOperationDraft ? (
+        <RemoteOperationDialog
+          draft={remoteOperationDraft}
+          error={remoteOperationError}
+          onChange={setRemoteOperationDraft}
+          onConfirm={runRemoteOperation}
+          onClose={() => setRemoteOperationDraft(null)}
         />
       ) : null}
       </main>
@@ -2785,33 +2989,39 @@ function TopBar({
   );
 }
 
-function TabStrip({
+export function TabStrip({
   tabs,
   activeTabId,
   onSelect,
-  onCreate
+  onCreate,
+  onClose
 }: {
   tabs: SessionTab[];
   activeTabId: string;
   onSelect: (tabId: string) => void;
   onCreate: () => void;
+  onClose: (tabId: string) => void;
 }) {
   const labels = useUiStrings();
   return (
     <div className="tab-strip" role="tablist" aria-label={labels.sessionTabs}>
       {tabs.map((tab) => (
-        <button
-          type="button"
-          role="tab"
-          aria-selected={tab.id === activeTabId}
-          key={tab.id}
-          className={`session-tab ${tab.id === activeTabId ? "active" : ""}`}
-          onClick={() => onSelect(tab.id)}
-        >
-          <TerminalSquare size={15} aria-hidden="true" />
-          <span>{tab.title}</span>
-          <small className={tab.status}>{displayStatus(tab.status, labels)}</small>
-        </button>
+        <div key={tab.id} className={`session-tab ${tab.id === activeTabId ? "active" : ""}`}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab.id === activeTabId}
+            className="session-tab-main"
+            onClick={() => onSelect(tab.id)}
+          >
+            <TerminalSquare size={15} aria-hidden="true" />
+            <span>{tab.title}</span>
+            <small className={tab.status}>{displayStatus(tab.status, labels)}</small>
+          </button>
+          <button type="button" className="session-tab-close" aria-label={labels.closeSessionTab} onClick={() => onClose(tab.id)}>
+            <X size={13} aria-hidden="true" />
+          </button>
+        </div>
       ))}
       <button type="button" className="new-tab" aria-label={labels.newSessionTab} onClick={onCreate}>
         <Plus size={16} aria-hidden="true" />
@@ -2828,9 +3038,12 @@ function TerminalPane({
   keyMappingProfiles,
   startToken,
   isHighlightEnabled,
+  isSplitActive,
+  isSecondaryPane = false,
   zmodemMode,
   onStatusChange,
   onReconnect,
+  onSplit,
   onFocusPanel,
   onDispatchCommand,
   onTerminalInput,
@@ -2844,9 +3057,12 @@ function TerminalPane({
   keyMappingProfiles: KeyMappingProfile[];
   startToken: number;
   isHighlightEnabled: boolean;
+  isSplitActive: boolean;
+  isSecondaryPane?: boolean;
   zmodemMode: ZmodemMode;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
+  onSplit: () => void;
   onFocusPanel: (panel: PanelFocusKey) => void;
   onDispatchCommand: (command: string) => void;
   onTerminalInput: (sessionId: string, input: string, options?: { record?: boolean }) => void;
@@ -2856,7 +3072,6 @@ function TerminalPane({
   const labels = useUiStrings();
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
-  const [isSplitEnabled, setIsSplitEnabled] = useState(false);
   const [isActionsOpen, setIsActionsOpen] = useState(false);
   const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
   const [safePasteReview, setSafePasteReview] = useState<SafePasteReview | null>(null);
@@ -3103,14 +3318,9 @@ function TerminalPane({
           <button type="button" onClick={findNext}>
             {labels.find}
           </button>
-          <button
-            type="button"
-            className={isSplitEnabled ? "active" : ""}
-            aria-pressed={isSplitEnabled}
-            onClick={() => setIsSplitEnabled((current) => !current)}
-          >
+          <button type="button" className={isSplitActive ? "active" : ""} aria-pressed={isSplitActive} onClick={onSplit}>
             <SplitSquareHorizontal size={16} aria-hidden="true" />
-            {isSplitEnabled ? labels.unsplit : labels.split}
+            {isSplitActive ? labels.unsplit : labels.split}
           </button>
           <button type="button" className={zmodemMode !== "idle" ? "active" : ""} onClick={() => onFocusPanel("zmodem")}>
             <UploadCloud size={16} aria-hidden="true" />
@@ -3147,18 +3357,14 @@ function TerminalPane({
           ) : null}
         </div>
       </div>
-      <div className={`terminal-surface ${isSplitEnabled ? "split" : ""}`}>
-        <div ref={terminalHostRef} className="terminal-host" />
-        {isSplitEnabled ? (
-          <div className="terminal-split-preview" aria-label={labels.splitPaneEnabled}>
-            <div>
-              <SplitSquareHorizontal size={18} aria-hidden="true" />
-              <strong>{labels.splitPaneEnabled}</strong>
-            </div>
-            <span>{labels.splitPaneHint}</span>
-            <code>{activeTab.title} / {activeTab.cwd}</code>
+      <div className="terminal-surface">
+        {isSecondaryPane ? (
+          <div className="split-session-banner">
+            <SplitSquareHorizontal size={15} aria-hidden="true" />
+            <span>{labels.splitPaneEnabled}</span>
           </div>
         ) : null}
+        <div ref={terminalHostRef} className="terminal-host" />
       </div>
       {safePasteReview ? (
         <div className="safe-paste-review" role="alert">
@@ -3499,7 +3705,7 @@ function JumpHostPanel({
   );
 }
 
-function FilePanel({
+export function FilePanel({
   remoteFiles,
   path,
   status,
@@ -3512,7 +3718,10 @@ function FilePanel({
   onTransferRemotePathChange,
   onRefresh,
   onTransfer,
-  onOpenFile
+  onOpenFile,
+  onCreateDirectory,
+  onRenamePath,
+  onDeletePath
 }: {
   remoteFiles: ReturnType<typeof createInitialAppSnapshot>["remoteFiles"];
   path: string;
@@ -3527,6 +3736,9 @@ function FilePanel({
   onRefresh: () => void;
   onTransfer: (direction: "upload" | "download") => void;
   onOpenFile: (path: string) => void;
+  onCreateDirectory: () => void;
+  onRenamePath: (path: string) => void;
+  onDeletePath: (path: string) => void;
 }) {
   const labels = useUiStrings();
   return (
@@ -3538,6 +3750,9 @@ function FilePanel({
         </div>
         <div className="panel-actions">
           <span className="sync-pill">{labels.cwdSync}</span>
+          <button type="button" aria-label={labels.createRemoteDirectory} onClick={onCreateDirectory}>
+            <Plus size={16} aria-hidden="true" />
+          </button>
           <button type="button" aria-label={labels.refreshRemoteFiles} onClick={onRefresh}>
             <RefreshCw size={16} aria-hidden="true" />
           </button>
@@ -3573,28 +3788,37 @@ function FilePanel({
       </div>
       <div className="file-list">
         {remoteFiles.map((file) => (
-          <button
-            type="button"
-            key={file.id}
-            className="file-row"
-            onClick={() => {
-              if (file.type === "directory") {
-                onPathChange(file.path);
-                return;
-              }
+          <div key={file.id} className="file-row">
+            <button
+              type="button"
+              className="file-row-main"
+              onClick={() => {
+                if (file.type === "directory") {
+                  onPathChange(file.path);
+                  return;
+                }
 
-              onOpenFile(file.path);
-            }}
-          >
-            <Folder size={16} aria-hidden="true" />
-            <span>
-              <strong>{file.name}</strong>
-              <small>
-                {file.mode} / {file.modifiedAt}
-              </small>
-            </span>
-            <em>{file.type === "directory" ? "-" : `${Math.max(1, Math.round(file.size / 1024))} KB`}</em>
-          </button>
+                onOpenFile(file.path);
+              }}
+            >
+              <Folder size={16} aria-hidden="true" />
+              <span>
+                <strong>{file.name}</strong>
+                <small>
+                  {file.mode} / {file.modifiedAt}
+                </small>
+              </span>
+              <em>{file.type === "directory" ? "-" : `${Math.max(1, Math.round(file.size / 1024))} KB`}</em>
+            </button>
+            <div className="file-row-actions">
+              <button type="button" onClick={() => onRenamePath(file.path)}>
+                {labels.renameRemotePath}
+              </button>
+              <button type="button" onClick={() => onDeletePath(file.path)}>
+                {labels.deleteRemotePath}
+              </button>
+            </div>
+          </div>
         ))}
       </div>
       {transferJobs.length > 0 ? (
@@ -4711,6 +4935,73 @@ export function QuickCommandManagerDialog({
               </button>
             </div>
           </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+export function RemoteOperationDialog({
+  draft,
+  error,
+  onChange,
+  onConfirm,
+  onClose
+}: {
+  draft: RemoteOperationDraft;
+  error: string;
+  onChange: (draft: RemoteOperationDraft) => void;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const labels = useUiStrings();
+  const isDelete = draft.type === "delete";
+  const title =
+    draft.type === "mkdir"
+      ? labels.createRemoteDirectory
+      : draft.type === "rename"
+        ? labels.renameRemotePath
+        : labels.deleteRemotePath;
+
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="editor-dialog remote-operation-dialog"
+        role="dialog"
+        aria-label={labels.remoteOperation}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <Folder size={18} aria-hidden="true" />
+            <h2>{title}</h2>
+          </div>
+          <button type="button" aria-label={labels.close} onClick={onClose}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        {error ? <div className="form-error" role="alert">{error}</div> : null}
+        <label className="settings-field">
+          <span>{labels.remotePath}</span>
+          <input
+            value={draft.targetPath}
+            disabled={isDelete}
+            onChange={(event) => onChange({ ...draft, targetPath: event.target.value })}
+          />
+        </label>
+        {isDelete ? (
+          <div className="delete-confirmation">{labels.confirmDeleteRemotePath(draft.targetPath)}</div>
+        ) : (
+          <label className="settings-field">
+            <span>{draft.type === "mkdir" ? labels.directoryName : labels.newPathName}</span>
+            <input value={draft.value} onChange={(event) => onChange({ ...draft, value: event.target.value })} autoFocus />
+          </label>
+        )}
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>{labels.cancel}</button>
+          <button type="button" className={isDelete ? "danger-action" : "primary-action"} onClick={onConfirm}>
+            {isDelete ? labels.deleteRemotePath : labels.save}
+          </button>
         </div>
       </section>
     </div>

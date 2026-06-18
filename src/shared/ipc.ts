@@ -152,6 +152,26 @@ export interface WriteRemoteFileResult {
   ok: boolean;
 }
 
+export interface CreateRemoteDirectoryRequest {
+  ssh: SshSessionConfig;
+  remotePath: string;
+}
+
+export interface RenameRemotePathRequest {
+  ssh: SshSessionConfig;
+  oldPath: string;
+  newPath: string;
+}
+
+export interface DeleteRemotePathRequest {
+  ssh: SshSessionConfig;
+  remotePath: string;
+}
+
+export interface RemotePathOperationResult {
+  ok: boolean;
+}
+
 export interface CollectMetricsRequest {
   ssh: SshSessionConfig;
 }
@@ -329,6 +349,9 @@ export interface CNshellApi {
     transferFile: (request: TransferFileRequest) => Promise<TransferFileResult>;
     readFile: (request: ReadRemoteFileRequest) => Promise<ReadRemoteFileResult>;
     writeFile: (request: WriteRemoteFileRequest) => Promise<WriteRemoteFileResult>;
+    createDirectory: (request: CreateRemoteDirectoryRequest) => Promise<RemotePathOperationResult>;
+    renamePath: (request: RenameRemotePathRequest) => Promise<RemotePathOperationResult>;
+    deletePath: (request: DeleteRemotePathRequest) => Promise<RemotePathOperationResult>;
   };
   metrics: {
     collect: (request: CollectMetricsRequest) => Promise<CollectMetricsResult>;

@@ -5,6 +5,8 @@ import type {
 import type {
   CheckForUpdatesRequest,
   CollectMetricsRequest,
+  CreateRemoteDirectoryRequest,
+  DeleteRemotePathRequest,
   DisableCredentialVaultRequest,
   EnableCredentialVaultRequest,
   ExportCloudSyncRequest,
@@ -19,6 +21,7 @@ import type {
   ReadSessionLogRequest,
   SaveCredentialRequest,
   RendererErrorReportRequest,
+  RenameRemotePathRequest,
   SshSessionConfig,
   StartRelayRequest,
   StartTerminalSessionRequest,
@@ -305,6 +308,31 @@ export function validateWriteRemoteFile(value: unknown): WriteRemoteFileRequest 
     ssh: validateSshConfig(request.ssh),
     remotePath: validatePath(request.remotePath, "remotePath"),
     content: assertString(request.content, "content", MAX_REMOTE_FILE_WRITE_LENGTH, true)
+  };
+}
+
+export function validateCreateRemoteDirectory(value: unknown): CreateRemoteDirectoryRequest {
+  const request = assertRecord(value, "request");
+  return {
+    ssh: validateSshConfig(request.ssh),
+    remotePath: validatePath(request.remotePath, "remotePath")
+  };
+}
+
+export function validateRenameRemotePath(value: unknown): RenameRemotePathRequest {
+  const request = assertRecord(value, "request");
+  return {
+    ssh: validateSshConfig(request.ssh),
+    oldPath: validatePath(request.oldPath, "oldPath"),
+    newPath: validatePath(request.newPath, "newPath")
+  };
+}
+
+export function validateDeleteRemotePath(value: unknown): DeleteRemotePathRequest {
+  const request = assertRecord(value, "request");
+  return {
+    ssh: validateSshConfig(request.ssh),
+    remotePath: validatePath(request.remotePath, "remotePath")
   };
 }
 

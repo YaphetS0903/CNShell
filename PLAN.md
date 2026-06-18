@@ -92,6 +92,18 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Expand renderer tests for connection management, quick command management, and terminal toolbar actions.~~
 - [x] ~~Re-run full typecheck, lint, test, and packaged app smoke verification.~~
 
+## Phase 3 Professional Workflow Milestones
+
+- [x] ~~Implement real split terminal sessions backed by independent xterm instances.~~
+- [x] ~~Add session tab close workflow with active-tab fallback and terminal cleanup.~~
+- [x] ~~Add SFTP create directory operation.~~
+- [x] ~~Add SFTP rename operation.~~
+- [x] ~~Add SFTP delete operation with confirmation and refresh.~~
+- [x] ~~Add application icon assets and wire them into Electron windows and packaged builds.~~
+- [x] ~~Add package author metadata and reduce packaging warnings.~~
+- [x] ~~Expand IPC validation and renderer component tests for the new workflows.~~
+- [x] ~~Re-run full typecheck, lint, test, package, and GitHub push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
