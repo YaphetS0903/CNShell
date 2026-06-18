@@ -1,6 +1,8 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
+  CredentialStatus,
+  SaveCredentialRequest,
   HostKeyVerificationEvent,
   StartTerminalSessionRequest,
   TerminalDataEvent,
@@ -41,6 +43,14 @@ const api = {
       ipcRenderer.on("terminal:host-key-verification", listener);
       return () => ipcRenderer.off("terminal:host-key-verification", listener);
     }
+  },
+  credentials: {
+    status: (connectionId: string) =>
+      ipcRenderer.invoke("credentials:status", connectionId) as Promise<CredentialStatus>,
+    save: (request: SaveCredentialRequest) =>
+      ipcRenderer.invoke("credentials:save", request) as Promise<CredentialStatus>,
+    delete: (connectionId: string) =>
+      ipcRenderer.invoke("credentials:delete", connectionId) as Promise<CredentialStatus>
   }
 } satisfies CNshellApi;
 

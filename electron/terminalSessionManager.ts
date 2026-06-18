@@ -2,6 +2,7 @@ import os from "node:os";
 import { BrowserWindow } from "electron";
 import { spawn, type IPty } from "node-pty";
 import { Client, type ClientChannel } from "ssh2";
+import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import type {
   StartTerminalSessionRequest,
@@ -48,7 +49,8 @@ export class TerminalSessionManager {
 
   constructor(
     private readonly window: BrowserWindow,
-    private readonly knownHostsStore: KnownHostsStore | null
+    private readonly knownHostsStore: KnownHostsStore | null,
+    private readonly credentialStore: CredentialStore | null
   ) {}
 
   startLocalSession(request: StartTerminalSessionRequest): TerminalSessionStarted {
@@ -146,7 +148,12 @@ export class TerminalSessionManager {
       throw new Error("SSH configuration is required.");
     }
 
-    if (!ssh.password && !ssh.privateKey) {
+    const savedSecret = ssh.useSavedCredential ? this.credentialStore?.loadSecret(ssh.connectionId) : undefined;
+    const password = ssh.password || savedSecret?.password;
+    const privateKey = ssh.privateKey || savedSecret?.privateKey;
+    const passphrase = ssh.passphrase || savedSecret?.passphrase;
+
+    if (!password && !privateKey) {
       throw new Error("SSH password or private key is required.");
     }
 
@@ -217,9 +224,9 @@ export class TerminalSessionManager {
         host: ssh.host,
         port: ssh.port,
         username: ssh.username,
-        password: ssh.password,
-        privateKey: ssh.privateKey,
-        passphrase: ssh.passphrase,
+        password,
+        privateKey,
+        passphrase,
         readyTimeout: ssh.readyTimeout ?? 15000,
         keepaliveInterval: 15000,
         hostVerifier: (key: Buffer) => {

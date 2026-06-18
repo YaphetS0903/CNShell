@@ -49,13 +49,33 @@ export interface HostKeyVerificationEvent {
 }
 
 export interface SshSessionConfig {
+  connectionId: string;
   host: string;
   port: number;
   username: string;
   password?: string;
   privateKey?: string;
   passphrase?: string;
+  useSavedCredential?: boolean;
   readyTimeout?: number;
+}
+
+export interface CredentialSecret {
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
+}
+
+export interface SaveCredentialRequest {
+  connectionId: string;
+  secret: CredentialSecret;
+}
+
+export interface CredentialStatus {
+  connectionId: string;
+  hasCredential: boolean;
+  encryptionAvailable: boolean;
+  updatedAt?: string;
 }
 
 export interface CNshellApi {
@@ -70,5 +90,10 @@ export interface CNshellApi {
     onExit: (callback: (event: TerminalExitEvent) => void) => () => void;
     onError: (callback: (event: TerminalErrorEvent) => void) => () => void;
     onHostKeyVerification: (callback: (event: HostKeyVerificationEvent) => void) => () => void;
+  };
+  credentials: {
+    status: (connectionId: string) => Promise<CredentialStatus>;
+    save: (request: SaveCredentialRequest) => Promise<CredentialStatus>;
+    delete: (connectionId: string) => Promise<CredentialStatus>;
   };
 }

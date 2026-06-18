@@ -61,7 +61,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 ## Security Milestones
 
 - [x] ~~Host key verification and known_hosts management.~~
-- [ ] System keychain integration for secrets.
+- [x] ~~System-protected encrypted credential storage for secrets.~~
 - [ ] Master password option.
 - [ ] Private key import with passphrase support.
 - [ ] IPC input validation.
@@ -94,4 +94,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Add SSH connection service implementation.~~
 - [x] ~~Wire SSH session output into xterm.js.~~
 - [x] ~~Add host key verification for SSH sessions.~~
-- [ ] Add secure credential storage instead of session-only credentials.
+- [x] ~~Add secure credential storage instead of session-only credentials.~~
+- [ ] Add optional master password vault mode.

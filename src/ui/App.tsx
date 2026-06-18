@@ -28,7 +28,7 @@ import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type { ConnectionProfile, SessionStatus, SessionTab } from "../domain/models";
-import type { HostKeyVerificationEvent } from "../shared/ipc";
+import type { CredentialStatus, HostKeyVerificationEvent } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -41,6 +41,8 @@ export function App() {
   const [sshDrafts, setSshDrafts] = useState<Record<string, { password: string; privateKey: string; passphrase: string }>>({});
   const [sessionStartTokens, setSessionStartTokens] = useState<Record<string, number>>({});
   const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
+  const [credentialStatuses, setCredentialStatuses] = useState<Record<string, CredentialStatus>>({});
+  const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -84,6 +86,8 @@ export function App() {
     [activeConnection.id, sshDrafts]
   );
 
+  const activeCredentialStatus = credentialStatuses[activeConnection.id];
+
   const updateActiveSshDraft = (field: "password" | "privateKey" | "passphrase", value: string) => {
     setSshDrafts((current) => ({
       ...current,
@@ -117,6 +121,60 @@ export function App() {
     });
   };
 
+  const refreshCredentialStatus = useCallback((connectionId: string) => {
+    void window.cnshell?.credentials.status(connectionId).then((status) => {
+      setCredentialStatuses((current) => ({
+        ...current,
+        [connectionId]: status
+      }));
+    });
+  }, []);
+
+  const saveActiveCredential = () => {
+    void window.cnshell?.credentials
+      .save({
+        connectionId: activeConnection.id,
+        secret: {
+          password: activeSshDraft.password || undefined,
+          privateKey: activeSshDraft.privateKey || undefined,
+          passphrase: activeSshDraft.passphrase || undefined
+        }
+      })
+      .then((status) => {
+        setCredentialStatuses((current) => ({
+          ...current,
+          [activeConnection.id]: status
+        }));
+        setCredentialErrors((current) => ({
+          ...current,
+          [activeConnection.id]: ""
+        }));
+        setSshDrafts((current) => ({
+          ...current,
+          [activeConnection.id]: { password: "", privateKey: "", passphrase: "" }
+        }));
+      })
+      .catch((error: Error) => {
+        setCredentialErrors((current) => ({
+          ...current,
+          [activeConnection.id]: error.message
+        }));
+      });
+  };
+
+  const deleteActiveCredential = () => {
+    void window.cnshell?.credentials.delete(activeConnection.id).then((status) => {
+      setCredentialStatuses((current) => ({
+        ...current,
+        [activeConnection.id]: status
+      }));
+      setCredentialErrors((current) => ({
+        ...current,
+        [activeConnection.id]: ""
+      }));
+    });
+  };
+
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
   }, []);
@@ -134,6 +192,12 @@ export function App() {
       setSessionStatus(event.id, "error");
     });
   }, [setSessionStatus]);
+
+  useEffect(() => {
+    if (activeConnection.protocol === "ssh") {
+      refreshCredentialStatus(activeConnection.id);
+    }
+  }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus]);
 
   return (
     <main className="app-shell">
@@ -156,6 +220,7 @@ export function App() {
             activeConnection={activeConnection}
             activeTab={activeTab}
             sshDraft={activeSshDraft}
+            useSavedCredential={Boolean(activeCredentialStatus?.hasCredential)}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
             onStatusChange={setSessionStatus}
           />
@@ -164,9 +229,13 @@ export function App() {
               <SshCredentialPanel
                 authMethod={activeConnection.authMethod}
                 draft={activeSshDraft}
+                credentialStatus={activeCredentialStatus}
+                credentialError={credentialErrors[activeConnection.id]}
                 hostKeyPrompt={hostKeyPrompts[activeTab.id]}
                 onChange={updateActiveSshDraft}
                 onConnect={startActiveSession}
+                onSaveCredential={saveActiveCredential}
+                onDeleteCredential={deleteActiveCredential}
                 onTrustHost={trustActiveHost}
               />
             ) : null}
@@ -334,12 +403,14 @@ function TerminalPane({
   activeConnection,
   activeTab,
   sshDraft,
+  useSavedCredential,
   startToken,
   onStatusChange
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
   sshDraft: { password: string; privateKey: string; passphrase: string };
+  useSavedCredential: boolean;
   startToken: number;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
 }) {
@@ -415,12 +486,14 @@ function TerminalPane({
           ssh:
             activeConnection.protocol === "ssh"
               ? {
+                  connectionId: activeConnection.id,
                   host: activeConnection.host,
                   port: activeConnection.port,
                   username: activeConnection.username,
                   password: sshDraft.password || undefined,
                   privateKey: sshDraft.privateKey || undefined,
-                  passphrase: sshDraft.passphrase || undefined
+                  passphrase: sshDraft.passphrase || undefined,
+                  useSavedCredential
                 }
               : undefined
         })
@@ -462,6 +535,7 @@ function TerminalPane({
     sshDraft.password,
     sshDraft.passphrase,
     sshDraft.privateKey,
+    useSavedCredential,
     startToken
   ]);
 
@@ -502,18 +576,28 @@ function TerminalPane({
 function SshCredentialPanel({
   authMethod,
   draft,
+  credentialStatus,
+  credentialError,
   hostKeyPrompt,
   onChange,
   onConnect,
+  onSaveCredential,
+  onDeleteCredential,
   onTrustHost
 }: {
   authMethod: ConnectionProfile["authMethod"];
   draft: { password: string; privateKey: string; passphrase: string };
+  credentialStatus?: CredentialStatus;
+  credentialError?: string;
   hostKeyPrompt?: HostKeyVerificationEvent;
   onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
   onConnect: () => void;
+  onSaveCredential: () => void;
+  onDeleteCredential: () => void;
   onTrustHost: () => void;
 }) {
+  const hasDraftSecret = Boolean(draft.password || draft.privateKey);
+
   return (
     <section className="panel-section ssh-panel" aria-label="SSH credentials">
       <div className="panel-heading">
@@ -524,6 +608,17 @@ function SshCredentialPanel({
         <span className="poll-rate">{authMethod}</span>
       </div>
       <div className="ssh-form">
+        <div className="credential-status-row">
+          <span className={credentialStatus?.hasCredential ? "saved" : ""}>
+            {credentialStatus?.hasCredential ? "Saved credential available" : "No saved credential"}
+          </span>
+          {credentialStatus?.encryptionAvailable === false ? <small>Encryption unavailable</small> : null}
+        </div>
+        {credentialError ? (
+          <div className="credential-error" role="alert">
+            {credentialError}
+          </div>
+        ) : null}
         {hostKeyPrompt ? (
           <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
             <strong>{hostKeyPrompt.status === "changed" ? "Host key changed" : "Unknown host key"}</strong>
@@ -568,6 +663,19 @@ function SshCredentialPanel({
           <TerminalSquare size={16} aria-hidden="true" />
           Connect
         </button>
+        <div className="credential-actions">
+          <button
+            type="button"
+            disabled={!hasDraftSecret || credentialStatus?.encryptionAvailable === false}
+            onClick={onSaveCredential}
+          >
+            <ShieldCheck size={16} aria-hidden="true" />
+            Save credential
+          </button>
+          <button type="button" disabled={!credentialStatus?.hasCredential} onClick={onDeleteCredential}>
+            Delete saved
+          </button>
+        </div>
       </div>
     </section>
   );

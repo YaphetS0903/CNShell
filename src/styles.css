@@ -675,6 +675,57 @@ input:focus-visible {
   cursor: not-allowed;
 }
 
+.credential-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 32px;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 0 10px;
+}
+
+.credential-status-row span,
+.credential-status-row small {
+  color: #8d9dab;
+  font-size: 11px;
+}
+
+.credential-status-row span.saved {
+  color: #8ce99a;
+  font-weight: 800;
+}
+
+.credential-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.credential-actions button {
+  min-height: 36px;
+  border-color: var(--line);
+  background: #111c24;
+  color: #c7d5df;
+  font-size: 12px;
+}
+
+.credential-actions button:hover {
+  background: #172530;
+}
+
+.credential-error {
+  border: 1px solid rgba(255, 135, 135, 0.34);
+  border-radius: 7px;
+  background: rgba(255, 135, 135, 0.08);
+  color: #ffa8a8;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 8px 10px;
+}
+
 .host-key-prompt {
   display: flex;
   flex-direction: column;
