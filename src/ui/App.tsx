@@ -74,6 +74,11 @@ interface SafePasteReview {
   reasons: string[];
 }
 
+interface BulkCommandReview {
+  command: string;
+  targetSessionIds: string[];
+}
+
 interface MetricHistoryPoint {
   at: string;
   cpu: number;
@@ -324,6 +329,7 @@ export function App() {
   const [editorError, setEditorError] = useState("");
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
+  const [bulkCommandReview, setBulkCommandReview] = useState<BulkCommandReview | null>(null);
   const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
   const [isHighlightEnabled, setIsHighlightEnabled] = useState(true);
   const [triggerEvents, setTriggerEvents] = useState<TriggerEvent[]>([]);
@@ -965,17 +971,39 @@ export function App() {
       });
   };
 
-  const executeCommand = (command: string) => {
-    const targetSessionIds = isSyncInputEnabled
-      ? sessionTabsWithStatus.filter((session) => session.status !== "error").map((session) => session.id)
-      : [activeTab.id];
-
+  const dispatchCommandToSessions = (command: string, targetSessionIds: string[]) => {
     for (const sessionId of targetSessionIds) {
       sendTerminalInput(sessionId, `${command}\r`);
     }
 
     setIsCommandPaletteOpen(false);
     setCommandQuery("");
+  };
+
+  const executeCommand = (command: string) => {
+    const targetSessionIds = isSyncInputEnabled
+      ? sessionTabsWithStatus.filter((session) => session.status !== "error").map((session) => session.id)
+      : [activeTab.id];
+
+    if (targetSessionIds.length > 1) {
+      setBulkCommandReview({ command, targetSessionIds });
+      return;
+    }
+
+    dispatchCommandToSessions(command, targetSessionIds);
+  };
+
+  const confirmBulkCommand = () => {
+    if (!bulkCommandReview) {
+      return;
+    }
+
+    dispatchCommandToSessions(bulkCommandReview.command, bulkCommandReview.targetSessionIds);
+    setBulkCommandReview(null);
+  };
+
+  const cancelBulkCommand = () => {
+    setBulkCommandReview(null);
   };
 
   const addTriggerEvents = useCallback((events: TriggerEvent[]) => {
@@ -1390,6 +1418,21 @@ export function App() {
           onQueryChange={setCommandQuery}
           onExecute={executeCommand}
           onClose={() => setIsCommandPaletteOpen(false)}
+        />
+      ) : null}
+      {bulkCommandReview ? (
+        <BulkCommandConfirmation
+          command={bulkCommandReview.command}
+          targets={bulkCommandReview.targetSessionIds.map((sessionId) => {
+            const session = sessionTabsWithStatus.find((item) => item.id === sessionId);
+            return {
+              id: sessionId,
+              title: session?.title ?? sessionId,
+              status: session?.status ?? "disconnected"
+            };
+          })}
+          onConfirm={confirmBulkCommand}
+          onCancel={cancelBulkCommand}
         />
       ) : null}
     </main>
@@ -2994,6 +3037,54 @@ function CloudSyncPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function BulkCommandConfirmation({
+  command,
+  targets,
+  onConfirm,
+  onCancel
+}: {
+  command: string;
+  targets: Array<{ id: string; title: string; status: SessionStatus }>;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onCancel}>
+      <section
+        className="bulk-command-dialog"
+        role="dialog"
+        aria-label="Confirm bulk command"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="bulk-command-heading">
+          <div>
+            <Command size={17} aria-hidden="true" />
+            <h2>Confirm Bulk Command</h2>
+          </div>
+          <span>{targets.length} sessions</span>
+        </div>
+        <pre>{command}</pre>
+        <div className="bulk-command-targets">
+          {targets.map((target) => (
+            <div key={target.id}>
+              <strong>{target.title}</strong>
+              <small>{target.status}</small>
+            </div>
+          ))}
+        </div>
+        <div className="bulk-command-actions">
+          <button type="button" onClick={onCancel}>
+            Cancel
+          </button>
+          <button type="button" onClick={onConfirm}>
+            Send to all
+          </button>
+        </div>
+      </section>
+    </div>
   );
 }
 

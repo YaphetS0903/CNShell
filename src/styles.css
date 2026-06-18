@@ -1446,6 +1446,120 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.bulk-command-dialog {
+  display: grid;
+  width: min(560px, calc(100vw - 48px));
+  gap: 12px;
+  border: 1px solid #40515d;
+  border-radius: 8px;
+  background: #101820;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  padding: 14px;
+}
+
+.bulk-command-heading,
+.bulk-command-heading div,
+.bulk-command-actions {
+  display: flex;
+  align-items: center;
+}
+
+.bulk-command-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bulk-command-heading div {
+  min-width: 0;
+  gap: 8px;
+}
+
+.bulk-command-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.bulk-command-heading span {
+  border: 1px solid rgba(255, 212, 59, 0.32);
+  border-radius: 999px;
+  background: rgba(255, 212, 59, 0.09);
+  color: #ffe066;
+  font-size: 11px;
+  font-weight: 900;
+  padding: 4px 8px;
+  white-space: nowrap;
+}
+
+.bulk-command-dialog pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #071016;
+  color: #d4e0e8;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  padding: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bulk-command-targets {
+  display: grid;
+  max-height: 160px;
+  gap: 6px;
+  overflow: auto;
+}
+
+.bulk-command-targets div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 8px 10px;
+}
+
+.bulk-command-targets strong {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bulk-command-targets small {
+  color: #8d9dab;
+  font-size: 11px;
+}
+
+.bulk-command-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.bulk-command-actions button {
+  min-height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.bulk-command-actions button:last-child {
+  border-color: rgba(255, 212, 59, 0.42);
+  background: #3a3116;
+  color: #fff3bf;
+}
+
 .poll-rate {
   color: var(--text-muted);
   font-size: 12px;
