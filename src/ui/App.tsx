@@ -75,6 +75,8 @@ interface MetricHistoryPoint {
   processes: number;
 }
 
+type ZmodemMode = "idle" | "upload" | "download" | "detected";
+
 const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
   { value: "local", label: "Local" },
   { value: "remote", label: "Remote" },
@@ -259,6 +261,22 @@ function detectTriggerEvents(sessionId: string, data: string): TriggerEvent[] {
     }));
 }
 
+function detectZmodemMode(data: string): ZmodemMode {
+  if (/rz\s+(waiting|ready)|\*\*B0|ZRQINIT/i.test(data) || data.includes("\x18B0")) {
+    return "upload";
+  }
+
+  if (/sz\s+(sending|ready)|ZFILE|\*\*B1/i.test(data) || data.includes("\x18B1")) {
+    return "download";
+  }
+
+  if (/zmodem/i.test(data)) {
+    return "detected";
+  }
+
+  return "idle";
+}
+
 export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
@@ -284,6 +302,8 @@ export function App() {
   const [transferLocalPath, setTransferLocalPath] = useState("");
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
+  const [zmodemMode, setZmodemMode] = useState<ZmodemMode>("idle");
+  const [zmodemMessage, setZmodemMessage] = useState("No ZMODEM session detected");
   const [editorPath, setEditorPath] = useState("");
   const [editorContent, setEditorContent] = useState("");
   const [editorStatus, setEditorStatus] = useState<"idle" | "loading" | "saving" | "error" | "saved">("idle");
@@ -784,6 +804,21 @@ export function App() {
     setTriggerEvents((current) => [...events, ...current].slice(0, 8));
   }, []);
 
+  const handleZmodemDetected = useCallback((mode: ZmodemMode) => {
+    if (mode === "idle") {
+      return;
+    }
+
+    setZmodemMode(mode);
+    setZmodemMessage(
+      mode === "upload"
+        ? "Remote rz is waiting. Use the ZMODEM panel to upload."
+        : mode === "download"
+          ? "Remote sz transfer detected. Use the ZMODEM panel to download."
+          : "ZMODEM activity detected."
+    );
+  }, []);
+
   const startTunnel = () => {
     if (activeConnection.protocol !== "ssh") {
       return;
@@ -965,11 +1000,13 @@ export function App() {
             keyMappingProfiles={snapshot.keyMappingProfiles}
             startToken={sessionStartTokens[activeTab.id] ?? 0}
             isHighlightEnabled={isHighlightEnabled}
+            zmodemMode={zmodemMode}
             onStatusChange={setSessionStatus}
             onReconnect={startActiveSession}
             onDispatchCommand={executeCommand}
             onTerminalInput={sendTerminalInput}
             onTriggerEvents={addTriggerEvents}
+            onZmodemDetected={handleZmodemDetected}
           />
           <aside className="ops-panel" aria-label="Operations panels">
             {activeConnection.protocol === "ssh" ? (
@@ -1003,6 +1040,24 @@ export function App() {
               onRefresh={refreshRemoteFiles}
               onTransfer={startTransfer}
               onOpenFile={openRemoteFile}
+            />
+            <ZmodemPanel
+              mode={zmodemMode}
+              message={zmodemMessage}
+              localPath={transferLocalPath}
+              remotePath={transferRemotePath}
+              onLocalPathChange={setTransferLocalPath}
+              onRemotePathChange={setTransferRemotePath}
+              onUpload={() => {
+                setZmodemMode("upload");
+                setZmodemMessage("Uploading through ZMODEM-compatible transfer flow");
+                startTransfer("upload");
+              }}
+              onDownload={() => {
+                setZmodemMode("download");
+                setZmodemMessage("Downloading through ZMODEM-compatible transfer flow");
+                startTransfer("download");
+              }}
             />
             <RemoteEditorPanel
               path={editorPath}
@@ -1255,11 +1310,13 @@ function TerminalPane({
   keyMappingProfiles,
   startToken,
   isHighlightEnabled,
+  zmodemMode,
   onStatusChange,
   onReconnect,
   onDispatchCommand,
   onTerminalInput,
-  onTriggerEvents
+  onTriggerEvents,
+  onZmodemDetected
 }: {
   activeConnection: ConnectionProfile;
   activeTab: SessionTab;
@@ -1268,11 +1325,13 @@ function TerminalPane({
   keyMappingProfiles: KeyMappingProfile[];
   startToken: number;
   isHighlightEnabled: boolean;
+  zmodemMode: ZmodemMode;
   onStatusChange: (sessionId: string, status: SessionStatus) => void;
   onReconnect: () => void;
   onDispatchCommand: (command: string) => void;
   onTerminalInput: (sessionId: string, input: string, options?: { record?: boolean }) => void;
   onTriggerEvents: (events: TriggerEvent[]) => void;
+  onZmodemDetected: (mode: ZmodemMode) => void;
 }) {
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
@@ -1325,6 +1384,7 @@ function TerminalPane({
     const removeDataListener = window.cnshell?.terminal.onData(({ id, data }) => {
       if (id === sessionId) {
         onTriggerEvents(detectTriggerEvents(sessionId, data));
+        onZmodemDetected(detectZmodemMode(data));
         terminal.write(isHighlightEnabled ? applyHighlightRules(data) : data);
       }
     });
@@ -1433,6 +1493,7 @@ function TerminalPane({
     isHighlightEnabled,
     onTerminalInput,
     onTriggerEvents,
+    onZmodemDetected,
     startToken
   ]);
 
@@ -1495,7 +1556,7 @@ function TerminalPane({
             <SplitSquareHorizontal size={16} aria-hidden="true" />
             Split
           </button>
-          <button type="button">
+          <button type="button" className={zmodemMode !== "idle" ? "active" : ""}>
             <UploadCloud size={16} aria-hidden="true" />
             ZMODEM
           </button>
@@ -1845,6 +1906,51 @@ function FilePanel({
           ))}
         </div>
       ) : null}
+    </section>
+  );
+}
+
+function ZmodemPanel({
+  mode,
+  message,
+  localPath,
+  remotePath,
+  onLocalPathChange,
+  onRemotePathChange,
+  onUpload,
+  onDownload
+}: {
+  mode: ZmodemMode;
+  message: string;
+  localPath: string;
+  remotePath: string;
+  onLocalPathChange: (path: string) => void;
+  onRemotePathChange: (path: string) => void;
+  onUpload: () => void;
+  onDownload: () => void;
+}) {
+  return (
+    <section className="panel-section" aria-label="ZMODEM transfer">
+      <div className="panel-heading">
+        <div>
+          <UploadCloud size={16} aria-hidden="true" />
+          <h2>ZMODEM</h2>
+        </div>
+        <span className={`zmodem-pill ${mode}`}>{mode}</span>
+      </div>
+      <div className="zmodem-panel">
+        <div className="zmodem-state">{message}</div>
+        <input value={localPath} placeholder="Local file path" onChange={(event) => onLocalPathChange(event.target.value)} />
+        <input value={remotePath} placeholder="Remote file path" onChange={(event) => onRemotePathChange(event.target.value)} />
+        <div className="zmodem-actions">
+          <button type="button" onClick={onUpload}>
+            Upload
+          </button>
+          <button type="button" onClick={onDownload}>
+            Download
+          </button>
+        </div>
+      </div>
     </section>
   );
 }
