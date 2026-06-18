@@ -194,6 +194,8 @@ const translations = {
     sessionTabs: "会话标签",
     newSessionTab: "新建会话标签",
     closeSessionTab: "关闭会话标签",
+    noOpenSessions: "暂无打开的会话",
+    noOpenSessionsDetail: "从左侧选择连接，或点击 + 创建一个新会话。",
     localProtocol: "本地",
     status: {
       connected: "已连接",
@@ -514,6 +516,8 @@ const translations = {
     sessionTabs: "Session tabs",
     newSessionTab: "Open new session tab",
     closeSessionTab: "Close session tab",
+    noOpenSessions: "No open sessions",
+    noOpenSessionsDetail: "Select a connection on the left, or click + to create a new session.",
     localProtocol: "local",
     status: {
       connected: "connected",
@@ -1267,16 +1271,15 @@ export function App() {
     [activeConnectionId, snapshot.connections]
   );
 
-  const activeTab = useMemo(
-    () => {
-      const tab = snapshot.sessions.find((session) => session.id === activeTabId) ?? snapshot.sessions[0];
-      return {
-        ...tab,
-        status: sessionStatuses[tab.id] ?? tab.status
-      };
-    },
-    [activeTabId, sessionStatuses, snapshot.sessions]
-  );
+  const activeTab = useMemo(() => {
+    const tab = snapshot.sessions.find((session) => session.id === activeTabId) ?? snapshot.sessions[0];
+    return tab
+      ? {
+          ...tab,
+          status: sessionStatuses[tab.id] ?? tab.status
+        }
+      : null;
+  }, [activeTabId, sessionStatuses, snapshot.sessions]);
 
   const sessionTabsWithStatus = useMemo(
     () =>
@@ -1525,7 +1528,7 @@ export function App() {
     setSnapshot((current) => ({
       ...current,
       sessions: current.sessions.map((session) =>
-        session.id === activeTab.id ? { ...session, cwd: normalizedPath } : session
+        session.id === activeTab?.id ? { ...session, cwd: normalizedPath } : session
       )
     }));
   };
@@ -1553,7 +1556,7 @@ export function App() {
       appendRecordingInput(input);
     }
 
-    if (sessionId === activeTab.id && input.endsWith("\r")) {
+    if (activeTab && sessionId === activeTab.id && input.endsWith("\r")) {
       const nextPath = inferDirectoryFromCommand(input.replace(/\r$/, ""), remotePath);
       if (nextPath) {
         syncRemotePath(nextPath);
@@ -1598,12 +1601,20 @@ export function App() {
     for (const event of recording.events) {
       delay += Math.min(event.delayMs, 3000);
       window.setTimeout(() => {
-        sendTerminalInput(activeTab.id, event.input, { record: false });
+        if (activeTab) {
+          sendTerminalInput(activeTab.id, event.input, { record: false });
+        }
       }, delay);
     }
   };
 
   const refreshSessionLog = useCallback(() => {
+    if (!activeTab) {
+      setLogLines([]);
+      setLogStatus("idle");
+      return;
+    }
+
     setLogStatus("loading");
     void window.cnshell?.logs
       .readSession({
@@ -1619,7 +1630,7 @@ export function App() {
         setLogLines([]);
         setLogStatus("error");
       });
-  }, [activeTab.id, logQuery]);
+  }, [activeTab, logQuery]);
 
   const refreshAuditLog = useCallback(() => {
     setAuditStatus("loading");
@@ -1715,6 +1726,10 @@ export function App() {
   };
 
   const startActiveSession = () => {
+    if (!activeTab) {
+      return;
+    }
+
     setSessionStartTokens((current) => ({
       ...current,
       [activeTab.id]: (current[activeTab.id] ?? 0) + 1
@@ -1729,6 +1744,10 @@ export function App() {
   };
 
   const trustActiveHost = () => {
+    if (!activeTab) {
+      return;
+    }
+
     const prompt = hostKeyPrompts[activeTab.id];
     if (!prompt || prompt.status === "changed") {
       return;
@@ -2181,6 +2200,10 @@ export function App() {
   };
 
   const executeCommand = (command: string) => {
+    if (!activeTab) {
+      return;
+    }
+
     const targetSessionIds = isSyncInputEnabled
       ? sessionTabsWithStatus.filter((session) => session.status !== "error").map((session) => session.id)
       : [activeTab.id];
@@ -2359,13 +2382,10 @@ export function App() {
   const createSessionForActiveConnection = () => {
     const nextSession = createSessionForConnection(activeConnection);
     setActiveTabId(nextSession.id);
+    setActiveConnectionId(nextSession.connectionId);
   };
 
   const closeSessionTab = (sessionId: string) => {
-    if (snapshot.sessions.length <= 1) {
-      return;
-    }
-
     const remainingSessions = snapshot.sessions.filter((session) => session.id !== sessionId);
     const fallbackSession =
       remainingSessions.find((session) => session.connectionId === activeConnection.id) ?? remainingSessions[0];
@@ -2386,8 +2406,10 @@ export function App() {
       return next;
     });
     if (activeTabId === sessionId) {
-      setActiveTabId(fallbackSession.id);
-      setActiveConnectionId(fallbackSession.connectionId);
+      setActiveTabId(fallbackSession?.id ?? "");
+      if (fallbackSession) {
+        setActiveConnectionId(fallbackSession.connectionId);
+      }
     }
     if (splitTabId === sessionId) {
       setSplitTabId("");
@@ -2467,8 +2489,8 @@ export function App() {
   }, [refreshErrorReports]);
 
   useEffect(() => {
-    setRemotePath(activeTab.cwd || "/");
-  }, [activeTab.cwd, activeTab.id]);
+    setRemotePath(activeTab?.cwd || "/");
+  }, [activeTab?.cwd, activeTab?.id]);
 
   if (!isWorkspaceReady) {
     return (
@@ -2509,7 +2531,7 @@ export function App() {
       <section className="workspace" aria-label={labels.workspace}>
         <TopBar
           activeConnection={activeConnection}
-          status={activeTab.status}
+          status={activeTab?.status ?? "disconnected"}
           version={appVersion}
           isSyncInputEnabled={isSyncInputEnabled}
           isHighlightEnabled={isHighlightEnabled}
@@ -2526,6 +2548,7 @@ export function App() {
           onClose={closeSessionTab}
         />
         <section className="workspace-grid">
+          {activeTab ? (
           <div className={`terminal-split-layout ${splitTab ? "active" : ""}`}>
             <TerminalPane
               activeConnection={activeConnection}
@@ -2569,6 +2592,9 @@ export function App() {
               />
             ) : null}
           </div>
+          ) : (
+            <EmptySessionState onCreate={createSessionForActiveConnection} />
+          )}
           <aside className="ops-panel" aria-label={labels.operationsPanels}>
             {activeConnection.protocol === "ssh" ? (
               <SshCredentialPanel
@@ -2581,7 +2607,7 @@ export function App() {
                 vaultPassword={credentialVaultPassword}
                 vaultError={credentialVaultError}
                 privateKeyImportStatus={privateKeyImportStatus}
-                hostKeyPrompt={hostKeyPrompts[activeTab.id]}
+                hostKeyPrompt={activeTab ? hostKeyPrompts[activeTab.id] : undefined}
                 onChange={updateActiveSshDraft}
                 onVaultPasswordChange={setCredentialVaultPassword}
                 onImportPrivateKey={importPrivateKey}
@@ -3027,6 +3053,21 @@ export function TabStrip({
         <Plus size={16} aria-hidden="true" />
       </button>
     </div>
+  );
+}
+
+function EmptySessionState({ onCreate }: { onCreate: () => void }) {
+  const labels = useUiStrings();
+  return (
+    <section className="empty-session-state" aria-label={labels.noOpenSessions}>
+      <TerminalSquare size={34} aria-hidden="true" />
+      <strong>{labels.noOpenSessions}</strong>
+      <span>{labels.noOpenSessionsDetail}</span>
+      <button type="button" onClick={onCreate}>
+        <Plus size={16} aria-hidden="true" />
+        {labels.newSessionTab}
+      </button>
+    </section>
   );
 }
 
