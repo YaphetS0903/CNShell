@@ -62,7 +62,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 
 - [x] ~~Host key verification and known_hosts management.~~
 - [x] ~~System-protected encrypted credential storage for secrets.~~
-- [ ] Master password option.
+- [x] ~~Master password option.~~
 - [ ] Private key import with passphrase support.
 - [ ] IPC input validation.
 - [ ] Audit logging with secret redaction.
@@ -120,4 +120,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Implement Windows RDP connection entries.~~
 - [x] ~~Implement cloud sync import/export for encrypted settings.~~
 - [x] ~~Implement CN Relay service for acceleration and intranet tunneling.~~
-- [ ] Add optional master password vault mode.
+- [x] ~~Add optional master password vault mode.~~
+- [ ] Add private key import with passphrase support.

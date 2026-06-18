@@ -1559,6 +1559,59 @@ textarea:focus-visible {
   background: #172530;
 }
 
+.credential-vault-panel {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 9px;
+}
+
+.credential-vault-state {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.credential-vault-state span,
+.credential-vault-state small {
+  color: #8d9dab;
+  font-size: 11px;
+}
+
+.credential-vault-state strong {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credential-vault-password {
+  margin: 0;
+}
+
+.credential-vault-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.credential-vault-actions button {
+  min-height: 32px;
+  border-color: var(--line);
+  background: #111c24;
+  color: #c7d5df;
+  font-size: 11px;
+}
+
+.credential-vault-actions button:hover {
+  background: #172530;
+}
+
 .jump-host-list {
   display: flex;
   flex-direction: column;

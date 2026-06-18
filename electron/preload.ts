@@ -5,6 +5,9 @@ import type {
   CollectMetricsRequest,
   CollectMetricsResult,
   CredentialStatus,
+  CredentialVaultStatus,
+  DisableCredentialVaultRequest,
+  EnableCredentialVaultRequest,
   ExportCloudSyncRequest,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
@@ -32,6 +35,7 @@ import type {
   TunnelInfo,
   TransferFileRequest,
   TransferFileResult,
+  UnlockCredentialVaultRequest,
   WriteRemoteFileRequest,
   WriteRemoteFileResult
 } from "../src/shared/ipc.js";
@@ -79,7 +83,15 @@ const api = {
     save: (request: SaveCredentialRequest) =>
       ipcRenderer.invoke("credentials:save", request) as Promise<CredentialStatus>,
     delete: (connectionId: string) =>
-      ipcRenderer.invoke("credentials:delete", connectionId) as Promise<CredentialStatus>
+      ipcRenderer.invoke("credentials:delete", connectionId) as Promise<CredentialStatus>,
+    vaultStatus: () => ipcRenderer.invoke("credentials:vault-status") as Promise<CredentialVaultStatus>,
+    enableVault: (request: EnableCredentialVaultRequest) =>
+      ipcRenderer.invoke("credentials:enable-vault", request) as Promise<CredentialVaultStatus>,
+    unlockVault: (request: UnlockCredentialVaultRequest) =>
+      ipcRenderer.invoke("credentials:unlock-vault", request) as Promise<CredentialVaultStatus>,
+    disableVault: (request: DisableCredentialVaultRequest) =>
+      ipcRenderer.invoke("credentials:disable-vault", request) as Promise<CredentialVaultStatus>,
+    lockVault: () => ipcRenderer.invoke("credentials:lock-vault") as Promise<CredentialVaultStatus>
   },
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) =>

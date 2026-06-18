@@ -78,7 +78,28 @@ export interface CredentialStatus {
   connectionId: string;
   hasCredential: boolean;
   encryptionAvailable: boolean;
+  protection: "system" | "master" | "none";
+  vaultLocked: boolean;
   updatedAt?: string;
+}
+
+export interface CredentialVaultStatus {
+  mode: "system" | "master";
+  locked: boolean;
+  encryptionAvailable: boolean;
+  updatedAt?: string;
+}
+
+export interface EnableCredentialVaultRequest {
+  masterPassword: string;
+}
+
+export interface UnlockCredentialVaultRequest {
+  masterPassword: string;
+}
+
+export interface DisableCredentialVaultRequest {
+  masterPassword?: string;
 }
 
 export interface ListRemoteDirectoryRequest {
@@ -241,6 +262,11 @@ export interface CNshellApi {
     status: (connectionId: string) => Promise<CredentialStatus>;
     save: (request: SaveCredentialRequest) => Promise<CredentialStatus>;
     delete: (connectionId: string) => Promise<CredentialStatus>;
+    vaultStatus: () => Promise<CredentialVaultStatus>;
+    enableVault: (request: EnableCredentialVaultRequest) => Promise<CredentialVaultStatus>;
+    unlockVault: (request: UnlockCredentialVaultRequest) => Promise<CredentialVaultStatus>;
+    disableVault: (request: DisableCredentialVaultRequest) => Promise<CredentialVaultStatus>;
+    lockVault: () => Promise<CredentialVaultStatus>;
   };
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;

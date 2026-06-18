@@ -40,7 +40,15 @@ import type {
   SessionTab,
   TransferJob
 } from "../domain/models";
-import type { CredentialStatus, HostKeyVerificationEvent, RelayInfo, SshSessionConfig, TunnelInfo, TunnelMode } from "../shared/ipc";
+import type {
+  CredentialStatus,
+  CredentialVaultStatus,
+  HostKeyVerificationEvent,
+  RelayInfo,
+  SshSessionConfig,
+  TunnelInfo,
+  TunnelMode
+} from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -288,6 +296,9 @@ export function App() {
   const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
   const [credentialStatuses, setCredentialStatuses] = useState<Record<string, CredentialStatus>>({});
   const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
+  const [credentialVaultStatus, setCredentialVaultStatus] = useState<CredentialVaultStatus | null>(null);
+  const [credentialVaultPassword, setCredentialVaultPassword] = useState("");
+  const [credentialVaultError, setCredentialVaultError] = useState("");
   const [rdpStatus, setRdpStatus] = useState<"idle" | "launching" | "error">("idle");
   const [rdpError, setRdpError] = useState("");
   const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
@@ -578,6 +589,69 @@ export function App() {
       }));
     });
   }, []);
+
+  const refreshCredentialVaultStatus = useCallback(() => {
+    void window.cnshell?.credentials.vaultStatus().then((status) => {
+      setCredentialVaultStatus(status);
+    });
+  }, []);
+
+  const refreshActiveCredentialSecurity = useCallback(() => {
+    refreshCredentialVaultStatus();
+    if (activeConnection.protocol === "ssh") {
+      refreshCredentialStatus(activeConnection.id);
+    }
+  }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus, refreshCredentialVaultStatus]);
+
+  const enableCredentialVault = () => {
+    setCredentialVaultError("");
+    void window.cnshell?.credentials
+      .enableVault({ masterPassword: credentialVaultPassword })
+      .then((status) => {
+        setCredentialVaultStatus(status);
+        setCredentialVaultPassword("");
+        refreshActiveCredentialSecurity();
+      })
+      .catch((error: Error) => {
+        setCredentialVaultError(error.message);
+      });
+  };
+
+  const unlockCredentialVault = () => {
+    setCredentialVaultError("");
+    void window.cnshell?.credentials
+      .unlockVault({ masterPassword: credentialVaultPassword })
+      .then((status) => {
+        setCredentialVaultStatus(status);
+        setCredentialVaultPassword("");
+        refreshActiveCredentialSecurity();
+      })
+      .catch((error: Error) => {
+        setCredentialVaultError(error.message);
+      });
+  };
+
+  const lockCredentialVault = () => {
+    setCredentialVaultError("");
+    void window.cnshell?.credentials.lockVault().then((status) => {
+      setCredentialVaultStatus(status);
+      refreshActiveCredentialSecurity();
+    });
+  };
+
+  const disableCredentialVault = () => {
+    setCredentialVaultError("");
+    void window.cnshell?.credentials
+      .disableVault({ masterPassword: credentialVaultPassword || undefined })
+      .then((status) => {
+        setCredentialVaultStatus(status);
+        setCredentialVaultPassword("");
+        refreshActiveCredentialSecurity();
+      })
+      .catch((error: Error) => {
+        setCredentialVaultError(error.message);
+      });
+  };
 
   const saveActiveCredential = () => {
     void window.cnshell?.credentials
@@ -1017,7 +1091,8 @@ export function App() {
 
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
-  }, []);
+    refreshCredentialVaultStatus();
+  }, [refreshCredentialVaultStatus]);
 
   useEffect(() => {
     void workspaceStorage.loadSnapshot().then((storedSnapshot) => {
@@ -1133,11 +1208,19 @@ export function App() {
                 draft={activeSshDraft}
                 credentialStatus={activeCredentialStatus}
                 credentialError={credentialErrors[activeConnection.id]}
+                vaultStatus={credentialVaultStatus}
+                vaultPassword={credentialVaultPassword}
+                vaultError={credentialVaultError}
                 hostKeyPrompt={hostKeyPrompts[activeTab.id]}
                 onChange={updateActiveSshDraft}
+                onVaultPasswordChange={setCredentialVaultPassword}
                 onConnect={startActiveSession}
                 onSaveCredential={saveActiveCredential}
                 onDeleteCredential={deleteActiveCredential}
+                onEnableVault={enableCredentialVault}
+                onUnlockVault={unlockCredentialVault}
+                onLockVault={lockCredentialVault}
+                onDisableVault={disableCredentialVault}
                 onTrustHost={trustActiveHost}
               />
             ) : null}
@@ -1752,25 +1835,45 @@ function SshCredentialPanel({
   draft,
   credentialStatus,
   credentialError,
+  vaultStatus,
+  vaultPassword,
+  vaultError,
   hostKeyPrompt,
   onChange,
+  onVaultPasswordChange,
   onConnect,
   onSaveCredential,
   onDeleteCredential,
+  onEnableVault,
+  onUnlockVault,
+  onLockVault,
+  onDisableVault,
   onTrustHost
 }: {
   authMethod: ConnectionProfile["authMethod"];
   draft: { password: string; privateKey: string; passphrase: string };
   credentialStatus?: CredentialStatus;
   credentialError?: string;
+  vaultStatus: CredentialVaultStatus | null;
+  vaultPassword: string;
+  vaultError: string;
   hostKeyPrompt?: HostKeyVerificationEvent;
   onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
+  onVaultPasswordChange: (value: string) => void;
   onConnect: () => void;
   onSaveCredential: () => void;
   onDeleteCredential: () => void;
+  onEnableVault: () => void;
+  onUnlockVault: () => void;
+  onLockVault: () => void;
+  onDisableVault: () => void;
   onTrustHost: () => void;
 }) {
   const hasDraftSecret = Boolean(draft.password || draft.privateKey);
+  const isVaultMasterMode = vaultStatus?.mode === "master";
+  const isVaultLocked = Boolean(vaultStatus?.locked);
+  const hasVaultPassword = Boolean(vaultPassword.trim());
+  const isEncryptionUnavailable = credentialStatus?.encryptionAvailable === false || vaultStatus?.encryptionAvailable === false;
 
   return (
     <section className="panel-section ssh-panel" aria-label="SSH credentials">
@@ -1786,13 +1889,49 @@ function SshCredentialPanel({
           <span className={credentialStatus?.hasCredential ? "saved" : ""}>
             {credentialStatus?.hasCredential ? "Saved credential available" : "No saved credential"}
           </span>
-          {credentialStatus?.encryptionAvailable === false ? <small>Encryption unavailable</small> : null}
+          {credentialStatus?.hasCredential ? <small>{credentialStatus.protection}</small> : null}
+          {isEncryptionUnavailable ? <small>Encryption unavailable</small> : null}
         </div>
         {credentialError ? (
           <div className="credential-error" role="alert">
             {credentialError}
           </div>
         ) : null}
+        <div className="credential-vault-panel">
+          <div className="credential-vault-state">
+            <span>Vault</span>
+            <strong>{isVaultMasterMode ? "Master password" : "System keyring"}</strong>
+            <small>{isVaultMasterMode ? (isVaultLocked ? "locked" : "unlocked") : "active"}</small>
+          </div>
+          <label className="credential-vault-password">
+            <span>Master password</span>
+            <input
+              type="password"
+              value={vaultPassword}
+              placeholder={isVaultMasterMode ? "Enter master password" : "New master password"}
+              onChange={(event) => onVaultPasswordChange(event.target.value)}
+            />
+          </label>
+          {vaultError ? (
+            <div className="credential-error" role="alert">
+              {vaultError}
+            </div>
+          ) : null}
+          <div className="credential-vault-actions">
+            <button type="button" disabled={isEncryptionUnavailable || isVaultMasterMode || !hasVaultPassword} onClick={onEnableVault}>
+              Enable
+            </button>
+            <button type="button" disabled={!isVaultMasterMode || !isVaultLocked || !hasVaultPassword} onClick={onUnlockVault}>
+              Unlock
+            </button>
+            <button type="button" disabled={!isVaultMasterMode || isVaultLocked} onClick={onLockVault}>
+              Lock
+            </button>
+            <button type="button" disabled={!isVaultMasterMode || (isVaultLocked && !hasVaultPassword)} onClick={onDisableVault}>
+              Disable
+            </button>
+          </div>
+        </div>
         {hostKeyPrompt ? (
           <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
             <strong>{hostKeyPrompt.status === "changed" ? "Host key changed" : "Unknown host key"}</strong>
@@ -1840,7 +1979,7 @@ function SshCredentialPanel({
         <div className="credential-actions">
           <button
             type="button"
-            disabled={!hasDraftSecret || credentialStatus?.encryptionAvailable === false}
+            disabled={!hasDraftSecret || isEncryptionUnavailable || (isVaultMasterMode && isVaultLocked)}
             onClick={onSaveCredential}
           >
             <ShieldCheck size={16} aria-hidden="true" />

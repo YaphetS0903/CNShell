@@ -15,6 +15,8 @@ import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
   ExportCloudSyncRequest,
+  DisableCredentialVaultRequest,
+  EnableCredentialVaultRequest,
   KillProcessRequest,
   ListRemoteDirectoryRequest,
   ListProcessesRequest,
@@ -25,6 +27,7 @@ import type {
   StartRelayRequest,
   StartTunnelRequest,
   TransferFileRequest,
+  UnlockCredentialVaultRequest,
   WriteRemoteFileRequest
 } from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
@@ -103,6 +106,17 @@ app.whenReady().then(() => {
   ipcMain.handle("credentials:status", (_event, connectionId: string) => credentialStore?.getStatus(connectionId));
   ipcMain.handle("credentials:save", (_event, request: SaveCredentialRequest) => credentialStore?.save(request));
   ipcMain.handle("credentials:delete", (_event, connectionId: string) => credentialStore?.delete(connectionId));
+  ipcMain.handle("credentials:vault-status", () => credentialStore?.getVaultStatus());
+  ipcMain.handle("credentials:enable-vault", (_event, request: EnableCredentialVaultRequest) =>
+    credentialStore?.enableVault(request)
+  );
+  ipcMain.handle("credentials:unlock-vault", (_event, request: UnlockCredentialVaultRequest) =>
+    credentialStore?.unlockVault(request)
+  );
+  ipcMain.handle("credentials:disable-vault", (_event, request: DisableCredentialVaultRequest) =>
+    credentialStore?.disableVault(request)
+  );
+  ipcMain.handle("credentials:lock-vault", () => credentialStore?.lockVault());
   ipcMain.handle("sftp:list-directory", (_event, request: ListRemoteDirectoryRequest) =>
     sftpService?.listDirectory(request)
   );
