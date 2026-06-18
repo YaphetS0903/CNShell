@@ -11,6 +11,8 @@ import type {
   ListRemoteDirectoryRequest,
   ListProcessesRequest,
   ListProcessesResult,
+  OpenRdpRequest,
+  OpenRdpResult,
   RemoteDirectoryListing,
   ReadRemoteFileRequest,
   ReadRemoteFileResult,
@@ -100,6 +102,9 @@ const api = {
   logs: {
     readSession: (request: ReadSessionLogRequest) =>
       ipcRenderer.invoke("logs:read-session", request) as Promise<ReadSessionLogResult>
+  },
+  rdp: {
+    open: (request: OpenRdpRequest) => ipcRenderer.invoke("rdp:open", request) as Promise<OpenRdpResult>
   }
 } satisfies CNshellApi;
 

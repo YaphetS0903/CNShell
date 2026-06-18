@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain } from "electron";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CredentialStore } from "./credentialStore.js";
@@ -15,6 +16,7 @@ import type {
   KillProcessRequest,
   ListRemoteDirectoryRequest,
   ListProcessesRequest,
+  OpenRdpRequest,
   ReadRemoteFileRequest,
   ReadSessionLogRequest,
   SaveCredentialRequest,
@@ -112,6 +114,19 @@ app.whenReady().then(() => {
   ipcMain.handle("logs:read-session", (_event, request: ReadSessionLogRequest) => ({
     lines: sessionLogStore?.read(request.sessionId, request.query, request.limit) ?? []
   }));
+  ipcMain.handle("rdp:open", (_event, request: OpenRdpRequest) => {
+    if (process.platform !== "win32") {
+      throw new Error("RDP launch is only available on Windows.");
+    }
+
+    const target = `${request.host}:${request.port || 3389}`;
+    const child = spawn("mstsc.exe", [`/v:${target}`], {
+      detached: true,
+      stdio: "ignore"
+    });
+    child.unref();
+    return { ok: true };
+  });
   createMainWindow();
 
   app.on("activate", () => {

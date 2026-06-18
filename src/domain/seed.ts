@@ -46,6 +46,18 @@ export const connectionProfiles: ConnectionProfile[] = [
     lastConnectedAt: "2026-06-17T21:38:00+08:00"
   },
   {
+    id: "rdp-admin-01",
+    name: "rdp-admin-01",
+    group: "Windows",
+    protocol: "rdp",
+    host: "10.24.30.20",
+    port: 3389,
+    username: "administrator",
+    authMethod: "password",
+    color: "#7048e8",
+    tags: ["windows", "rdp"]
+  },
+  {
     id: "local-powershell",
     name: "Local PowerShell",
     group: "Local",

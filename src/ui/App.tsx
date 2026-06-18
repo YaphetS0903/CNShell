@@ -288,6 +288,8 @@ export function App() {
   const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
   const [credentialStatuses, setCredentialStatuses] = useState<Record<string, CredentialStatus>>({});
   const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
+  const [rdpStatus, setRdpStatus] = useState<"idle" | "launching" | "error">("idle");
+  const [rdpError, setRdpError] = useState("");
   const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
   const [remotePath, setRemotePath] = useState("/var/www/cnshell");
   const [sftpStatus, setSftpStatus] = useState<"idle" | "loading" | "error">("idle");
@@ -576,6 +578,29 @@ export function App() {
         [activeConnection.id]: ""
       }));
     });
+  };
+
+  const openActiveRdp = () => {
+    if (activeConnection.protocol !== "rdp") {
+      return;
+    }
+
+    setRdpStatus("launching");
+    setRdpError("");
+
+    void window.cnshell?.rdp
+      .open({
+        host: activeConnection.host,
+        port: activeConnection.port || 3389,
+        username: activeConnection.username
+      })
+      .then(() => {
+        setRdpStatus("idle");
+      })
+      .catch((error: Error) => {
+        setRdpStatus("error");
+        setRdpError(error.message);
+      });
   };
 
   const refreshRemoteFiles = () => {
@@ -1023,6 +1048,9 @@ export function App() {
                 onTrustHost={trustActiveHost}
               />
             ) : null}
+            {activeConnection.protocol === "rdp" ? (
+              <RdpPanel connection={activeConnection} status={rdpStatus} error={rdpError} onOpen={openActiveRdp} />
+            ) : null}
             {activeConnection.protocol === "ssh" ? (
               <JumpHostPanel gateways={activeConnection.gateways ?? []} onChange={updateActiveGateways} />
             ) : null}
@@ -1462,7 +1490,12 @@ function TerminalPane({
         onStatusChange(sessionId, "disconnected");
       }
     } else {
-      startTerminalSession();
+      if (activeConnection.protocol === "rdp") {
+        terminal.writeln("\x1b[33mRDP profile selected. Use the RDP panel to launch Windows Remote Desktop.\x1b[0m");
+        onStatusChange(sessionId, "disconnected");
+      } else {
+        startTerminalSession();
+      }
     }
 
     const resizeObserver = new ResizeObserver(resizeSession);
@@ -1712,6 +1745,45 @@ function SshCredentialPanel({
             Delete saved
           </button>
         </div>
+      </div>
+    </section>
+  );
+}
+
+function RdpPanel({
+  connection,
+  status,
+  error,
+  onOpen
+}: {
+  connection: ConnectionProfile;
+  status: "idle" | "launching" | "error";
+  error: string;
+  onOpen: () => void;
+}) {
+  return (
+    <section className="panel-section rdp-panel" aria-label="RDP connection">
+      <div className="panel-heading">
+        <div>
+          <Monitor size={16} aria-hidden="true" />
+          <h2>RDP</h2>
+        </div>
+        <span className={`rdp-status ${status}`}>{status}</span>
+      </div>
+      <div className="rdp-body">
+        <div className="rdp-target">
+          <strong>{connection.host}:{connection.port || 3389}</strong>
+          <span>{connection.username}</span>
+        </div>
+        {error ? (
+          <div className="credential-error" role="alert">
+            {error}
+          </div>
+        ) : null}
+        <button type="button" onClick={onOpen}>
+          <Monitor size={16} aria-hidden="true" />
+          Open Remote Desktop
+        </button>
       </div>
     </section>
   );

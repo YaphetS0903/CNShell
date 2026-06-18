@@ -181,6 +181,16 @@ export interface ReadSessionLogResult {
   lines: string[];
 }
 
+export interface OpenRdpRequest {
+  host: string;
+  port: number;
+  username?: string;
+}
+
+export interface OpenRdpResult {
+  ok: boolean;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -220,5 +230,8 @@ export interface CNshellApi {
   };
   logs: {
     readSession: (request: ReadSessionLogRequest) => Promise<ReadSessionLogResult>;
+  };
+  rdp: {
+    open: (request: OpenRdpRequest) => Promise<OpenRdpResult>;
   };
 }

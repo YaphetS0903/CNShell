@@ -1570,6 +1570,69 @@ textarea:focus-visible {
   padding: 8px 10px;
 }
 
+.rdp-status {
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  color: #94a7b6;
+  font-size: 10px;
+  font-weight: 900;
+  padding: 3px 8px;
+  text-transform: uppercase;
+}
+
+.rdp-status.launching {
+  border-color: rgba(77, 171, 247, 0.4);
+  background: rgba(77, 171, 247, 0.12);
+  color: #b9e3ff;
+}
+
+.rdp-status.error {
+  border-color: rgba(255, 135, 135, 0.4);
+  background: rgba(255, 135, 135, 0.12);
+  color: #ffa8a8;
+}
+
+.rdp-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+}
+
+.rdp-target {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 10px;
+}
+
+.rdp-target strong {
+  color: #d4e0e8;
+  font-size: 13px;
+}
+
+.rdp-target span {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.rdp-body button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  gap: 8px;
+  border: 1px solid rgba(77, 171, 247, 0.55);
+  border-radius: 7px;
+  background: #123149;
+  color: #d7efff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
 .host-key-prompt {
   display: flex;
   flex-direction: column;
