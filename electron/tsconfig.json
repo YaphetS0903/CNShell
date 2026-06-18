@@ -11,5 +11,5 @@
     "esModuleInterop": true,
     "types": ["node", "electron"]
   },
-  "include": ["*.ts", "../src/shared/**/*.ts"]
+  "include": ["*.ts", "../src/shared/**/*.ts", "../src/domain/models.ts"]
 }

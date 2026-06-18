@@ -11,9 +11,14 @@ import type {
   TerminalSessionResizeRequest,
   TerminalSessionStarted
 } from "../src/shared/ipc.js";
+import type { AppSnapshot } from "../src/domain/models.js";
 
 const api = {
   getVersion: () => ipcRenderer.invoke("app:get-version") as Promise<string>,
+  workspace: {
+    load: () => ipcRenderer.invoke("workspace:load") as Promise<AppSnapshot | null>,
+    save: (snapshot) => ipcRenderer.invoke("workspace:save", snapshot) as Promise<boolean>
+  },
   terminal: {
     start: (request: StartTerminalSessionRequest) =>
       ipcRenderer.invoke("terminal:start", request) as Promise<TerminalSessionStarted>,

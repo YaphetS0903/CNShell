@@ -34,7 +34,8 @@ import { terminalTheme } from "./terminalTheme";
 const workspaceStorage = createLocalWorkspaceStorage();
 
 export function App() {
-  const [snapshot] = useState(() => workspaceStorage.loadSnapshot() ?? createInitialAppSnapshot());
+  const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
+  const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
   const [activeConnectionId, setActiveConnectionId] = useState(snapshot.connections[0].id);
   const [activeTabId, setActiveTabId] = useState(snapshot.sessions[0].id);
   const [appVersion, setAppVersion] = useState("dev");
@@ -180,8 +181,22 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    workspaceStorage.saveSnapshot(snapshot);
-  }, [snapshot]);
+    void workspaceStorage.loadSnapshot().then((storedSnapshot) => {
+      if (storedSnapshot) {
+        setSnapshot(storedSnapshot);
+        setActiveConnectionId(storedSnapshot.connections[0]?.id ?? "");
+        setActiveTabId(storedSnapshot.sessions[0]?.id ?? "");
+      }
+
+      setIsWorkspaceReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isWorkspaceReady) {
+      void workspaceStorage.saveSnapshot(snapshot);
+    }
+  }, [isWorkspaceReady, snapshot]);
 
   useEffect(() => {
     return window.cnshell?.terminal.onHostKeyVerification((event) => {
@@ -198,6 +213,20 @@ export function App() {
       refreshCredentialStatus(activeConnection.id);
     }
   }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus]);
+
+  if (!isWorkspaceReady) {
+    return (
+      <main className="app-shell loading-shell">
+        <section className="workspace-loading" aria-live="polite">
+          <div className="brand-mark" aria-hidden="true">
+            CN
+          </div>
+          <strong>Loading CNshell workspace</strong>
+          <span>Preparing connections and sessions</span>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className="app-shell">

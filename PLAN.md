@@ -24,7 +24,7 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Add typed domain models for connections, sessions, quick commands, transfers, and metrics.~~
 - [x] ~~Add secure Electron IPC boundary through preload APIs.~~
 - [x] ~~Render a first terminal surface with xterm.js.~~
-- [ ] Add local connection storage abstraction.
+- [x] ~~Add local connection storage abstraction.~~
 - [x] ~~Add first SSH connection service boundary.~~
 - [x] ~~Implement connect/disconnect lifecycle in the UI.~~
 - [ ] Implement SFTP remote file listing.
@@ -95,4 +95,5 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Wire SSH session output into xterm.js.~~
 - [x] ~~Add host key verification for SSH sessions.~~
 - [x] ~~Add secure credential storage instead of session-only credentials.~~
+- [x] ~~Persist workspace connections and sessions through Electron userData storage.~~
 - [ ] Add optional master password vault mode.

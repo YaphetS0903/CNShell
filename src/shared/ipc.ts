@@ -1,3 +1,5 @@
+import type { AppSnapshot } from "../domain/models.js";
+
 export type TerminalSessionKind = "local" | "ssh";
 
 export interface StartTerminalSessionRequest {
@@ -80,6 +82,10 @@ export interface CredentialStatus {
 
 export interface CNshellApi {
   getVersion: () => Promise<string>;
+  workspace: {
+    load: () => Promise<AppSnapshot | null>;
+    save: (snapshot: AppSnapshot) => Promise<boolean>;
+  };
   terminal: {
     start: (request: StartTerminalSessionRequest) => Promise<TerminalSessionStarted>;
     write: (id: string, data: string) => Promise<boolean>;

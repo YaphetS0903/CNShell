@@ -73,6 +73,27 @@ input:focus-visible {
   background: var(--bg);
 }
 
+.loading-shell {
+  grid-template-columns: 1fr;
+  place-items: center;
+}
+
+.workspace-loading {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  color: var(--text);
+}
+
+.workspace-loading strong {
+  font-size: 16px;
+}
+
+.workspace-loading span {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .sidebar {
   display: flex;
   flex-direction: column;

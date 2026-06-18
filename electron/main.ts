@@ -4,7 +4,9 @@ import { fileURLToPath } from "node:url";
 import { CredentialStore } from "./credentialStore.js";
 import { KnownHostsStore } from "./knownHostsStore.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
+import { WorkspaceStore } from "./workspaceStore.js";
 import type { HostKeyVerificationEvent, SaveCredentialRequest } from "../src/shared/ipc.js";
+import type { AppSnapshot } from "../src/domain/models.js";
 import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "./sessionTypes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,6 +14,7 @@ const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 let terminalSessionManager: TerminalSessionManager | null = null;
 let knownHostsStore: KnownHostsStore | null = null;
 let credentialStore: CredentialStore | null = null;
+let workspaceStore: WorkspaceStore | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -43,7 +46,13 @@ function createMainWindow() {
 app.whenReady().then(() => {
   knownHostsStore = new KnownHostsStore(app.getPath("userData"));
   credentialStore = new CredentialStore(app.getPath("userData"));
+  workspaceStore = new WorkspaceStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
+  ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
+  ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {
+    workspaceStore?.save(snapshot);
+    return true;
+  });
   ipcMain.handle("terminal:start", (_event, request: StartTerminalSessionRequest) => {
     if (request.kind === "ssh") {
       return terminalSessionManager?.startSshSession(request);
