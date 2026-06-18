@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ChevronRight,
@@ -1760,10 +1760,38 @@ function TerminalPane({
   const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
   const [safePasteReview, setSafePasteReview] = useState<SafePasteReview | null>(null);
   const [safePasteSessionId, setSafePasteSessionId] = useState("");
+  const terminalHostRef = useRef<HTMLDivElement | null>(null);
+  const activeConnectionRef = useRef(activeConnection);
+  const sshDraftRef = useRef(sshDraft);
+  const useSavedCredentialRef = useRef(useSavedCredential);
+  const keyMappingProfilesRef = useRef(keyMappingProfiles);
+  const isHighlightEnabledRef = useRef(isHighlightEnabled);
+  const onStatusChangeRef = useRef(onStatusChange);
+  const onTerminalInputRef = useRef(onTerminalInput);
+  const onTriggerEventsRef = useRef(onTriggerEvents);
+  const onZmodemDetectedRef = useRef(onZmodemDetected);
+
+  activeConnectionRef.current = activeConnection;
+  sshDraftRef.current = sshDraft;
+  useSavedCredentialRef.current = useSavedCredential;
+  keyMappingProfilesRef.current = keyMappingProfiles;
+  isHighlightEnabledRef.current = isHighlightEnabled;
+  onStatusChangeRef.current = onStatusChange;
+  onTerminalInputRef.current = onTerminalInput;
+  onTriggerEventsRef.current = onTriggerEvents;
+  onZmodemDetectedRef.current = onZmodemDetected;
+
+  const sessionId = activeTab.id;
+  const connectionGateways = activeConnection.gateways;
+  const connectionHost = activeConnection.host;
+  const connectionId = activeConnection.id;
+  const connectionPort = activeConnection.port;
+  const connectionProtocol = activeConnection.protocol;
+  const connectionUsername = activeConnection.username;
 
   useEffect(() => {
-    const host = activeConnection.host;
-    const terminalHost = document.getElementById("terminal-host");
+    const host = connectionHost;
+    const terminalHost = terminalHostRef.current;
     if (!terminalHost) {
       return;
     }
@@ -1790,24 +1818,23 @@ function TerminalPane({
       }
 
       const key = formatKeyEvent(event);
-      const rule = getActiveKeyRules(keyMappingProfiles).find((item) => item.key === key);
+      const rule = getActiveKeyRules(keyMappingProfilesRef.current).find((item) => item.key === key);
       if (!rule) {
         return true;
       }
 
-      onTerminalInput(activeTab.id, normalizeSendValue(rule.send));
+      onTerminalInputRef.current(sessionId, normalizeSendValue(rule.send));
       return false;
     });
     terminal.writeln("\x1b[1;32mCNshell terminal session starting\x1b[0m");
-    terminal.writeln(`Profile: ${activeConnection.username}@${host}`);
+    terminal.writeln(`Profile: ${connectionUsername}@${host}`);
     terminal.writeln("");
 
-    const sessionId = activeTab.id;
     const removeDataListener = window.cnshell?.terminal.onData(({ id, data }) => {
       if (id === sessionId) {
-        onTriggerEvents(detectTriggerEvents(sessionId, data));
-        onZmodemDetected(detectZmodemMode(data));
-        terminal.write(isHighlightEnabled ? applyHighlightRules(data) : data);
+        onTriggerEventsRef.current(detectTriggerEvents(sessionId, data));
+        onZmodemDetectedRef.current(detectZmodemMode(data));
+        terminal.write(isHighlightEnabledRef.current ? applyHighlightRules(data) : data);
       }
     });
 
@@ -1815,12 +1842,12 @@ function TerminalPane({
       if (id === sessionId) {
         terminal.writeln("");
         terminal.writeln(`\x1b[33mSession exited with code ${exitCode}.\x1b[0m`);
-        onStatusChange(sessionId, "disconnected");
+        onStatusChangeRef.current(sessionId, "disconnected");
       }
     });
 
     const dataDisposable = terminal.onData((data) => {
-      onTerminalInput(sessionId, data);
+      onTerminalInputRef.current(sessionId, data);
     });
 
     const pasteHandler = (event: ClipboardEvent) => {
@@ -1851,42 +1878,42 @@ function TerminalPane({
       if (id === sessionId) {
         terminal.writeln("");
         terminal.writeln(`\x1b[31m${message}\x1b[0m`);
-        onStatusChange(sessionId, "error");
+        onStatusChangeRef.current(sessionId, "error");
       }
     });
 
     const startTerminalSession = () => {
-      onStatusChange(sessionId, "connecting");
+      onStatusChangeRef.current(sessionId, "connecting");
 
       void window.cnshell?.terminal
         .start({
           id: sessionId,
-          kind: activeConnection.protocol === "ssh" ? "ssh" : "local",
+          kind: connectionProtocol === "ssh" ? "ssh" : "local",
           cols: terminal.cols,
           rows: terminal.rows,
           ssh:
-            activeConnection.protocol === "ssh"
-              ? createSshConfig(activeConnection, sshDraft, useSavedCredential)
+            connectionProtocol === "ssh"
+              ? createSshConfig(activeConnectionRef.current, sshDraftRef.current, useSavedCredentialRef.current)
               : undefined
         })
-        .then(() => onStatusChange(sessionId, "connected"))
+        .then(() => onStatusChangeRef.current(sessionId, "connected"))
         .catch((error: Error) => {
           terminal.writeln(`\x1b[31m${error.message}\x1b[0m`);
-          onStatusChange(sessionId, "error");
+          onStatusChangeRef.current(sessionId, "error");
         });
     };
 
-    if (activeConnection.protocol === "ssh") {
+    if (connectionProtocol === "ssh") {
       terminal.writeln("\x1b[33mSSH profile selected. Enter credentials in the SSH panel, then press Connect.\x1b[0m");
       if (startToken > 0) {
         startTerminalSession();
       } else {
-        onStatusChange(sessionId, "disconnected");
+        onStatusChangeRef.current(sessionId, "disconnected");
       }
     } else {
-      if (activeConnection.protocol === "rdp") {
+      if (connectionProtocol === "rdp") {
         terminal.writeln("\x1b[33mRDP profile selected. Use the RDP panel to launch Windows Remote Desktop.\x1b[0m");
-        onStatusChange(sessionId, "disconnected");
+        onStatusChangeRef.current(sessionId, "disconnected");
       } else {
         startTerminalSession();
       }
@@ -1903,24 +1930,18 @@ function TerminalPane({
       removeErrorListener?.();
       terminal.textarea?.removeEventListener("paste", pasteHandler);
       void window.cnshell?.terminal.stop(sessionId);
-      onStatusChange(sessionId, "disconnected");
+      onStatusChangeRef.current(sessionId, "disconnected");
       setSearchAddon(null);
       terminal.dispose();
     };
   }, [
-    activeConnection,
-    activeTab,
-    onStatusChange,
-    sshDraft,
-    sshDraft.password,
-    sshDraft.passphrase,
-    sshDraft.privateKey,
-    keyMappingProfiles,
-    useSavedCredential,
-    isHighlightEnabled,
-    onTerminalInput,
-    onTriggerEvents,
-    onZmodemDetected,
+    connectionGateways,
+    connectionHost,
+    connectionId,
+    connectionPort,
+    connectionProtocol,
+    connectionUsername,
+    sessionId,
     startToken
   ]);
 
@@ -1996,7 +2017,7 @@ function TerminalPane({
           </button>
         </div>
       </div>
-      <div id="terminal-host" className="terminal-host" />
+      <div ref={terminalHostRef} className="terminal-host" />
       {safePasteReview ? (
         <div className="safe-paste-review" role="alert">
           <div>
