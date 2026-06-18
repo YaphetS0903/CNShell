@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import fs from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,6 +36,7 @@ import type { StartTerminalSessionRequest, TerminalSessionResizeRequest } from "
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
+const MAX_PRIVATE_KEY_BYTES = 256 * 1024;
 let terminalSessionManager: TerminalSessionManager | null = null;
 let knownHostsStore: KnownHostsStore | null = null;
 let credentialStore: CredentialStore | null = null;
@@ -70,6 +72,34 @@ function createMainWindow() {
   } else {
     void window.loadFile(path.join(__dirname, "../../dist/index.html"));
   }
+}
+
+async function importPrivateKeyFile() {
+  const result = await dialog.showOpenDialog({
+    title: "Import SSH private key",
+    properties: ["openFile"],
+    filters: [
+      { name: "SSH Private Keys", extensions: ["pem", "key", "ppk", "openssh", "id_rsa", "id_ed25519", "*"] },
+      { name: "All Files", extensions: ["*"] }
+    ]
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return { ok: false };
+  }
+
+  const keyPath = result.filePaths[0];
+  const stat = fs.statSync(keyPath);
+  if (stat.size > MAX_PRIVATE_KEY_BYTES) {
+    throw new Error("Private key file is too large.");
+  }
+
+  return {
+    ok: true,
+    path: keyPath,
+    fileName: path.basename(keyPath),
+    privateKey: fs.readFileSync(keyPath, "utf8")
+  };
 }
 
 app.whenReady().then(() => {
@@ -117,6 +147,7 @@ app.whenReady().then(() => {
     credentialStore?.disableVault(request)
   );
   ipcMain.handle("credentials:lock-vault", () => credentialStore?.lockVault());
+  ipcMain.handle("credentials:import-private-key", () => importPrivateKeyFile());
   ipcMain.handle("sftp:list-directory", (_event, request: ListRemoteDirectoryRequest) =>
     sftpService?.listDirectory(request)
   );

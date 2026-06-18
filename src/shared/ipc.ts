@@ -102,6 +102,13 @@ export interface DisableCredentialVaultRequest {
   masterPassword?: string;
 }
 
+export interface ImportPrivateKeyResult {
+  ok: boolean;
+  path?: string;
+  fileName?: string;
+  privateKey?: string;
+}
+
 export interface ListRemoteDirectoryRequest {
   ssh: SshSessionConfig;
   path: string;
@@ -267,6 +274,7 @@ export interface CNshellApi {
     unlockVault: (request: UnlockCredentialVaultRequest) => Promise<CredentialVaultStatus>;
     disableVault: (request: DisableCredentialVaultRequest) => Promise<CredentialVaultStatus>;
     lockVault: () => Promise<CredentialVaultStatus>;
+    importPrivateKey: () => Promise<ImportPrivateKeyResult>;
   };
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) => Promise<RemoteDirectoryListing>;

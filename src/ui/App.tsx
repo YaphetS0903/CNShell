@@ -299,6 +299,7 @@ export function App() {
   const [credentialVaultStatus, setCredentialVaultStatus] = useState<CredentialVaultStatus | null>(null);
   const [credentialVaultPassword, setCredentialVaultPassword] = useState("");
   const [credentialVaultError, setCredentialVaultError] = useState("");
+  const [privateKeyImportStatus, setPrivateKeyImportStatus] = useState("");
   const [rdpStatus, setRdpStatus] = useState<"idle" | "launching" | "error">("idle");
   const [rdpError, setRdpError] = useState("");
   const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
@@ -696,6 +697,24 @@ export function App() {
         [activeConnection.id]: ""
       }));
     });
+  };
+
+  const importPrivateKey = () => {
+    setPrivateKeyImportStatus("Opening key file");
+    void window.cnshell?.credentials
+      .importPrivateKey()
+      .then((result) => {
+        if (!result.ok || !result.privateKey) {
+          setPrivateKeyImportStatus("Import canceled");
+          return;
+        }
+
+        updateActiveSshDraft("privateKey", result.privateKey);
+        setPrivateKeyImportStatus(`Imported ${result.fileName ?? "private key"}`);
+      })
+      .catch((error: Error) => {
+        setPrivateKeyImportStatus(error.message);
+      });
   };
 
   const openActiveRdp = () => {
@@ -1211,9 +1230,11 @@ export function App() {
                 vaultStatus={credentialVaultStatus}
                 vaultPassword={credentialVaultPassword}
                 vaultError={credentialVaultError}
+                privateKeyImportStatus={privateKeyImportStatus}
                 hostKeyPrompt={hostKeyPrompts[activeTab.id]}
                 onChange={updateActiveSshDraft}
                 onVaultPasswordChange={setCredentialVaultPassword}
+                onImportPrivateKey={importPrivateKey}
                 onConnect={startActiveSession}
                 onSaveCredential={saveActiveCredential}
                 onDeleteCredential={deleteActiveCredential}
@@ -1838,9 +1859,11 @@ function SshCredentialPanel({
   vaultStatus,
   vaultPassword,
   vaultError,
+  privateKeyImportStatus,
   hostKeyPrompt,
   onChange,
   onVaultPasswordChange,
+  onImportPrivateKey,
   onConnect,
   onSaveCredential,
   onDeleteCredential,
@@ -1857,9 +1880,11 @@ function SshCredentialPanel({
   vaultStatus: CredentialVaultStatus | null;
   vaultPassword: string;
   vaultError: string;
+  privateKeyImportStatus: string;
   hostKeyPrompt?: HostKeyVerificationEvent;
   onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
   onVaultPasswordChange: (value: string) => void;
+  onImportPrivateKey: () => void;
   onConnect: () => void;
   onSaveCredential: () => void;
   onDeleteCredential: () => void;
@@ -1956,19 +1981,26 @@ function SshCredentialPanel({
           />
         </label>
         <label>
-          <span>Private key</span>
+          <span className="private-key-label">
+            Private key
+            <button type="button" onClick={onImportPrivateKey}>
+              <UploadCloud size={14} aria-hidden="true" />
+              Import
+            </button>
+          </span>
           <textarea
             value={draft.privateKey}
             placeholder="Paste an OpenSSH private key for this session"
             onChange={(event) => onChange("privateKey", event.target.value)}
           />
         </label>
+        {privateKeyImportStatus ? <div className="private-key-import-status">{privateKeyImportStatus}</div> : null}
         <label>
           <span>Passphrase</span>
           <input
             type="password"
             value={draft.passphrase}
-            placeholder="Optional"
+            placeholder="For encrypted private keys"
             onChange={(event) => onChange("passphrase", event.target.value)}
           />
         </label>

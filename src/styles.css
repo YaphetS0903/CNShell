@@ -1488,6 +1488,34 @@ textarea:focus-visible {
   line-height: 1.45;
 }
 
+.private-key-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.private-key-label button {
+  min-height: 28px;
+  border-color: var(--line);
+  background: #111c24;
+  color: #c7d5df;
+  font-size: 11px;
+  padding: 0 9px;
+}
+
+.private-key-import-status {
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  color: #8d9dab;
+  font-size: 11px;
+  padding: 7px 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .ssh-form input::placeholder,
 .ssh-form textarea::placeholder {
   color: #657381;

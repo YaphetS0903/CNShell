@@ -9,6 +9,7 @@ import type {
   DisableCredentialVaultRequest,
   EnableCredentialVaultRequest,
   ExportCloudSyncRequest,
+  ImportPrivateKeyResult,
   SaveCredentialRequest,
   HostKeyVerificationEvent,
   KillProcessRequest,
@@ -91,7 +92,8 @@ const api = {
       ipcRenderer.invoke("credentials:unlock-vault", request) as Promise<CredentialVaultStatus>,
     disableVault: (request: DisableCredentialVaultRequest) =>
       ipcRenderer.invoke("credentials:disable-vault", request) as Promise<CredentialVaultStatus>,
-    lockVault: () => ipcRenderer.invoke("credentials:lock-vault") as Promise<CredentialVaultStatus>
+    lockVault: () => ipcRenderer.invoke("credentials:lock-vault") as Promise<CredentialVaultStatus>,
+    importPrivateKey: () => ipcRenderer.invoke("credentials:import-private-key") as Promise<ImportPrivateKeyResult>
   },
   sftp: {
     listDirectory: (request: ListRemoteDirectoryRequest) =>
