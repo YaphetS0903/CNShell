@@ -30,7 +30,7 @@ import { Terminal } from "@xterm/xterm";
 import { createInitialAppSnapshot, groupConnections } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type { ConnectionProfile, SessionStatus, SessionTab, TransferJob } from "../domain/models";
-import type { CredentialStatus, HostKeyVerificationEvent } from "../shared/ipc";
+import type { CredentialStatus, HostKeyVerificationEvent, TunnelInfo, TunnelMode } from "../shared/ipc";
 import { terminalTheme } from "./terminalTheme";
 
 const workspaceStorage = createLocalWorkspaceStorage();
@@ -41,6 +41,35 @@ interface TriggerEvent {
   severity: "error" | "warning";
   message: string;
   createdAt: string;
+}
+
+interface TunnelDraft {
+  mode: TunnelMode;
+  bindHost: string;
+  bindPort: string;
+  targetHost: string;
+  targetPort: string;
+}
+
+const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
+  { value: "local", label: "Local" },
+  { value: "remote", label: "Remote" },
+  { value: "dynamic", label: "Dynamic" }
+];
+
+function parsePort(value: string) {
+  const port = Number(value);
+  return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
+}
+
+function describeTunnel(tunnel: TunnelInfo) {
+  const bind = `${tunnel.bindHost}:${tunnel.bindPort}`;
+
+  if (tunnel.mode === "dynamic") {
+    return `${bind} SOCKS5`;
+  }
+
+  return `${bind} -> ${tunnel.targetHost ?? "?"}:${tunnel.targetPort ?? "?"}`;
 }
 
 function applyHighlightRules(data: string) {
@@ -108,6 +137,14 @@ export function App() {
   const [isSyncInputEnabled, setIsSyncInputEnabled] = useState(false);
   const [isHighlightEnabled, setIsHighlightEnabled] = useState(true);
   const [triggerEvents, setTriggerEvents] = useState<TriggerEvent[]>([]);
+  const [tunnelDraft, setTunnelDraft] = useState<TunnelDraft>({
+    mode: "local",
+    bindHost: "127.0.0.1",
+    bindPort: "8080",
+    targetHost: "127.0.0.1",
+    targetPort: "80"
+  });
+  const [tunnels, setTunnels] = useState<TunnelInfo[]>([]);
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
     Object.fromEntries(snapshot.sessions.map((session) => [session.id, session.status]))
   );
@@ -378,6 +415,71 @@ export function App() {
     setTriggerEvents((current) => [...events, ...current].slice(0, 8));
   }, []);
 
+  const startTunnel = () => {
+    if (activeConnection.protocol !== "ssh") {
+      return;
+    }
+
+    const tunnelId = `tunnel-${Date.now()}`;
+    const bindPort = parsePort(tunnelDraft.bindPort);
+    const parsedTargetPort = tunnelDraft.mode === "dynamic" ? null : parsePort(tunnelDraft.targetPort);
+    const bindHost = tunnelDraft.bindHost.trim();
+    const targetHost = tunnelDraft.targetHost.trim();
+    if (!bindPort || !bindHost || (tunnelDraft.mode !== "dynamic" && (!parsedTargetPort || !targetHost))) {
+      return;
+    }
+    const targetPort = tunnelDraft.mode === "dynamic" ? undefined : parsedTargetPort ?? undefined;
+
+    const startingTunnel: TunnelInfo = {
+      id: tunnelId,
+      mode: tunnelDraft.mode,
+      bindHost,
+      bindPort,
+      targetHost: tunnelDraft.mode === "dynamic" ? undefined : targetHost,
+      targetPort,
+      status: "starting"
+    };
+    setTunnels((current) => [startingTunnel, ...current].slice(0, 6));
+
+    void window.cnshell?.tunnels
+      .start({
+        id: tunnelId,
+        mode: tunnelDraft.mode,
+        bindHost,
+        bindPort,
+        targetHost: tunnelDraft.mode === "dynamic" ? undefined : targetHost,
+        targetPort,
+        ssh: {
+          connectionId: activeConnection.id,
+          host: activeConnection.host,
+          port: activeConnection.port,
+          username: activeConnection.username,
+          password: activeSshDraft.password || undefined,
+          privateKey: activeSshDraft.privateKey || undefined,
+          passphrase: activeSshDraft.passphrase || undefined,
+          useSavedCredential: Boolean(activeCredentialStatus?.hasCredential)
+        }
+      })
+      .then((info) => {
+        setTunnels((current) => current.map((tunnel) => (tunnel.id === tunnelId ? info : tunnel)));
+      })
+      .catch((error: Error) => {
+        setTunnels((current) =>
+          current.map((tunnel) =>
+            tunnel.id === tunnelId ? { ...tunnel, status: "error", message: error.message } : tunnel
+          )
+        );
+      });
+  };
+
+  const stopTunnel = (id: string) => {
+    void window.cnshell?.tunnels.stop(id).then(() => {
+      setTunnels((current) =>
+        current.map((tunnel) => (tunnel.id === id ? { ...tunnel, status: "stopped" } : tunnel))
+      );
+    });
+  };
+
   const createSessionForActiveConnection = () => {
     const sessionId = `tab-${activeConnection.id}-${Date.now()}`;
     const nextSession: SessionTab = {
@@ -527,6 +629,13 @@ export function App() {
               onTransfer={startTransfer}
             />
             <MetricsPanel metrics={liveMetrics} status={metricsStatus} error={metricsError} onRefresh={refreshMetrics} />
+            <TunnelPanel
+              draft={tunnelDraft}
+              tunnels={tunnels}
+              onDraftChange={setTunnelDraft}
+              onStart={startTunnel}
+              onStop={stopTunnel}
+            />
             <QuickCommandPanel quickCommands={snapshot.quickCommands} onExecute={executeCommand} />
             <TriggerPanel events={triggerEvents} />
           </aside>
@@ -1267,6 +1376,88 @@ function TriggerPanel({ events }: { events: TriggerEvent[] }) {
               <strong>{event.severity}</strong>
               <span>{event.message}</span>
               <small>{event.createdAt}</small>
+            </div>
+          ))
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TunnelPanel({
+  draft,
+  tunnels,
+  onDraftChange,
+  onStart,
+  onStop
+}: {
+  draft: TunnelDraft;
+  tunnels: TunnelInfo[];
+  onDraftChange: (draft: TunnelDraft) => void;
+  onStart: () => void;
+  onStop: (id: string) => void;
+}) {
+  const requiresTarget = draft.mode !== "dynamic";
+
+  return (
+    <section className="panel-section" aria-label="SSH tunnels">
+      <div className="panel-heading">
+        <div>
+          <Network size={16} aria-hidden="true" />
+          <h2>Tunnels</h2>
+        </div>
+        <button type="button" aria-label="Start tunnel" onClick={onStart}>
+          <Plus size={16} aria-hidden="true" />
+        </button>
+      </div>
+      <div className="tunnel-mode-switch" role="tablist" aria-label="Tunnel mode">
+        {tunnelModes.map((mode) => (
+          <button
+            key={mode.value}
+            type="button"
+            aria-pressed={draft.mode === mode.value}
+            onClick={() => onDraftChange({ ...draft, mode: mode.value })}
+          >
+            {mode.label}
+          </button>
+        ))}
+      </div>
+      <div className="tunnel-form">
+        <input
+          value={draft.bindHost}
+          placeholder={draft.mode === "remote" ? "Remote bind" : "Local bind"}
+          onChange={(event) => onDraftChange({ ...draft, bindHost: event.target.value })}
+        />
+        <input
+          value={draft.bindPort}
+          placeholder={draft.mode === "remote" ? "Remote port" : "Local port"}
+          onChange={(event) => onDraftChange({ ...draft, bindPort: event.target.value })}
+        />
+        <input
+          value={draft.targetHost}
+          placeholder={requiresTarget ? "Target host" : "SOCKS target"}
+          disabled={!requiresTarget}
+          onChange={(event) => onDraftChange({ ...draft, targetHost: event.target.value })}
+        />
+        <input
+          value={draft.targetPort}
+          placeholder="Target port"
+          disabled={!requiresTarget}
+          onChange={(event) => onDraftChange({ ...draft, targetPort: event.target.value })}
+        />
+      </div>
+      <div className="tunnel-list">
+        {tunnels.length === 0 ? (
+          <div className="trigger-empty">No active tunnels</div>
+        ) : (
+          tunnels.map((tunnel) => (
+            <div key={tunnel.id} className={`tunnel-row ${tunnel.status}`}>
+              <strong>{tunnel.mode}</strong>
+              <span>{describeTunnel(tunnel)}</span>
+              <small>{tunnel.message ?? tunnel.status}</small>
+              <button type="button" onClick={() => onStop(tunnel.id)}>
+                Stop
+              </button>
             </div>
           ))
         )}

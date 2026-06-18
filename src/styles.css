@@ -786,6 +786,107 @@ input:focus-visible {
   white-space: nowrap;
 }
 
+.tunnel-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 10px 12px 0;
+}
+
+.tunnel-mode-switch button {
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #0b131a;
+  color: #92a4b1;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.tunnel-mode-switch button[aria-pressed="true"] {
+  border-color: rgba(45, 212, 191, 0.45);
+  background: rgba(45, 212, 191, 0.12);
+  color: #c9fbf4;
+}
+
+.tunnel-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr) 74px;
+  gap: 8px;
+  padding: 12px 12px 8px;
+}
+
+.tunnel-form input {
+  min-height: 32px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0b131a;
+  color: var(--text);
+  padding: 0 8px;
+}
+
+.tunnel-form input:disabled {
+  color: #5f7180;
+  opacity: 0.62;
+}
+
+.tunnel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 12px 12px;
+}
+
+.tunnel-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  padding: 7px 8px;
+}
+
+.tunnel-row strong {
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  color: #8fb8c7;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 5px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.tunnel-row span {
+  overflow: hidden;
+  color: #d4e0e8;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tunnel-row small {
+  color: #8ce99a;
+  font-size: 11px;
+}
+
+.tunnel-row.error small {
+  color: #ffa8a8;
+}
+
+.tunnel-row button {
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-size: 11px;
+}
+
 .file-row:hover,
 .quick-command:hover {
   background: rgba(255, 255, 255, 0.04);

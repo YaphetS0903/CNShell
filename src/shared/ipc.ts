@@ -109,6 +109,29 @@ export interface CollectMetricsResult {
   metrics: ServerMetric[];
 }
 
+export type TunnelMode = "local" | "remote" | "dynamic";
+
+export interface StartTunnelRequest {
+  id: string;
+  ssh: SshSessionConfig;
+  mode: TunnelMode;
+  bindHost: string;
+  bindPort: number;
+  targetHost?: string;
+  targetPort?: number;
+}
+
+export interface TunnelInfo {
+  id: string;
+  mode: TunnelMode;
+  bindHost: string;
+  bindPort: number;
+  targetHost?: string;
+  targetPort?: number;
+  status: "starting" | "running" | "stopped" | "error";
+  message?: string;
+}
+
 export interface CNshellApi {
   getVersion: () => Promise<string>;
   workspace: {
@@ -137,5 +160,9 @@ export interface CNshellApi {
   };
   metrics: {
     collect: (request: CollectMetricsRequest) => Promise<CollectMetricsResult>;
+  };
+  tunnels: {
+    start: (request: StartTunnelRequest) => Promise<TunnelInfo>;
+    stop: (id: string) => Promise<boolean>;
   };
 }

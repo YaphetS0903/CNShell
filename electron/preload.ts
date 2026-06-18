@@ -14,6 +14,8 @@ import type {
   TerminalExitEvent,
   TerminalSessionResizeRequest,
   TerminalSessionStarted,
+  StartTunnelRequest,
+  TunnelInfo,
   TransferFileRequest,
   TransferFileResult
 } from "../src/shared/ipc.js";
@@ -72,6 +74,10 @@ const api = {
   metrics: {
     collect: (request: CollectMetricsRequest) =>
       ipcRenderer.invoke("metrics:collect", request) as Promise<CollectMetricsResult>
+  },
+  tunnels: {
+    start: (request: StartTunnelRequest) => ipcRenderer.invoke("tunnels:start", request) as Promise<TunnelInfo>,
+    stop: (id: string) => ipcRenderer.invoke("tunnels:stop", id) as Promise<boolean>
   }
 } satisfies CNshellApi;
 

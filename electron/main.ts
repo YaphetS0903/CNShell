@@ -7,12 +7,14 @@ import { MetricsService } from "./metricsService.js";
 import { SessionLogStore } from "./sessionLogStore.js";
 import { SftpService } from "./sftpService.js";
 import { TerminalSessionManager } from "./terminalSessionManager.js";
+import { TunnelManager } from "./tunnelManager.js";
 import { WorkspaceStore } from "./workspaceStore.js";
 import type {
   HostKeyVerificationEvent,
   CollectMetricsRequest,
   ListRemoteDirectoryRequest,
   SaveCredentialRequest,
+  StartTunnelRequest,
   TransferFileRequest
 } from "../src/shared/ipc.js";
 import type { AppSnapshot } from "../src/domain/models.js";
@@ -27,6 +29,7 @@ let workspaceStore: WorkspaceStore | null = null;
 let sftpService: SftpService | null = null;
 let metricsService: MetricsService | null = null;
 let sessionLogStore: SessionLogStore | null = null;
+let tunnelManager: TunnelManager | null = null;
 
 function createMainWindow() {
   const window = new BrowserWindow({
@@ -62,6 +65,7 @@ app.whenReady().then(() => {
   sftpService = new SftpService(knownHostsStore, credentialStore);
   metricsService = new MetricsService(knownHostsStore, credentialStore);
   sessionLogStore = new SessionLogStore(app.getPath("userData"));
+  tunnelManager = new TunnelManager(knownHostsStore, credentialStore);
   ipcMain.handle("app:get-version", () => app.getVersion());
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: AppSnapshot) => {
@@ -92,6 +96,8 @@ app.whenReady().then(() => {
   );
   ipcMain.handle("sftp:transfer-file", (_event, request: TransferFileRequest) => sftpService?.transferFile(request));
   ipcMain.handle("metrics:collect", (_event, request: CollectMetricsRequest) => metricsService?.collect(request));
+  ipcMain.handle("tunnels:start", (_event, request: StartTunnelRequest) => tunnelManager?.start(request));
+  ipcMain.handle("tunnels:stop", (_event, id: string) => tunnelManager?.stop(id));
   createMainWindow();
 
   app.on("activate", () => {
