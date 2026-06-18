@@ -1,5 +1,7 @@
 import type { AppSnapshot, JumpHostConfig, RemoteFileEntry, RemoteProcess, ServerMetric } from "../domain/models.js";
 
+export type AppLanguage = "zh-CN" | "en-US";
+
 export type TerminalSessionKind = "local" | "ssh";
 
 export interface StartTerminalSessionRequest {
@@ -295,6 +297,7 @@ export interface CheckForUpdatesRequest {
 
 export interface CNshellApi {
   getVersion: () => Promise<string>;
+  setLanguage: (language: AppLanguage) => Promise<boolean>;
   workspace: {
     load: () => Promise<AppSnapshot | null>;
     save: (snapshot: AppSnapshot) => Promise<boolean>;

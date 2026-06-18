@@ -1,4 +1,15 @@
-import { Component, type ErrorInfo, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Component,
+  createContext,
+  type ErrorInfo,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
 import {
   Activity,
   ChevronRight,
@@ -90,9 +101,592 @@ interface MetricHistoryPoint {
 }
 
 type ZmodemMode = "idle" | "upload" | "download" | "detected";
+type Language = "zh-CN" | "en-US";
 
 interface AppErrorBoundaryState {
   error?: Error;
+}
+
+const LANGUAGE_STORAGE_KEY = "cnshell.ui.language.v1";
+
+const translations = {
+  "zh-CN": {
+    languageName: "中文",
+    languageChinese: "中文",
+    languageEnglish: "English",
+    recoveredTitle: "CNshell 已从渲染错误中恢复",
+    returnToWorkspace: "返回工作台",
+    loadingWorkspace: "正在加载工作区",
+    loadingWorkspaceDetail: "准备连接、终端和运维面板",
+    settingsTitle: "偏好设置",
+    settingsSubtitle: "界面语言会立即生效，并保存到本机。",
+    settingsLanguage: "界面语言",
+    close: "关闭",
+    consoleSubtitle: "SSH 运维控制台",
+    connectionManager: "连接管理",
+    connectionActions: "连接操作",
+    searchConnections: "搜索连接",
+    searchHostsPlaceholder: "搜索主机、标签、分组",
+    newConnection: "新建",
+    connectionSettings: "连接设置",
+    groupAria: (group: string) => `${group} 分组`,
+    localShell: "本地 Shell",
+    workspace: "CNshell 工作区",
+    operationsPanels: "运维面板",
+    openCommandPalette: "打开命令面板",
+    toggleSyncInput: "切换同步输入",
+    toggleHighlightRules: "切换高亮规则",
+    openTunnelingManager: "打开隧道管理",
+    openCredentialVault: "打开凭据保险库",
+    sessionTabs: "会话标签",
+    newSessionTab: "新建会话标签",
+    localProtocol: "本地",
+    status: {
+      connected: "已连接",
+      connecting: "连接中",
+      disconnected: "未连接",
+      error: "错误"
+    },
+    severity: {
+      error: "错误",
+      warning: "警告"
+    },
+    mode: {
+      idle: "空闲",
+      upload: "上传",
+      download: "下载",
+      detected: "已检测"
+    },
+    tunnelMode: {
+      local: "本地",
+      remote: "远程",
+      dynamic: "动态"
+    },
+    terminalWorkbench: "终端工作区",
+    terminalStarting: "CNshell 终端会话正在启动",
+    profileLabel: "配置",
+    sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
+    sshProfileSelected: "已选择 SSH 配置。请在 SSH 面板输入凭据，然后点击连接。",
+    rdpProfileSelected: "已选择 RDP 配置。请使用 RDP 面板启动 Windows 远程桌面。",
+    terminalSearchPlaceholder: "搜索",
+    find: "查找",
+    split: "分屏",
+    reconnect: "重连",
+    moreTerminalActions: "更多终端操作",
+    reviewPaste: "粘贴审查",
+    paste: "粘贴",
+    cancel: "取消",
+    composePane: "命令草稿",
+    composePlaceholder: "先草拟命令，再发送到一个或多个会话",
+    send: "发送",
+    riskyPasteLines: (count: number) => `${count} 行`,
+    riskyPasteShell: "包含 Shell 链式执行或变量展开",
+    riskyPasteDangerous: "高风险命令",
+    sshCredentials: "SSH 凭据",
+    sshLogin: "SSH 登录",
+    savedCredentialAvailable: "已保存凭据可用",
+    noSavedCredential: "无已保存凭据",
+    encryptionUnavailable: "加密不可用",
+    vault: "保险库",
+    masterPassword: "主密码",
+    systemKeyring: "系统密钥环",
+    locked: "已锁定",
+    unlocked: "已解锁",
+    active: "已启用",
+    enterMasterPassword: "输入主密码",
+    newMasterPassword: "新主密码",
+    enable: "启用",
+    unlock: "解锁",
+    lock: "锁定",
+    disable: "停用",
+    hostKeyChanged: "主机密钥已变化",
+    unknownHostKey: "未知主机密钥",
+    expectedFingerprint: (fingerprint: string) => `期望 ${fingerprint}`,
+    trustAndReconnect: "信任并重连",
+    password: "密码",
+    sessionOnly: "仅本次会话",
+    privateKey: "私钥",
+    import: "导入",
+    pastePrivateKey: "粘贴本次会话使用的 OpenSSH 私钥",
+    passphrase: "私钥口令",
+    encryptedPrivateKeys: "用于加密私钥",
+    connect: "连接",
+    saveCredential: "保存凭据",
+    deleteSaved: "删除已保存",
+    rdpConnection: "RDP 连接",
+    openRemoteDesktop: "打开远程桌面",
+    jumpHostProxy: "跳板机代理",
+    jumpHosts: "跳板机",
+    addJumpHost: "添加跳板机",
+    directSshConnection: "直连 SSH",
+    name: "名称",
+    host: "主机",
+    port: "端口",
+    user: "用户",
+    remove: "移除",
+    remoteFiles: "远程文件",
+    cwdSync: "目录同步",
+    refreshRemoteFiles: "刷新远程文件",
+    remotePath: "远程路径",
+    loadingRemoteDirectory: "正在加载远程目录...",
+    localPath: "本地路径",
+    upload: "上传",
+    download: "下载",
+    transferDirection: {
+      upload: "上传",
+      download: "下载"
+    },
+    zmodemTransfer: "ZMODEM 传输",
+    zmodemNoSession: "未检测到 ZMODEM 会话",
+    zmodemUploadFlow: "正在通过兼容 ZMODEM 的流程上传",
+    zmodemDownloadFlow: "正在通过兼容 ZMODEM 的流程下载",
+    zmodemUploadDetected: "远端 rz 正在等待，请使用 ZMODEM 面板上传。",
+    zmodemDownloadDetected: "检测到远端 sz 传输，请使用 ZMODEM 面板下载。",
+    zmodemActivityDetected: "检测到 ZMODEM 活动。",
+    localFilePath: "本地文件路径",
+    remoteFilePath: "远程文件路径",
+    remoteEditor: "远程文件编辑器",
+    editor: "编辑器",
+    save: "保存",
+    noFileSelected: "未选择文件",
+    selectRemoteFile: "请从 SFTP 选择远程文件",
+    serverMetrics: "服务器监控",
+    monitor: "监控",
+    refreshMetrics: "刷新监控指标",
+    collectingMetrics: "正在采集远程指标...",
+    metricProcesses: "进程",
+    metricLabel: {
+      CPU: "CPU",
+      Memory: "内存",
+      Disk: "磁盘",
+      Ping: "延迟",
+      Network: "网络",
+      Processes: "进程"
+    },
+    quickCommands: "快捷命令",
+    manageQuickCommands: "管理快捷命令",
+    triggerEvents: "触发事件",
+    triggers: "触发器",
+    noTriggerEvents: "暂无触发事件",
+    processManager: "进程管理",
+    processes: "进程",
+    refreshProcesses: "刷新进程",
+    loadingProcesses: "正在加载进程列表...",
+    noProcessData: "暂无进程数据",
+    terminate: "结束",
+    sshTunnels: "SSH 隧道",
+    tunnels: "隧道",
+    startTunnel: "启动隧道",
+    tunnelModeAria: "隧道模式",
+    remoteBind: "远程绑定",
+    localBind: "本地绑定",
+    remotePort: "远程端口",
+    localPort: "本地端口",
+    targetHost: "目标主机",
+    socksTarget: "SOCKS 目标",
+    targetPort: "目标端口",
+    noActiveTunnels: "暂无活动隧道",
+    stop: "停止",
+    cnRelay: "CN 中继",
+    startRelay: "启动中继",
+    relayBind: "中继绑定",
+    relayPort: "中继端口",
+    intranetHost: "内网主机",
+    noRelayTunnels: "暂无中继隧道",
+    keyMappingProfiles: "按键映射配置",
+    keyMap: "按键映射",
+    addKeyMapping: "添加按键映射",
+    customMapping: "自定义映射",
+    keyMappingDescription: "按键映射描述",
+    noKeyMappingProfile: "暂无按键映射配置",
+    shortcutAria: (description: string) => `${description} 快捷键`,
+    sendSequenceAria: (description: string) => `${description} 发送序列`,
+    scriptRecorder: "脚本录制",
+    scripts: "脚本",
+    record: "录制",
+    recording: "录制中",
+    idle: "空闲",
+    eventCount: (count: number) => `${count} 个事件`,
+    noRecordedScripts: "暂无录制脚本",
+    replay: "回放",
+    logs: "日志",
+    audit: "审计",
+    errors: "错误报告",
+    refreshSessionLog: "刷新会话日志",
+    refreshAuditLog: "刷新审计日志",
+    refreshErrorReports: "刷新错误报告",
+    noMatchingLogLines: "没有匹配的日志行",
+    noAuditEntries: "暂无审计记录",
+    noErrorReports: "暂无错误报告",
+    filterLogLines: "筛选日志行",
+    loadingLogs: "正在加载日志",
+    cloudSync: "云同步",
+    export: "导出",
+    ready: "就绪",
+    exportingEncryptedSettings: "正在导出加密设置",
+    importingEncryptedSettings: "正在导入加密设置",
+    exportCanceled: "已取消导出",
+    importCanceled: "已取消导入",
+    openingKeyFile: "正在打开密钥文件",
+    privateKeyImportCanceled: "已取消导入",
+    privateKeyImported: (fileName: string) => `已导入 ${fileName}`,
+    privateKeyFallbackName: "私钥",
+    exportedPath: (path: string) => `已导出 ${path}`,
+    importedPath: (path: string) => `已导入 ${path}`,
+    updates: "更新",
+    channel: "通道",
+    check: "检查",
+    installUpdate: "安装更新",
+    confirmBulkCommand: "确认批量命令",
+    bulkSessions: (count: number) => `${count} 个会话`,
+    sendToAll: "发送全部",
+    commandPalette: "命令面板",
+    searchQuickCommands: "搜索快捷命令",
+    scope: {
+      global: "全局",
+      group: "分组",
+      connection: "连接"
+    },
+    builtInGroups: {
+      Production: "生产环境",
+      Staging: "预发布",
+      Windows: "Windows",
+      Local: "本地"
+    },
+    builtInNames: {
+      "Local PowerShell": "本地 PowerShell",
+      "Restart service": "重启服务",
+      "Disk usage": "磁盘使用",
+      "Nginx errors": "Nginx 错误",
+      "Default Terminal": "默认终端",
+      "Clear terminal": "清空终端",
+      "Interrupt process": "中断进程",
+      "Send EOF": "发送 EOF",
+      "Custom mapping": "自定义映射"
+    },
+    tunnelStatus: {
+      starting: "启动中",
+      running: "运行中",
+      stopped: "已停止",
+      error: "错误"
+    },
+    updateState: {
+      idle: "空闲",
+      checking: "检查中",
+      available: "有更新",
+      "not-available": "无更新",
+      downloading: "下载中",
+      downloaded: "已下载",
+      error: "错误"
+    }
+  },
+  "en-US": {
+    languageName: "English",
+    languageChinese: "中文",
+    languageEnglish: "English",
+    recoveredTitle: "CNshell recovered from a renderer error",
+    returnToWorkspace: "Return to workspace",
+    loadingWorkspace: "Loading workspace",
+    loadingWorkspaceDetail: "Preparing connections, terminals, and operations panels",
+    settingsTitle: "Preferences",
+    settingsSubtitle: "Interface language applies immediately and is saved on this device.",
+    settingsLanguage: "Interface language",
+    close: "Close",
+    consoleSubtitle: "SSH Operations Console",
+    connectionManager: "Connection manager",
+    connectionActions: "Connection actions",
+    searchConnections: "Search connections",
+    searchHostsPlaceholder: "Search hosts, tags, groups",
+    newConnection: "New",
+    connectionSettings: "Connection settings",
+    groupAria: (group: string) => `${group} group`,
+    localShell: "Local shell",
+    workspace: "CNshell workspace",
+    operationsPanels: "Operations panels",
+    openCommandPalette: "Open command palette",
+    toggleSyncInput: "Toggle synchronized input",
+    toggleHighlightRules: "Toggle highlight rules",
+    openTunnelingManager: "Open tunneling manager",
+    openCredentialVault: "Open credential vault",
+    sessionTabs: "Session tabs",
+    newSessionTab: "Open new session tab",
+    localProtocol: "local",
+    status: {
+      connected: "connected",
+      connecting: "connecting",
+      disconnected: "disconnected",
+      error: "error"
+    },
+    severity: {
+      error: "error",
+      warning: "warning"
+    },
+    mode: {
+      idle: "idle",
+      upload: "upload",
+      download: "download",
+      detected: "detected"
+    },
+    tunnelMode: {
+      local: "Local",
+      remote: "Remote",
+      dynamic: "Dynamic"
+    },
+    terminalWorkbench: "Terminal workbench",
+    terminalStarting: "CNshell terminal session starting",
+    profileLabel: "Profile",
+    sessionExited: (code: number | null) => `Session exited with code ${code}.`,
+    sshProfileSelected: "SSH profile selected. Enter credentials in the SSH panel, then press Connect.",
+    rdpProfileSelected: "RDP profile selected. Use the RDP panel to launch Windows Remote Desktop.",
+    terminalSearchPlaceholder: "Search",
+    find: "Find",
+    split: "Split",
+    reconnect: "Reconnect",
+    moreTerminalActions: "More terminal actions",
+    reviewPaste: "Review paste",
+    paste: "Paste",
+    cancel: "Cancel",
+    composePane: "Compose Pane",
+    composePlaceholder: "Draft a command before sending to one or many sessions",
+    send: "Send",
+    riskyPasteLines: (count: number) => `${count} lines`,
+    riskyPasteShell: "shell chaining or expansion",
+    riskyPasteDangerous: "high-risk command",
+    sshCredentials: "SSH credentials",
+    sshLogin: "SSH Login",
+    savedCredentialAvailable: "Saved credential available",
+    noSavedCredential: "No saved credential",
+    encryptionUnavailable: "Encryption unavailable",
+    vault: "Vault",
+    masterPassword: "Master password",
+    systemKeyring: "System keyring",
+    locked: "locked",
+    unlocked: "unlocked",
+    active: "active",
+    enterMasterPassword: "Enter master password",
+    newMasterPassword: "New master password",
+    enable: "Enable",
+    unlock: "Unlock",
+    lock: "Lock",
+    disable: "Disable",
+    hostKeyChanged: "Host key changed",
+    unknownHostKey: "Unknown host key",
+    expectedFingerprint: (fingerprint: string) => `Expected ${fingerprint}`,
+    trustAndReconnect: "Trust and reconnect",
+    password: "Password",
+    sessionOnly: "Session only",
+    privateKey: "Private key",
+    import: "Import",
+    pastePrivateKey: "Paste an OpenSSH private key for this session",
+    passphrase: "Passphrase",
+    encryptedPrivateKeys: "For encrypted private keys",
+    connect: "Connect",
+    saveCredential: "Save credential",
+    deleteSaved: "Delete saved",
+    rdpConnection: "RDP connection",
+    openRemoteDesktop: "Open Remote Desktop",
+    jumpHostProxy: "Jump host proxy",
+    jumpHosts: "Jump Hosts",
+    addJumpHost: "Add jump host",
+    directSshConnection: "Direct SSH connection",
+    name: "Name",
+    host: "Host",
+    port: "Port",
+    user: "User",
+    remove: "Remove",
+    remoteFiles: "Remote files",
+    cwdSync: "cwd sync",
+    refreshRemoteFiles: "Refresh remote files",
+    remotePath: "Remote path",
+    loadingRemoteDirectory: "Loading remote directory...",
+    localPath: "Local path",
+    upload: "Upload",
+    download: "Download",
+    transferDirection: {
+      upload: "upload",
+      download: "download"
+    },
+    zmodemTransfer: "ZMODEM transfer",
+    zmodemNoSession: "No ZMODEM session detected",
+    zmodemUploadFlow: "Uploading through ZMODEM-compatible transfer flow",
+    zmodemDownloadFlow: "Downloading through ZMODEM-compatible transfer flow",
+    zmodemUploadDetected: "Remote rz is waiting. Use the ZMODEM panel to upload.",
+    zmodemDownloadDetected: "Remote sz transfer detected. Use the ZMODEM panel to download.",
+    zmodemActivityDetected: "ZMODEM activity detected.",
+    localFilePath: "Local file path",
+    remoteFilePath: "Remote file path",
+    remoteEditor: "Remote file editor",
+    editor: "Editor",
+    save: "Save",
+    noFileSelected: "No file selected",
+    selectRemoteFile: "Select a remote file from SFTP",
+    serverMetrics: "Server metrics",
+    monitor: "Monitor",
+    refreshMetrics: "Refresh metrics",
+    collectingMetrics: "Collecting remote metrics...",
+    metricProcesses: "Processes",
+    metricLabel: {
+      CPU: "CPU",
+      Memory: "Memory",
+      Disk: "Disk",
+      Ping: "Ping",
+      Network: "Network",
+      Processes: "Processes"
+    },
+    quickCommands: "Quick Commands",
+    manageQuickCommands: "Manage quick commands",
+    triggerEvents: "Trigger events",
+    triggers: "Triggers",
+    noTriggerEvents: "No trigger events",
+    processManager: "Process manager",
+    processes: "Processes",
+    refreshProcesses: "Refresh processes",
+    loadingProcesses: "Loading process list...",
+    noProcessData: "No process data",
+    terminate: "Term",
+    sshTunnels: "SSH tunnels",
+    tunnels: "Tunnels",
+    startTunnel: "Start tunnel",
+    tunnelModeAria: "Tunnel mode",
+    remoteBind: "Remote bind",
+    localBind: "Local bind",
+    remotePort: "Remote port",
+    localPort: "Local port",
+    targetHost: "Target host",
+    socksTarget: "SOCKS target",
+    targetPort: "Target port",
+    noActiveTunnels: "No active tunnels",
+    stop: "Stop",
+    cnRelay: "CN Relay",
+    startRelay: "Start relay",
+    relayBind: "Relay bind",
+    relayPort: "Relay port",
+    intranetHost: "Intranet host",
+    noRelayTunnels: "No relay tunnels",
+    keyMappingProfiles: "Key mapping profiles",
+    keyMap: "Key Map",
+    addKeyMapping: "Add key mapping",
+    customMapping: "Custom mapping",
+    keyMappingDescription: "Key mapping description",
+    noKeyMappingProfile: "No key mapping profile",
+    shortcutAria: (description: string) => `${description} shortcut`,
+    sendSequenceAria: (description: string) => `${description} send sequence`,
+    scriptRecorder: "Script recorder",
+    scripts: "Scripts",
+    record: "Record",
+    recording: "rec",
+    idle: "idle",
+    eventCount: (count: number) => `${count} events`,
+    noRecordedScripts: "No recorded scripts",
+    replay: "Replay",
+    logs: "Logs",
+    audit: "Audit",
+    errors: "Errors",
+    refreshSessionLog: "Refresh session log",
+    refreshAuditLog: "Refresh audit log",
+    refreshErrorReports: "Refresh error reports",
+    noMatchingLogLines: "No matching log lines",
+    noAuditEntries: "No audit entries",
+    noErrorReports: "No error reports",
+    filterLogLines: "Filter log lines",
+    loadingLogs: "Loading logs",
+    cloudSync: "Cloud Sync",
+    export: "Export",
+    ready: "Ready",
+    exportingEncryptedSettings: "Exporting encrypted settings",
+    importingEncryptedSettings: "Importing encrypted settings",
+    exportCanceled: "Export canceled",
+    importCanceled: "Import canceled",
+    openingKeyFile: "Opening key file",
+    privateKeyImportCanceled: "Import canceled",
+    privateKeyImported: (fileName: string) => `Imported ${fileName}`,
+    privateKeyFallbackName: "private key",
+    exportedPath: (path: string) => `Exported ${path}`,
+    importedPath: (path: string) => `Imported ${path}`,
+    updates: "Updates",
+    channel: "Channel",
+    check: "Check",
+    installUpdate: "Install update",
+    confirmBulkCommand: "Confirm Bulk Command",
+    bulkSessions: (count: number) => `${count} sessions`,
+    sendToAll: "Send to all",
+    commandPalette: "Command palette",
+    searchQuickCommands: "Search quick commands",
+    scope: {
+      global: "global",
+      group: "group",
+      connection: "connection"
+    },
+    builtInGroups: {
+      Production: "Production",
+      Staging: "Staging",
+      Windows: "Windows",
+      Local: "Local"
+    },
+    builtInNames: {
+      "Local PowerShell": "Local PowerShell",
+      "Restart service": "Restart service",
+      "Disk usage": "Disk usage",
+      "Nginx errors": "Nginx errors",
+      "Default Terminal": "Default Terminal",
+      "Clear terminal": "Clear terminal",
+      "Interrupt process": "Interrupt process",
+      "Send EOF": "Send EOF",
+      "Custom mapping": "Custom mapping"
+    },
+    tunnelStatus: {
+      starting: "starting",
+      running: "running",
+      stopped: "stopped",
+      error: "error"
+    },
+    updateState: {
+      idle: "idle",
+      checking: "checking",
+      available: "available",
+      "not-available": "not available",
+      downloading: "downloading",
+      downloaded: "downloaded",
+      error: "error"
+    }
+  }
+};
+
+type UiStrings = (typeof translations)["zh-CN"];
+
+function readPreferredLanguage(): Language {
+  try {
+    const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    return storedLanguage === "en-US" ? "en-US" : "zh-CN";
+  } catch {
+    return "zh-CN";
+  }
+}
+
+function displayStatus(status: SessionStatus, labels: UiStrings) {
+  return labels.status[status];
+}
+
+function displayMode(mode: ZmodemMode, labels: UiStrings) {
+  return labels.mode[mode];
+}
+
+function displayMetricLabel(label: string, labels: UiStrings) {
+  return labels.metricLabel[label as keyof UiStrings["metricLabel"]] ?? label;
+}
+
+function displayBuiltInGroup(group: string, labels: UiStrings) {
+  return labels.builtInGroups[group as keyof UiStrings["builtInGroups"]] ?? group;
+}
+
+function displayBuiltInName(name: string, labels: UiStrings) {
+  return labels.builtInNames[name as keyof UiStrings["builtInNames"]] ?? name;
+}
+
+const TranslationContext = createContext<UiStrings>(translations["en-US"]);
+
+function useUiStrings() {
+  return useContext(TranslationContext);
 }
 
 class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBoundaryState> {
@@ -113,18 +707,22 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
   render() {
     if (this.state.error) {
       return (
-        <main className="app-shell loading-shell">
-          <section className="workspace-loading error-boundary" role="alert">
-            <div className="brand-mark" aria-hidden="true">
-              CN
-            </div>
-            <strong>CNshell recovered from a renderer error</strong>
-            <span>{this.state.error.message}</span>
-            <button type="button" onClick={() => this.setState({ error: undefined })}>
-              Return to workspace
-            </button>
-          </section>
-        </main>
+        <TranslationContext.Consumer>
+          {(labels) => (
+            <main className="app-shell loading-shell">
+              <section className="workspace-loading error-boundary" role="alert">
+                <div className="brand-mark" aria-hidden="true">
+                  CN
+                </div>
+                <strong>{labels.recoveredTitle}</strong>
+                <span>{this.state.error?.message}</span>
+                <button type="button" onClick={() => this.setState({ error: undefined })}>
+                  {labels.returnToWorkspace}
+                </button>
+              </section>
+            </main>
+          )}
+        </TranslationContext.Consumer>
       );
     }
 
@@ -132,10 +730,10 @@ class AppErrorBoundary extends Component<{ children: ReactNode }, AppErrorBounda
   }
 }
 
-const tunnelModes: Array<{ value: TunnelMode; label: string }> = [
-  { value: "local", label: "Local" },
-  { value: "remote", label: "Remote" },
-  { value: "dynamic", label: "Dynamic" }
+const tunnelModes: Array<{ value: TunnelMode }> = [
+  { value: "local" },
+  { value: "remote" },
+  { value: "dynamic" }
 ];
 
 const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
@@ -221,21 +819,21 @@ function getActiveKeyRules(profiles: KeyMappingProfile[]) {
   return profiles.flatMap((profile) => (profile.enabled ? profile.rules.filter((rule) => rule.enabled) : []));
 }
 
-function inspectPastedText(text: string) {
+function inspectPastedText(text: string, labels: UiStrings = translations["en-US"]) {
   const reasons: string[] = [];
   const trimmed = text.trim();
   const lines = trimmed.split(/\r?\n/).filter(Boolean);
 
   if (lines.length > 1) {
-    reasons.push(`${lines.length} lines`);
+    reasons.push(labels.riskyPasteLines(lines.length));
   }
 
   if (/[;&|`$()]/.test(trimmed)) {
-    reasons.push("shell chaining or expansion");
+    reasons.push(labels.riskyPasteShell);
   }
 
   if (/\b(rm\s+-[^\n]*[rf]|mkfs|dd\s+if=|chmod\s+-R\s+777|chown\s+-R|shutdown|reboot|:(){:|sudo\s+rm)\b/i.test(trimmed)) {
-    reasons.push("high-risk command");
+    reasons.push(labels.riskyPasteDangerous);
   }
 
   return reasons;
@@ -335,6 +933,9 @@ function detectZmodemMode(data: string): ZmodemMode {
 export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
+  const [language, setLanguage] = useState<Language>(() => readPreferredLanguage());
+  const labels = translations[language];
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeConnectionId, setActiveConnectionId] = useState(snapshot.connections[0].id);
   const [activeTabId, setActiveTabId] = useState(snapshot.sessions[0].id);
   const [appVersion, setAppVersion] = useState("dev");
@@ -364,7 +965,7 @@ export function App() {
   const [transferRemotePath, setTransferRemotePath] = useState("");
   const [transferJobs, setTransferJobs] = useState<TransferJob[]>([]);
   const [zmodemMode, setZmodemMode] = useState<ZmodemMode>("idle");
-  const [zmodemMessage, setZmodemMessage] = useState("No ZMODEM session detected");
+  const [zmodemMessage, setZmodemMessage] = useState(() => translations["zh-CN"].zmodemNoSession);
   const [editorPath, setEditorPath] = useState("");
   const [editorContent, setEditorContent] = useState("");
   const [editorStatus, setEditorStatus] = useState<"idle" | "loading" | "saving" | "error" | "saved">("idle");
@@ -403,7 +1004,7 @@ export function App() {
   const [errorQuery, setErrorQuery] = useState("");
   const [errorLines, setErrorLines] = useState<string[]>([]);
   const [errorStatus, setErrorStatus] = useState<"idle" | "loading" | "error">("idle");
-  const [cloudSyncStatus, setCloudSyncStatus] = useState("Ready");
+  const [cloudSyncStatus, setCloudSyncStatus] = useState(() => translations["zh-CN"].ready);
   const [updateChannel, setUpdateChannel] = useState("latest");
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ state: "idle", channel: "latest" });
   const [sessionStatuses, setSessionStatuses] = useState<Record<string, SessionStatus>>(() =>
@@ -613,12 +1214,22 @@ export function App() {
       });
   }, [errorQuery]);
 
+  const changeLanguage = (nextLanguage: Language) => {
+    setLanguage(nextLanguage);
+    void window.cnshell?.setLanguage(nextLanguage);
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
+    } catch {
+      // Ignore storage failures; the in-memory language still updates immediately.
+    }
+  };
+
   const exportCloudSyncSettings = () => {
-    setCloudSyncStatus("Exporting encrypted settings");
+    setCloudSyncStatus(labels.exportingEncryptedSettings);
     void window.cnshell?.cloudSync
       .exportSettings({ snapshot })
       .then((result) => {
-        setCloudSyncStatus(result.ok ? `Exported ${result.path ?? ""}` : "Export canceled");
+        setCloudSyncStatus(result.ok ? labels.exportedPath(result.path ?? "") : labels.exportCanceled);
       })
       .catch((error: Error) => {
         setCloudSyncStatus(error.message);
@@ -626,12 +1237,12 @@ export function App() {
   };
 
   const importCloudSyncSettings = () => {
-    setCloudSyncStatus("Importing encrypted settings");
+    setCloudSyncStatus(labels.importingEncryptedSettings);
     void window.cnshell?.cloudSync
       .importSettings()
       .then((result) => {
         if (!result.ok || !result.importedSnapshot) {
-          setCloudSyncStatus("Import canceled");
+          setCloudSyncStatus(labels.importCanceled);
           return;
         }
 
@@ -642,7 +1253,7 @@ export function App() {
         setRemoteProcesses(importedSnapshot.remoteProcesses);
         setActiveConnectionId(importedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(importedSnapshot.sessions[0]?.id ?? "");
-        setCloudSyncStatus(`Imported ${result.path ?? ""}`);
+        setCloudSyncStatus(labels.importedPath(result.path ?? ""));
       })
       .catch((error: Error) => {
         setCloudSyncStatus(error.message);
@@ -803,17 +1414,17 @@ export function App() {
   };
 
   const importPrivateKey = () => {
-    setPrivateKeyImportStatus("Opening key file");
+    setPrivateKeyImportStatus(labels.openingKeyFile);
     void window.cnshell?.credentials
       .importPrivateKey()
       .then((result) => {
         if (!result.ok || !result.privateKey) {
-          setPrivateKeyImportStatus("Import canceled");
+          setPrivateKeyImportStatus(labels.privateKeyImportCanceled);
           return;
         }
 
         updateActiveSshDraft("privateKey", result.privateKey);
-        setPrivateKeyImportStatus(`Imported ${result.fileName ?? "private key"}`);
+        setPrivateKeyImportStatus(labels.privateKeyImported(result.fileName ?? labels.privateKeyFallbackName));
       })
       .catch((error: Error) => {
         setPrivateKeyImportStatus(error.message);
@@ -1099,12 +1710,12 @@ export function App() {
     setZmodemMode(mode);
     setZmodemMessage(
       mode === "upload"
-        ? "Remote rz is waiting. Use the ZMODEM panel to upload."
+        ? labels.zmodemUploadDetected
         : mode === "download"
-          ? "Remote sz transfer detected. Use the ZMODEM panel to download."
-          : "ZMODEM activity detected."
+          ? labels.zmodemDownloadDetected
+          : labels.zmodemActivityDetected
     );
-  }, []);
+  }, [labels]);
 
   const startTunnel = () => {
     if (activeConnection.protocol !== "ssh") {
@@ -1235,9 +1846,10 @@ export function App() {
 
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
+    void window.cnshell?.setLanguage(language);
     refreshCredentialVaultStatus();
     void window.cnshell?.updates.status().then(setUpdateStatus);
-  }, [refreshCredentialVaultStatus]);
+  }, [language, refreshCredentialVaultStatus]);
 
   useEffect(() => {
     return window.cnshell?.updates.onStatus(setUpdateStatus);
@@ -1304,19 +1916,21 @@ export function App() {
           <div className="brand-mark" aria-hidden="true">
             CN
           </div>
-          <strong>Loading CNshell workspace</strong>
-          <span>Preparing connections and sessions</span>
+          <strong>{labels.loadingWorkspace}</strong>
+          <span>{labels.loadingWorkspaceDetail}</span>
         </section>
       </main>
     );
   }
 
   return (
-    <AppErrorBoundary>
+    <TranslationContext.Provider value={labels}>
+      <AppErrorBoundary>
       <main className="app-shell">
       <ConnectionSidebar
         groupedConnections={groupedConnections}
         activeConnectionId={activeConnectionId}
+        onOpenSettings={() => setIsSettingsOpen(true)}
         onSelect={(connectionId) => {
           setActiveConnectionId(connectionId);
           const nextTab = snapshot.sessions.find((tab) => tab.connectionId === connectionId);
@@ -1325,7 +1939,7 @@ export function App() {
           }
         }}
       />
-      <section className="workspace" aria-label="CNshell workspace">
+      <section className="workspace" aria-label={labels.workspace}>
         <TopBar
           activeConnection={activeConnection}
           status={activeTab.status}
@@ -1359,7 +1973,7 @@ export function App() {
             onTriggerEvents={addTriggerEvents}
             onZmodemDetected={handleZmodemDetected}
           />
-          <aside className="ops-panel" aria-label="Operations panels">
+          <aside className="ops-panel" aria-label={labels.operationsPanels}>
             {activeConnection.protocol === "ssh" ? (
               <SshCredentialPanel
                 authMethod={activeConnection.authMethod}
@@ -1414,12 +2028,12 @@ export function App() {
               onRemotePathChange={setTransferRemotePath}
               onUpload={() => {
                 setZmodemMode("upload");
-                setZmodemMessage("Uploading through ZMODEM-compatible transfer flow");
+                setZmodemMessage(labels.zmodemUploadFlow);
                 startTransfer("upload");
               }}
               onDownload={() => {
                 setZmodemMode("download");
-                setZmodemMessage("Downloading through ZMODEM-compatible transfer flow");
+                setZmodemMessage(labels.zmodemDownloadFlow);
                 startTransfer("download");
               }}
             />
@@ -1469,9 +2083,9 @@ export function App() {
               onReplay={replayScriptRecording}
             />
             <LogViewerPanel
-              title="Logs"
-              refreshLabel="Refresh session log"
-              emptyText="No matching log lines"
+              title={labels.logs}
+              refreshLabel={labels.refreshSessionLog}
+              emptyText={labels.noMatchingLogLines}
               query={logQuery}
               lines={logLines}
               status={logStatus}
@@ -1479,9 +2093,9 @@ export function App() {
               onRefresh={refreshSessionLog}
             />
             <LogViewerPanel
-              title="Audit"
-              refreshLabel="Refresh audit log"
-              emptyText="No audit entries"
+              title={labels.audit}
+              refreshLabel={labels.refreshAuditLog}
+              emptyText={labels.noAuditEntries}
               query={auditQuery}
               lines={auditLines}
               status={auditStatus}
@@ -1489,9 +2103,9 @@ export function App() {
               onRefresh={refreshAuditLog}
             />
             <LogViewerPanel
-              title="Errors"
-              refreshLabel="Refresh error reports"
-              emptyText="No error reports"
+              title={labels.errors}
+              refreshLabel={labels.refreshErrorReports}
+              emptyText={labels.noErrorReports}
               query={errorQuery}
               lines={errorLines}
               status={errorStatus}
@@ -1539,8 +2153,16 @@ export function App() {
           onCancel={cancelBulkCommand}
         />
       ) : null}
+      {isSettingsOpen ? (
+        <SettingsDialog
+          language={language}
+          onLanguageChange={changeLanguage}
+          onClose={() => setIsSettingsOpen(false)}
+        />
+      ) : null}
       </main>
-    </AppErrorBoundary>
+      </AppErrorBoundary>
+    </TranslationContext.Provider>
   );
 }
 
@@ -1548,43 +2170,45 @@ interface ConnectionSidebarProps {
   groupedConnections: Record<string, ConnectionProfile[]>;
   activeConnectionId: string;
   onSelect: (connectionId: string) => void;
+  onOpenSettings: () => void;
 }
 
-function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect }: ConnectionSidebarProps) {
+function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect, onOpenSettings }: ConnectionSidebarProps) {
+  const labels = useUiStrings();
   return (
-    <aside className="sidebar" aria-label="Connection manager">
+    <aside className="sidebar" aria-label={labels.connectionManager}>
       <div className="brand-row">
         <div className="brand-mark" aria-hidden="true">
           CN
         </div>
         <div>
           <h1>CNshell</h1>
-          <p>SSH Operations Console</p>
+          <p>{labels.consoleSubtitle}</p>
         </div>
       </div>
 
       <label className="search-box">
         <Search size={17} aria-hidden="true" />
-        <span className="sr-only">Search connections</span>
-        <input placeholder="Search hosts, tags, groups" />
+        <span className="sr-only">{labels.searchConnections}</span>
+        <input placeholder={labels.searchHostsPlaceholder} />
       </label>
 
-      <div className="sidebar-actions" aria-label="Connection actions">
+      <div className="sidebar-actions" aria-label={labels.connectionActions}>
         <button type="button">
           <Plus size={16} aria-hidden="true" />
-          New
+          {labels.newConnection}
         </button>
-        <button type="button" aria-label="Connection settings">
+        <button type="button" aria-label={labels.connectionSettings} onClick={onOpenSettings}>
           <Settings size={16} aria-hidden="true" />
         </button>
       </div>
 
       <nav className="connection-tree">
         {Object.entries(groupedConnections).map(([group, connections]) => (
-          <section key={group} className="connection-group" aria-label={`${group} group`}>
+          <section key={group} className="connection-group" aria-label={labels.groupAria(group)}>
             <button type="button" className="group-title">
               <ChevronRight size={15} aria-hidden="true" />
-              {group}
+              {displayBuiltInGroup(group, labels)}
               <span>{connections.length}</span>
             </button>
             {connections.map((connection) => (
@@ -1596,7 +2220,7 @@ function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect }:
               >
                 <span className="connection-color" style={{ background: connection.color }} aria-hidden="true" />
                 <span className="connection-copy">
-                  <strong>{connection.name}</strong>
+                  <strong>{displayBuiltInName(connection.name, labels)}</strong>
                   <small>
                     {connection.username}@{connection.host}
                   </small>
@@ -1612,12 +2236,13 @@ function ConnectionSidebar({ groupedConnections, activeConnectionId, onSelect }:
 }
 
 function ProtocolIcon({ protocol }: { protocol: ConnectionProfile["protocol"] }) {
+  const labels = useUiStrings();
   if (protocol === "rdp") {
     return <Monitor size={15} aria-label="RDP" />;
   }
 
   if (protocol === "local") {
-    return <TerminalSquare size={15} aria-label="Local shell" />;
+    return <TerminalSquare size={15} aria-label={labels.localShell} />;
   }
 
   return <Server size={15} aria-label="SSH" />;
@@ -1642,28 +2267,29 @@ function TopBar({
   onToggleSyncInput: () => void;
   onToggleHighlight: () => void;
 }) {
+  const labels = useUiStrings();
   return (
     <header className="topbar">
       <div className="host-summary">
         <span className={`status-pill ${status}`}>
           <Circle size={9} fill="currentColor" aria-hidden="true" />
-          {status}
+          {displayStatus(status, labels)}
         </span>
         <div>
           <strong>{activeConnection.name}</strong>
           <span>
-            {activeConnection.protocol.toUpperCase()} / {activeConnection.host}:{activeConnection.port || "local"}
+            {activeConnection.protocol.toUpperCase()} / {activeConnection.host}:{activeConnection.port || labels.localProtocol}
           </span>
         </div>
       </div>
       <div className="topbar-actions">
-        <button type="button" aria-label="Open command palette" onClick={onOpenCommandPalette}>
+        <button type="button" aria-label={labels.openCommandPalette} onClick={onOpenCommandPalette}>
           <Command size={17} aria-hidden="true" />
         </button>
         <button
           type="button"
           className={isSyncInputEnabled ? "active" : ""}
-          aria-label="Toggle synchronized input"
+          aria-label={labels.toggleSyncInput}
           aria-pressed={isSyncInputEnabled}
           onClick={onToggleSyncInput}
         >
@@ -1672,16 +2298,16 @@ function TopBar({
         <button
           type="button"
           className={isHighlightEnabled ? "active" : ""}
-          aria-label="Toggle highlight rules"
+          aria-label={labels.toggleHighlightRules}
           aria-pressed={isHighlightEnabled}
           onClick={onToggleHighlight}
         >
           <Zap size={17} aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Open tunneling manager">
+        <button type="button" aria-label={labels.openTunnelingManager}>
           <Network size={17} aria-hidden="true" />
         </button>
-        <button type="button" aria-label="Open credential vault">
+        <button type="button" aria-label={labels.openCredentialVault}>
           <KeyRound size={17} aria-hidden="true" />
         </button>
         <span className="version-label">v{version}</span>
@@ -1701,8 +2327,9 @@ function TabStrip({
   onSelect: (tabId: string) => void;
   onCreate: () => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <div className="tab-strip" role="tablist" aria-label="Session tabs">
+    <div className="tab-strip" role="tablist" aria-label={labels.sessionTabs}>
       {tabs.map((tab) => (
         <button
           type="button"
@@ -1714,10 +2341,10 @@ function TabStrip({
         >
           <TerminalSquare size={15} aria-hidden="true" />
           <span>{tab.title}</span>
-          <small className={tab.status}>{tab.status}</small>
+          <small className={tab.status}>{displayStatus(tab.status, labels)}</small>
         </button>
       ))}
-      <button type="button" className="new-tab" aria-label="Open new session tab" onClick={onCreate}>
+      <button type="button" className="new-tab" aria-label={labels.newSessionTab} onClick={onCreate}>
         <Plus size={16} aria-hidden="true" />
       </button>
     </div>
@@ -1755,6 +2382,7 @@ function TerminalPane({
   onTriggerEvents: (events: TriggerEvent[]) => void;
   onZmodemDetected: (mode: ZmodemMode) => void;
 }) {
+  const labels = useUiStrings();
   const [composeValue, setComposeValue] = useState("");
   const [terminalSearch, setTerminalSearch] = useState("");
   const [searchAddon, setSearchAddon] = useState<SearchAddon | null>(null);
@@ -1770,6 +2398,7 @@ function TerminalPane({
   const onTerminalInputRef = useRef(onTerminalInput);
   const onTriggerEventsRef = useRef(onTriggerEvents);
   const onZmodemDetectedRef = useRef(onZmodemDetected);
+  const labelsRef = useRef(labels);
 
   activeConnectionRef.current = activeConnection;
   sshDraftRef.current = sshDraft;
@@ -1780,6 +2409,7 @@ function TerminalPane({
   onTerminalInputRef.current = onTerminalInput;
   onTriggerEventsRef.current = onTriggerEvents;
   onZmodemDetectedRef.current = onZmodemDetected;
+  labelsRef.current = labels;
 
   const sessionId = activeTab.id;
   const connectionGateways = activeConnection.gateways;
@@ -1826,8 +2456,8 @@ function TerminalPane({
       onTerminalInputRef.current(sessionId, normalizeSendValue(rule.send));
       return false;
     });
-    terminal.writeln("\x1b[1;32mCNshell terminal session starting\x1b[0m");
-    terminal.writeln(`Profile: ${connectionUsername}@${host}`);
+    terminal.writeln(`\x1b[1;32m${labelsRef.current.terminalStarting}\x1b[0m`);
+    terminal.writeln(`${labelsRef.current.profileLabel}: ${connectionUsername}@${host}`);
     terminal.writeln("");
 
     const removeDataListener = window.cnshell?.terminal.onData(({ id, data }) => {
@@ -1841,7 +2471,7 @@ function TerminalPane({
     const removeExitListener = window.cnshell?.terminal.onExit(({ id, exitCode }) => {
       if (id === sessionId) {
         terminal.writeln("");
-        terminal.writeln(`\x1b[33mSession exited with code ${exitCode}.\x1b[0m`);
+        terminal.writeln(`\x1b[33m${labelsRef.current.sessionExited(exitCode)}\x1b[0m`);
         onStatusChangeRef.current(sessionId, "disconnected");
       }
     });
@@ -1858,10 +2488,10 @@ function TerminalPane({
 
       event.preventDefault();
       setSafePasteSessionId(sessionId);
-      setSafePasteReview({
-        text,
-        reasons: inspectPastedText(text)
-      });
+        setSafePasteReview({
+          text,
+          reasons: inspectPastedText(text, labelsRef.current)
+        });
     };
     terminal.textarea?.addEventListener("paste", pasteHandler);
 
@@ -1904,7 +2534,7 @@ function TerminalPane({
     };
 
     if (connectionProtocol === "ssh") {
-      terminal.writeln("\x1b[33mSSH profile selected. Enter credentials in the SSH panel, then press Connect.\x1b[0m");
+      terminal.writeln(`\x1b[33m${labelsRef.current.sshProfileSelected}\x1b[0m`);
       if (startToken > 0) {
         startTerminalSession();
       } else {
@@ -1912,7 +2542,7 @@ function TerminalPane({
       }
     } else {
       if (connectionProtocol === "rdp") {
-        terminal.writeln("\x1b[33mRDP profile selected. Use the RDP panel to launch Windows Remote Desktop.\x1b[0m");
+        terminal.writeln(`\x1b[33m${labelsRef.current.rdpProfileSelected}\x1b[0m`);
         onStatusChangeRef.current(sessionId, "disconnected");
       } else {
         startTerminalSession();
@@ -1977,7 +2607,7 @@ function TerminalPane({
   };
 
   return (
-    <section className="terminal-workbench" aria-label="Terminal workbench">
+    <section className="terminal-workbench" aria-label={labels.terminalWorkbench}>
       <div className="terminal-toolbar">
         <div className="breadcrumb">
           <HardDrive size={16} aria-hidden="true" />
@@ -1988,7 +2618,7 @@ function TerminalPane({
             <Search size={15} aria-hidden="true" />
             <input
               value={terminalSearch}
-              placeholder="Search"
+              placeholder={labels.terminalSearchPlaceholder}
               onChange={(event) => setTerminalSearch(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
@@ -1998,11 +2628,11 @@ function TerminalPane({
             />
           </label>
           <button type="button" onClick={findNext}>
-            Find
+            {labels.find}
           </button>
           <button type="button">
             <SplitSquareHorizontal size={16} aria-hidden="true" />
-            Split
+            {labels.split}
           </button>
           <button type="button" className={zmodemMode !== "idle" ? "active" : ""}>
             <UploadCloud size={16} aria-hidden="true" />
@@ -2010,9 +2640,9 @@ function TerminalPane({
           </button>
           <button type="button" onClick={onReconnect}>
             <RefreshCw size={16} aria-hidden="true" />
-            Reconnect
+            {labels.reconnect}
           </button>
-          <button type="button" aria-label="More terminal actions">
+          <button type="button" aria-label={labels.moreTerminalActions}>
             <MoreHorizontal size={16} aria-hidden="true" />
           </button>
         </div>
@@ -2021,26 +2651,26 @@ function TerminalPane({
       {safePasteReview ? (
         <div className="safe-paste-review" role="alert">
           <div>
-            <strong>Review paste</strong>
+            <strong>{labels.reviewPaste}</strong>
             <span>{safePasteReview.reasons.join(" / ")}</span>
           </div>
           <pre>{safePasteReview.text.slice(0, 420)}</pre>
           <button type="button" onClick={approveSafePaste}>
-            Paste
+            {labels.paste}
           </button>
           <button type="button" onClick={cancelSafePaste}>
-            Cancel
+            {labels.cancel}
           </button>
         </div>
       ) : null}
       <div className="compose-pane">
         <div>
           <Code2 size={16} aria-hidden="true" />
-          <span>Compose Pane</span>
+          <span>{labels.composePane}</span>
         </div>
         <textarea
           value={composeValue}
-          placeholder="Draft a command before sending to one or many sessions"
+          placeholder={labels.composePlaceholder}
           onChange={(event) => setComposeValue(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
@@ -2050,7 +2680,7 @@ function TerminalPane({
           }}
         />
         <button type="button" onClick={sendComposeValue}>
-          Send
+          {labels.send}
         </button>
       </div>
     </section>
@@ -2100,6 +2730,7 @@ function SshCredentialPanel({
   onDisableVault: () => void;
   onTrustHost: () => void;
 }) {
+  const labels = useUiStrings();
   const hasDraftSecret = Boolean(draft.password || draft.privateKey);
   const isVaultMasterMode = vaultStatus?.mode === "master";
   const isVaultLocked = Boolean(vaultStatus?.locked);
@@ -2107,21 +2738,21 @@ function SshCredentialPanel({
   const isEncryptionUnavailable = credentialStatus?.encryptionAvailable === false || vaultStatus?.encryptionAvailable === false;
 
   return (
-    <section className="panel-section ssh-panel" aria-label="SSH credentials">
+    <section className="panel-section ssh-panel" aria-label={labels.sshCredentials}>
       <div className="panel-heading">
         <div>
           <KeyRound size={16} aria-hidden="true" />
-          <h2>SSH Login</h2>
+          <h2>{labels.sshLogin}</h2>
         </div>
         <span className="poll-rate">{authMethod}</span>
       </div>
       <div className="ssh-form">
         <div className="credential-status-row">
           <span className={credentialStatus?.hasCredential ? "saved" : ""}>
-            {credentialStatus?.hasCredential ? "Saved credential available" : "No saved credential"}
+            {credentialStatus?.hasCredential ? labels.savedCredentialAvailable : labels.noSavedCredential}
           </span>
           {credentialStatus?.hasCredential ? <small>{credentialStatus.protection}</small> : null}
-          {isEncryptionUnavailable ? <small>Encryption unavailable</small> : null}
+          {isEncryptionUnavailable ? <small>{labels.encryptionUnavailable}</small> : null}
         </div>
         {credentialError ? (
           <div className="credential-error" role="alert">
@@ -2130,16 +2761,16 @@ function SshCredentialPanel({
         ) : null}
         <div className="credential-vault-panel">
           <div className="credential-vault-state">
-            <span>Vault</span>
-            <strong>{isVaultMasterMode ? "Master password" : "System keyring"}</strong>
-            <small>{isVaultMasterMode ? (isVaultLocked ? "locked" : "unlocked") : "active"}</small>
+            <span>{labels.vault}</span>
+            <strong>{isVaultMasterMode ? labels.masterPassword : labels.systemKeyring}</strong>
+            <small>{isVaultMasterMode ? (isVaultLocked ? labels.locked : labels.unlocked) : labels.active}</small>
           </div>
           <label className="credential-vault-password">
-            <span>Master password</span>
+            <span>{labels.masterPassword}</span>
             <input
               type="password"
               value={vaultPassword}
-              placeholder={isVaultMasterMode ? "Enter master password" : "New master password"}
+              placeholder={isVaultMasterMode ? labels.enterMasterPassword : labels.newMasterPassword}
               onChange={(event) => onVaultPasswordChange(event.target.value)}
             />
           </label>
@@ -2150,69 +2781,69 @@ function SshCredentialPanel({
           ) : null}
           <div className="credential-vault-actions">
             <button type="button" disabled={isEncryptionUnavailable || isVaultMasterMode || !hasVaultPassword} onClick={onEnableVault}>
-              Enable
+              {labels.enable}
             </button>
             <button type="button" disabled={!isVaultMasterMode || !isVaultLocked || !hasVaultPassword} onClick={onUnlockVault}>
-              Unlock
+              {labels.unlock}
             </button>
             <button type="button" disabled={!isVaultMasterMode || isVaultLocked} onClick={onLockVault}>
-              Lock
+              {labels.lock}
             </button>
             <button type="button" disabled={!isVaultMasterMode || (isVaultLocked && !hasVaultPassword)} onClick={onDisableVault}>
-              Disable
+              {labels.disable}
             </button>
           </div>
         </div>
         {hostKeyPrompt ? (
           <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
-            <strong>{hostKeyPrompt.status === "changed" ? "Host key changed" : "Unknown host key"}</strong>
+            <strong>{hostKeyPrompt.status === "changed" ? labels.hostKeyChanged : labels.unknownHostKey}</strong>
             <span>
               {hostKeyPrompt.host}:{hostKeyPrompt.port}
             </span>
             <code>{hostKeyPrompt.fingerprint}</code>
-            {hostKeyPrompt.expectedFingerprint ? <small>Expected {hostKeyPrompt.expectedFingerprint}</small> : null}
+            {hostKeyPrompt.expectedFingerprint ? <small>{labels.expectedFingerprint(hostKeyPrompt.expectedFingerprint)}</small> : null}
             <button type="button" disabled={hostKeyPrompt.status === "changed"} onClick={onTrustHost}>
               <ShieldCheck size={16} aria-hidden="true" />
-              Trust and reconnect
+              {labels.trustAndReconnect}
             </button>
           </div>
         ) : null}
         <label>
-          <span>Password</span>
+          <span>{labels.password}</span>
           <input
             type="password"
             value={draft.password}
-            placeholder="Session only"
+            placeholder={labels.sessionOnly}
             onChange={(event) => onChange("password", event.target.value)}
           />
         </label>
         <label>
           <span className="private-key-label">
-            Private key
+            {labels.privateKey}
             <button type="button" onClick={onImportPrivateKey}>
               <UploadCloud size={14} aria-hidden="true" />
-              Import
+              {labels.import}
             </button>
           </span>
           <textarea
             value={draft.privateKey}
-            placeholder="Paste an OpenSSH private key for this session"
+            placeholder={labels.pastePrivateKey}
             onChange={(event) => onChange("privateKey", event.target.value)}
           />
         </label>
         {privateKeyImportStatus ? <div className="private-key-import-status">{privateKeyImportStatus}</div> : null}
         <label>
-          <span>Passphrase</span>
+          <span>{labels.passphrase}</span>
           <input
             type="password"
             value={draft.passphrase}
-            placeholder="For encrypted private keys"
+            placeholder={labels.encryptedPrivateKeys}
             onChange={(event) => onChange("passphrase", event.target.value)}
           />
         </label>
         <button type="button" onClick={onConnect}>
           <TerminalSquare size={16} aria-hidden="true" />
-          Connect
+          {labels.connect}
         </button>
         <div className="credential-actions">
           <button
@@ -2221,10 +2852,10 @@ function SshCredentialPanel({
             onClick={onSaveCredential}
           >
             <ShieldCheck size={16} aria-hidden="true" />
-            Save credential
+            {labels.saveCredential}
           </button>
           <button type="button" disabled={!credentialStatus?.hasCredential} onClick={onDeleteCredential}>
-            Delete saved
+            {labels.deleteSaved}
           </button>
         </div>
       </div>
@@ -2243,8 +2874,9 @@ function RdpPanel({
   error: string;
   onOpen: () => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section rdp-panel" aria-label="RDP connection">
+    <section className="panel-section rdp-panel" aria-label={labels.rdpConnection}>
       <div className="panel-heading">
         <div>
           <Monitor size={16} aria-hidden="true" />
@@ -2264,7 +2896,7 @@ function RdpPanel({
         ) : null}
         <button type="button" onClick={onOpen}>
           <Monitor size={16} aria-hidden="true" />
-          Open Remote Desktop
+          {labels.openRemoteDesktop}
         </button>
       </div>
     </section>
@@ -2278,6 +2910,7 @@ function JumpHostPanel({
   gateways: JumpHostConfig[];
   onChange: (gateways: JumpHostConfig[]) => void;
 }) {
+  const labels = useUiStrings();
   const addGateway = () => {
     onChange([
       ...gateways,
@@ -2300,49 +2933,49 @@ function JumpHostPanel({
   };
 
   return (
-    <section className="panel-section" aria-label="Jump host proxy">
+    <section className="panel-section" aria-label={labels.jumpHostProxy}>
       <div className="panel-heading">
         <div>
           <SplitSquareHorizontal size={16} aria-hidden="true" />
-          <h2>Jump Hosts</h2>
+          <h2>{labels.jumpHosts}</h2>
         </div>
-        <button type="button" aria-label="Add jump host" onClick={addGateway}>
+        <button type="button" aria-label={labels.addJumpHost} onClick={addGateway}>
           <Plus size={16} aria-hidden="true" />
         </button>
       </div>
       <div className="jump-host-list">
         {gateways.length === 0 ? (
-          <div className="trigger-empty">Direct SSH connection</div>
+          <div className="trigger-empty">{labels.directSshConnection}</div>
         ) : (
           gateways.map((gateway, index) => (
             <div key={gateway.id} className="jump-host-row">
               <strong>{index + 1}</strong>
               <input
                 value={gateway.name}
-                placeholder="Name"
-                aria-label={`Jump host ${index + 1} name`}
+                placeholder={labels.name}
+                aria-label={`${labels.jumpHosts} ${index + 1} ${labels.name}`}
                 onChange={(event) => updateGateway(gateway.id, { name: event.target.value })}
               />
               <input
                 value={gateway.host}
-                placeholder="Host"
-                aria-label={`Jump host ${index + 1} host`}
+                placeholder={labels.host}
+                aria-label={`${labels.jumpHosts} ${index + 1} ${labels.host}`}
                 onChange={(event) => updateGateway(gateway.id, { host: event.target.value })}
               />
               <input
                 value={gateway.port}
-                placeholder="Port"
-                aria-label={`Jump host ${index + 1} port`}
+                placeholder={labels.port}
+                aria-label={`${labels.jumpHosts} ${index + 1} ${labels.port}`}
                 onChange={(event) => updateGateway(gateway.id, { port: Number(event.target.value) || 22 })}
               />
               <input
                 value={gateway.username}
-                placeholder="User"
-                aria-label={`Jump host ${index + 1} user`}
+                placeholder={labels.user}
+                aria-label={`${labels.jumpHosts} ${index + 1} ${labels.user}`}
                 onChange={(event) => updateGateway(gateway.id, { username: event.target.value })}
               />
               <button type="button" onClick={() => removeGateway(gateway.id)}>
-                Remove
+                {labels.remove}
               </button>
             </div>
           ))
@@ -2381,25 +3014,26 @@ function FilePanel({
   onTransfer: (direction: "upload" | "download") => void;
   onOpenFile: (path: string) => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section file-panel" aria-label="Remote files">
+    <section className="panel-section file-panel" aria-label={labels.remoteFiles}>
       <div className="panel-heading">
         <div>
           <FileText size={16} aria-hidden="true" />
           <h2>SFTP</h2>
         </div>
         <div className="panel-actions">
-          <span className="sync-pill">cwd sync</span>
-          <button type="button" aria-label="Refresh remote files" onClick={onRefresh}>
+          <span className="sync-pill">{labels.cwdSync}</span>
+          <button type="button" aria-label={labels.refreshRemoteFiles} onClick={onRefresh}>
             <RefreshCw size={16} aria-hidden="true" />
           </button>
         </div>
       </div>
       <label className="path-row">
-        <span className="sr-only">Remote path</span>
+        <span className="sr-only">{labels.remotePath}</span>
         <input value={path} onChange={(event) => onPathChange(event.target.value)} />
       </label>
-      {status === "loading" ? <div className="sftp-state">Loading remote directory...</div> : null}
+      {status === "loading" ? <div className="sftp-state">{labels.loadingRemoteDirectory}</div> : null}
       {status === "error" ? (
         <div className="sftp-state error" role="alert">
           {error}
@@ -2407,19 +3041,19 @@ function FilePanel({
       ) : null}
       <div className="transfer-box">
         <label>
-          <span>Local path</span>
+          <span>{labels.localPath}</span>
           <input value={localPath} onChange={(event) => onLocalPathChange(event.target.value)} />
         </label>
         <label>
-          <span>Remote path</span>
+          <span>{labels.remotePath}</span>
           <input value={transferRemotePath} onChange={(event) => onTransferRemotePathChange(event.target.value)} />
         </label>
         <div className="transfer-actions">
           <button type="button" onClick={() => onTransfer("upload")}>
-            Upload
+            {labels.upload}
           </button>
           <button type="button" onClick={() => onTransfer("download")}>
-            Download
+            {labels.download}
           </button>
         </div>
       </div>
@@ -2453,7 +3087,7 @@ function FilePanel({
         <div className="transfer-list">
           {transferJobs.map((job) => (
             <div key={job.id} className={`transfer-row ${job.status}`}>
-              <strong>{job.direction}</strong>
+              <strong>{labels.transferDirection[job.direction]}</strong>
               <span>{job.direction === "upload" ? job.localPath : job.remotePath}</span>
               <small>{job.message ?? job.status}</small>
             </div>
@@ -2483,25 +3117,26 @@ function ZmodemPanel({
   onUpload: () => void;
   onDownload: () => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="ZMODEM transfer">
+    <section className="panel-section" aria-label={labels.zmodemTransfer}>
       <div className="panel-heading">
         <div>
           <UploadCloud size={16} aria-hidden="true" />
           <h2>ZMODEM</h2>
         </div>
-        <span className={`zmodem-pill ${mode}`}>{mode}</span>
+        <span className={`zmodem-pill ${mode}`}>{displayMode(mode, labels)}</span>
       </div>
       <div className="zmodem-panel">
         <div className="zmodem-state">{message}</div>
-        <input value={localPath} placeholder="Local file path" onChange={(event) => onLocalPathChange(event.target.value)} />
-        <input value={remotePath} placeholder="Remote file path" onChange={(event) => onRemotePathChange(event.target.value)} />
+        <input value={localPath} placeholder={labels.localFilePath} onChange={(event) => onLocalPathChange(event.target.value)} />
+        <input value={remotePath} placeholder={labels.remoteFilePath} onChange={(event) => onRemotePathChange(event.target.value)} />
         <div className="zmodem-actions">
           <button type="button" onClick={onUpload}>
-            Upload
+            {labels.upload}
           </button>
           <button type="button" onClick={onDownload}>
-            Download
+            {labels.download}
           </button>
         </div>
       </div>
@@ -2524,25 +3159,26 @@ function RemoteEditorPanel({
   onContentChange: (content: string) => void;
   onSave: () => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section remote-editor" aria-label="Remote file editor">
+    <section className="panel-section remote-editor" aria-label={labels.remoteEditor}>
       <div className="panel-heading">
         <div>
           <Code2 size={16} aria-hidden="true" />
-          <h2>Editor</h2>
+          <h2>{labels.editor}</h2>
         </div>
         <button type="button" disabled={!path || status === "loading" || status === "saving"} onClick={onSave}>
-          Save
+          {labels.save}
         </button>
       </div>
       <div className="remote-editor-body">
         <div className={`editor-status ${status}`}>
-          <span>{path || "No file selected"}</span>
+          <span>{path || labels.noFileSelected}</span>
           <small>{error || status}</small>
         </div>
         <textarea
           value={content}
-          placeholder="Select a remote file from SFTP"
+          placeholder={labels.selectRemoteFile}
           disabled={!path || status === "loading"}
           onChange={(event) => onContentChange(event.target.value)}
         />
@@ -2564,26 +3200,27 @@ function MetricsPanel({
   error: string;
   onRefresh: () => void;
 }) {
+  const labels = useUiStrings();
   const chartSeries = [
     { label: "CPU", key: "cpu" as const, unit: "%", max: 100 },
     { label: "Memory", key: "memory" as const, unit: "%", max: 100 },
     { label: "Disk", key: "disk" as const, unit: "%", max: 100 },
     { label: "Network", key: "network" as const, unit: "ms", max: 200 },
-    { label: "Processes", key: "processes" as const, unit: "", max: Math.max(20, ...history.map((point) => point.processes)) }
+    { label: labels.metricProcesses, key: "processes" as const, unit: "", max: Math.max(20, ...history.map((point) => point.processes)) }
   ];
 
   return (
-    <section className="panel-section" aria-label="Server metrics">
+    <section className="panel-section" aria-label={labels.serverMetrics}>
       <div className="panel-heading">
         <div>
           <Activity size={16} aria-hidden="true" />
-          <h2>Monitor</h2>
+          <h2>{labels.monitor}</h2>
         </div>
-        <button type="button" aria-label="Refresh metrics" onClick={onRefresh}>
+        <button type="button" aria-label={labels.refreshMetrics} onClick={onRefresh}>
           <RefreshCw size={16} aria-hidden="true" />
         </button>
       </div>
-      {status === "loading" ? <div className="sftp-state">Collecting remote metrics...</div> : null}
+      {status === "loading" ? <div className="sftp-state">{labels.collectingMetrics}</div> : null}
       {status === "error" ? (
         <div className="sftp-state error" role="alert">
           {error}
@@ -2592,7 +3229,7 @@ function MetricsPanel({
       <div className="metric-grid">
         {metrics.map((metric) => (
           <article key={metric.label} className="metric-tile">
-            <span>{metric.label}</span>
+            <span>{displayMetricLabel(metric.label, labels)}</span>
             <strong>
               {metric.value}
               {metric.unit}
@@ -2654,14 +3291,15 @@ export function QuickCommandPanel({
   quickCommands: ReturnType<typeof createInitialAppSnapshot>["quickCommands"];
   onExecute: (command: string) => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="Quick commands">
+    <section className="panel-section" aria-label={labels.quickCommands}>
       <div className="panel-heading">
         <div>
           <Zap size={16} aria-hidden="true" />
-          <h2>Quick Commands</h2>
+          <h2>{labels.quickCommands}</h2>
         </div>
-        <button type="button" aria-label="Manage quick commands">
+        <button type="button" aria-label={labels.manageQuickCommands}>
           <LayoutDashboard size={16} aria-hidden="true" />
         </button>
       </div>
@@ -2669,10 +3307,10 @@ export function QuickCommandPanel({
         {quickCommands.map((command) => (
           <button type="button" key={command.id} className="quick-command" onClick={() => onExecute(command.command)}>
             <span>
-              <strong>{command.title}</strong>
+              <strong>{displayBuiltInName(command.title, labels)}</strong>
               <small>{command.command}</small>
             </span>
-            <ShieldCheck size={15} aria-label={`${command.scope} scope`} />
+            <ShieldCheck size={15} aria-label={labels.scope[command.scope]} />
           </button>
         ))}
       </div>
@@ -2681,22 +3319,23 @@ export function QuickCommandPanel({
 }
 
 function TriggerPanel({ events }: { events: TriggerEvent[] }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="Trigger events">
+    <section className="panel-section" aria-label={labels.triggerEvents}>
       <div className="panel-heading">
         <div>
           <Zap size={16} aria-hidden="true" />
-          <h2>Triggers</h2>
+          <h2>{labels.triggers}</h2>
         </div>
         <span className="poll-rate">{events.length}</span>
       </div>
       <div className="trigger-list">
         {events.length === 0 ? (
-          <div className="trigger-empty">No trigger events</div>
+          <div className="trigger-empty">{labels.noTriggerEvents}</div>
         ) : (
           events.map((event) => (
             <div key={event.id} className={`trigger-row ${event.severity}`}>
-              <strong>{event.severity}</strong>
+              <strong>{labels.severity[event.severity]}</strong>
               <span>{event.message}</span>
               <small>{event.createdAt}</small>
             </div>
@@ -2720,18 +3359,19 @@ function ProcessPanel({
   onRefresh: () => void;
   onKill: (pid: number) => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="Process manager">
+    <section className="panel-section" aria-label={labels.processManager}>
       <div className="panel-heading">
         <div>
           <Activity size={16} aria-hidden="true" />
-          <h2>Processes</h2>
+          <h2>{labels.processes}</h2>
         </div>
-        <button type="button" aria-label="Refresh processes" onClick={onRefresh}>
+        <button type="button" aria-label={labels.refreshProcesses} onClick={onRefresh}>
           <RefreshCw size={16} aria-hidden="true" />
         </button>
       </div>
-      {status === "loading" ? <div className="sftp-state">Loading process list...</div> : null}
+      {status === "loading" ? <div className="sftp-state">{labels.loadingProcesses}</div> : null}
       {status === "error" ? (
         <div className="sftp-state error" role="alert">
           {error}
@@ -2739,7 +3379,7 @@ function ProcessPanel({
       ) : null}
       <div className="process-list">
         {processes.length === 0 ? (
-          <div className="trigger-empty">No process data</div>
+          <div className="trigger-empty">{labels.noProcessData}</div>
         ) : (
           processes.map((process) => (
             <div key={process.pid} className="process-row">
@@ -2748,7 +3388,7 @@ function ProcessPanel({
               <small>{process.cpu.toFixed(1)}%</small>
               <small>{process.memory.toFixed(1)}%</small>
               <button type="button" onClick={() => onKill(process.pid)}>
-                Term
+                {labels.terminate}
               </button>
             </div>
           ))
@@ -2771,20 +3411,21 @@ function TunnelPanel({
   onStart: () => void;
   onStop: (id: string) => void;
 }) {
+  const labels = useUiStrings();
   const requiresTarget = draft.mode !== "dynamic";
 
   return (
-    <section className="panel-section" aria-label="SSH tunnels">
+    <section className="panel-section" aria-label={labels.sshTunnels}>
       <div className="panel-heading">
         <div>
           <Network size={16} aria-hidden="true" />
-          <h2>Tunnels</h2>
+          <h2>{labels.tunnels}</h2>
         </div>
-        <button type="button" aria-label="Start tunnel" onClick={onStart}>
+        <button type="button" aria-label={labels.startTunnel} onClick={onStart}>
           <Plus size={16} aria-hidden="true" />
         </button>
       </div>
-      <div className="tunnel-mode-switch" role="tablist" aria-label="Tunnel mode">
+      <div className="tunnel-mode-switch" role="tablist" aria-label={labels.tunnelModeAria}>
         {tunnelModes.map((mode) => (
           <button
             key={mode.value}
@@ -2792,45 +3433,45 @@ function TunnelPanel({
             aria-pressed={draft.mode === mode.value}
             onClick={() => onDraftChange({ ...draft, mode: mode.value })}
           >
-            {mode.label}
+            {labels.tunnelMode[mode.value]}
           </button>
         ))}
       </div>
       <div className="tunnel-form">
         <input
           value={draft.bindHost}
-          placeholder={draft.mode === "remote" ? "Remote bind" : "Local bind"}
+          placeholder={draft.mode === "remote" ? labels.remoteBind : labels.localBind}
           onChange={(event) => onDraftChange({ ...draft, bindHost: event.target.value })}
         />
         <input
           value={draft.bindPort}
-          placeholder={draft.mode === "remote" ? "Remote port" : "Local port"}
+          placeholder={draft.mode === "remote" ? labels.remotePort : labels.localPort}
           onChange={(event) => onDraftChange({ ...draft, bindPort: event.target.value })}
         />
         <input
           value={draft.targetHost}
-          placeholder={requiresTarget ? "Target host" : "SOCKS target"}
+          placeholder={requiresTarget ? labels.targetHost : labels.socksTarget}
           disabled={!requiresTarget}
           onChange={(event) => onDraftChange({ ...draft, targetHost: event.target.value })}
         />
         <input
           value={draft.targetPort}
-          placeholder="Target port"
+          placeholder={labels.targetPort}
           disabled={!requiresTarget}
           onChange={(event) => onDraftChange({ ...draft, targetPort: event.target.value })}
         />
       </div>
       <div className="tunnel-list">
         {tunnels.length === 0 ? (
-          <div className="trigger-empty">No active tunnels</div>
+          <div className="trigger-empty">{labels.noActiveTunnels}</div>
         ) : (
           tunnels.map((tunnel) => (
             <div key={tunnel.id} className={`tunnel-row ${tunnel.status}`}>
               <strong>{tunnel.mode}</strong>
               <span>{describeTunnel(tunnel)}</span>
-              <small>{tunnel.message ?? tunnel.status}</small>
+              <small>{tunnel.message ?? labels.tunnelStatus[tunnel.status]}</small>
               <button type="button" onClick={() => onStop(tunnel.id)}>
-                Stop
+                {labels.stop}
               </button>
             </div>
           ))
@@ -2853,49 +3494,50 @@ function RelayPanel({
   onStart: () => void;
   onStop: (id: string) => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="CN Relay">
+    <section className="panel-section" aria-label={labels.cnRelay}>
       <div className="panel-heading">
         <div>
           <Network size={16} aria-hidden="true" />
-          <h2>CN Relay</h2>
+          <h2>{labels.cnRelay}</h2>
         </div>
-        <button type="button" aria-label="Start relay" onClick={onStart}>
+        <button type="button" aria-label={labels.startRelay} onClick={onStart}>
           <Plus size={16} aria-hidden="true" />
         </button>
       </div>
       <div className="relay-form">
         <input
           value={draft.relayHost}
-          placeholder="Relay bind"
+          placeholder={labels.relayBind}
           onChange={(event) => onDraftChange({ ...draft, relayHost: event.target.value })}
         />
         <input
           value={draft.relayPort}
-          placeholder="Relay port"
+          placeholder={labels.relayPort}
           onChange={(event) => onDraftChange({ ...draft, relayPort: event.target.value })}
         />
         <input
           value={draft.targetHost}
-          placeholder="Intranet host"
+          placeholder={labels.intranetHost}
           onChange={(event) => onDraftChange({ ...draft, targetHost: event.target.value })}
         />
         <input
           value={draft.targetPort}
-          placeholder="Target port"
+          placeholder={labels.targetPort}
           onChange={(event) => onDraftChange({ ...draft, targetPort: event.target.value })}
         />
       </div>
       <div className="relay-list">
         {relays.length === 0 ? (
-          <div className="trigger-empty">No relay tunnels</div>
+          <div className="trigger-empty">{labels.noRelayTunnels}</div>
         ) : (
           relays.map((relay) => (
             <div key={relay.id} className={`relay-row ${relay.status}`}>
               <span>{`${relay.relayHost}:${relay.relayPort} -> ${relay.targetHost}:${relay.targetPort}`}</span>
-              <small>{relay.message ?? relay.status}</small>
+              <small>{relay.message ?? labels.tunnelStatus[relay.status]}</small>
               <button type="button" onClick={() => onStop(relay.id)}>
-                Stop
+                {labels.stop}
               </button>
             </div>
           ))
@@ -2912,6 +3554,7 @@ function KeyMappingPanel({
   profiles: KeyMappingProfile[];
   onChange: (profiles: KeyMappingProfile[]) => void;
 }) {
+  const labels = useUiStrings();
   const activeProfile = profiles[0];
 
   const updateProfile = (patch: Partial<KeyMappingProfile>) => {
@@ -2944,7 +3587,7 @@ function KeyMappingPanel({
           id: `key-rule-${Date.now()}`,
           key: "Ctrl+K",
           send: "\\r",
-          description: "Custom mapping",
+          description: labels.customMapping,
           enabled: true
         }
       ]
@@ -2962,13 +3605,13 @@ function KeyMappingPanel({
   };
 
   return (
-    <section className="panel-section" aria-label="Key mapping profiles">
+    <section className="panel-section" aria-label={labels.keyMappingProfiles}>
       <div className="panel-heading">
         <div>
           <Command size={16} aria-hidden="true" />
-          <h2>Key Map</h2>
+          <h2>{labels.keyMap}</h2>
         </div>
-        <button type="button" aria-label="Add key mapping" onClick={addRule}>
+        <button type="button" aria-label={labels.addKeyMapping} onClick={addRule}>
           <Plus size={16} aria-hidden="true" />
         </button>
       </div>
@@ -2980,24 +3623,24 @@ function KeyMappingPanel({
               checked={activeProfile.enabled}
               onChange={(event) => updateProfile({ enabled: event.target.checked })}
             />
-            <span>{activeProfile.name}</span>
+            <span>{displayBuiltInName(activeProfile.name, labels)}</span>
           </label>
           <div className="keymap-list">
             {activeProfile.rules.map((rule) => (
               <div key={rule.id} className="keymap-row">
                 <input
                   value={rule.key}
-                  aria-label={`${rule.description} shortcut`}
+                  aria-label={labels.shortcutAria(displayBuiltInName(rule.description, labels))}
                   onChange={(event) => updateRule(rule.id, { key: event.target.value })}
                 />
                 <input
                   value={rule.send}
-                  aria-label={`${rule.description} send sequence`}
+                  aria-label={labels.sendSequenceAria(displayBuiltInName(rule.description, labels))}
                   onChange={(event) => updateRule(rule.id, { send: event.target.value })}
                 />
                 <input
                   value={rule.description}
-                  aria-label="Key mapping description"
+                  aria-label={labels.keyMappingDescription}
                   onChange={(event) => updateRule(rule.id, { description: event.target.value })}
                 />
                 <label className="keymap-enabled">
@@ -3008,14 +3651,14 @@ function KeyMappingPanel({
                   />
                 </label>
                 <button type="button" onClick={() => removeRule(rule.id)}>
-                  Remove
+                  {labels.remove}
                 </button>
               </div>
             ))}
           </div>
         </div>
       ) : (
-        <div className="trigger-empty">No key mapping profile</div>
+        <div className="trigger-empty">{labels.noKeyMappingProfile}</div>
       )}
     </section>
   );
@@ -3036,39 +3679,40 @@ function ScriptRecorderPanel({
   onStop: () => void;
   onReplay: (recording: ScriptRecording) => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="Script recorder">
+    <section className="panel-section" aria-label={labels.scriptRecorder}>
       <div className="panel-heading">
         <div>
           <FileText size={16} aria-hidden="true" />
-          <h2>Scripts</h2>
+          <h2>{labels.scripts}</h2>
         </div>
-        <span className={`recording-pill ${isRecording ? "active" : ""}`}>{isRecording ? "rec" : "idle"}</span>
+        <span className={`recording-pill ${isRecording ? "active" : ""}`}>{isRecording ? labels.recording : labels.idle}</span>
       </div>
       <div className="script-recorder">
         <div className="script-actions">
           <button type="button" disabled={isRecording} onClick={onStart}>
-            Record
+            {labels.record}
           </button>
           <button type="button" disabled={!isRecording} onClick={onStop}>
-            Stop
+            {labels.stop}
           </button>
-          <span>{eventCount} events</span>
+          <span>{labels.eventCount(eventCount)}</span>
         </div>
         <div className="script-list">
           {recordings.length === 0 ? (
-            <div className="trigger-empty">No recorded scripts</div>
+            <div className="trigger-empty">{labels.noRecordedScripts}</div>
           ) : (
             recordings.slice(0, 4).map((recording) => (
               <div key={recording.id} className="script-row">
                 <div>
                   <strong>{recording.name}</strong>
                   <small>
-                    {recording.events.length} events / {new Date(recording.createdAt).toLocaleDateString()}
+                    {labels.eventCount(recording.events.length)} / {new Date(recording.createdAt).toLocaleDateString()}
                   </small>
                 </div>
                 <button type="button" onClick={() => onReplay(recording)}>
-                  Replay
+                  {labels.replay}
                 </button>
               </div>
             ))
@@ -3098,6 +3742,7 @@ export function LogViewerPanel({
   onQueryChange: (query: string) => void;
   onRefresh: () => void;
 }) {
+  const labels = useUiStrings();
   return (
     <section className="panel-section" aria-label={title}>
       <div className="panel-heading">
@@ -3112,7 +3757,7 @@ export function LogViewerPanel({
       <div className="log-viewer">
         <input
           value={query}
-          placeholder="Filter log lines"
+          placeholder={labels.filterLogLines}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
@@ -3122,7 +3767,7 @@ export function LogViewerPanel({
         />
         <div className={`log-lines ${status}`}>
           {lines.length === 0 ? (
-            <div className="trigger-empty">{status === "loading" ? "Loading logs" : emptyText}</div>
+            <div className="trigger-empty">{status === "loading" ? labels.loadingLogs : emptyText}</div>
           ) : (
             lines.map((line, index) => (
               <pre key={`${index}-${line.slice(0, 16)}`}>{line || " "}</pre>
@@ -3143,22 +3788,23 @@ function CloudSyncPanel({
   onExport: () => void;
   onImport: () => void;
 }) {
+  const labels = useUiStrings();
   return (
-    <section className="panel-section" aria-label="Cloud sync">
+    <section className="panel-section" aria-label={labels.cloudSync}>
       <div className="panel-heading">
         <div>
           <ShieldCheck size={16} aria-hidden="true" />
-          <h2>Cloud Sync</h2>
+          <h2>{labels.cloudSync}</h2>
         </div>
       </div>
       <div className="cloud-sync-panel">
         <div className="cloud-sync-state">{status}</div>
         <div className="cloud-sync-actions">
           <button type="button" onClick={onExport}>
-            Export
+            {labels.export}
           </button>
           <button type="button" onClick={onImport}>
-            Import
+            {labels.import}
           </button>
         </div>
       </div>
@@ -3179,20 +3825,21 @@ function UpdatePanel({
   onCheck: () => void;
   onInstall: () => void;
 }) {
+  const labels = useUiStrings();
   const canInstall = status.state === "downloaded";
   return (
-    <section className="panel-section" aria-label="Updates">
+    <section className="panel-section" aria-label={labels.updates}>
       <div className="panel-heading">
         <div>
           <RefreshCw size={16} aria-hidden="true" />
-          <h2>Updates</h2>
+          <h2>{labels.updates}</h2>
         </div>
-        <span className={`update-state ${status.state}`}>{status.state}</span>
+        <span className={`update-state ${status.state}`}>{labels.updateState[status.state]}</span>
       </div>
       <div className="update-panel">
         <div className="update-row">
           <label>
-            <span>Channel</span>
+            <span>{labels.channel}</span>
             <select value={channel} onChange={(event) => onChannelChange(event.target.value)}>
               <option value="latest">latest</option>
               <option value="beta">beta</option>
@@ -3200,15 +3847,15 @@ function UpdatePanel({
             </select>
           </label>
           <button type="button" onClick={onCheck}>
-            Check
+            {labels.check}
           </button>
         </div>
         <div className="update-message">
           <strong>{status.version ?? status.channel}</strong>
-          <span>{status.message ?? (status.percent !== undefined ? `${status.percent}%` : "Ready")}</span>
+          <span>{status.message ?? (status.percent !== undefined ? `${status.percent}%` : labels.ready)}</span>
         </div>
         <button type="button" disabled={!canInstall} onClick={onInstall}>
-          Install update
+          {labels.installUpdate}
         </button>
       </div>
     </section>
@@ -3226,36 +3873,37 @@ export function BulkCommandConfirmation({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  const labels = useUiStrings();
   return (
     <div className="palette-backdrop" role="presentation" onClick={onCancel}>
       <section
         className="bulk-command-dialog"
         role="dialog"
-        aria-label="Confirm bulk command"
+        aria-label={labels.confirmBulkCommand}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="bulk-command-heading">
           <div>
             <Command size={17} aria-hidden="true" />
-            <h2>Confirm Bulk Command</h2>
+            <h2>{labels.confirmBulkCommand}</h2>
           </div>
-          <span>{targets.length} sessions</span>
+          <span>{labels.bulkSessions(targets.length)}</span>
         </div>
         <pre>{command}</pre>
         <div className="bulk-command-targets">
           {targets.map((target) => (
             <div key={target.id}>
               <strong>{target.title}</strong>
-              <small>{target.status}</small>
+              <small>{displayStatus(target.status, labels)}</small>
             </div>
           ))}
         </div>
         <div className="bulk-command-actions">
           <button type="button" onClick={onCancel}>
-            Cancel
+            {labels.cancel}
           </button>
           <button type="button" onClick={onConfirm}>
-            Send to all
+            {labels.sendToAll}
           </button>
         </div>
       </section>
@@ -3276,6 +3924,7 @@ export function CommandPalette({
   onExecute: (command: string) => void;
   onClose: () => void;
 }) {
+  const labels = useUiStrings();
   const filteredCommands = commands.filter((command) => {
     const haystack = `${command.title} ${command.command}`.toLowerCase();
     return haystack.includes(query.toLowerCase());
@@ -3286,7 +3935,7 @@ export function CommandPalette({
       <section
         className="command-palette"
         role="dialog"
-        aria-label="Command palette"
+        aria-label={labels.commandPalette}
         onClick={(event) => event.stopPropagation()}
       >
         <label className="palette-search">
@@ -3294,7 +3943,7 @@ export function CommandPalette({
           <input
             autoFocus
             value={query}
-            placeholder="Search quick commands"
+            placeholder={labels.searchQuickCommands}
             onChange={(event) => onQueryChange(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
@@ -3306,11 +3955,52 @@ export function CommandPalette({
         <div className="palette-results">
           {filteredCommands.map((command) => (
             <button type="button" key={command.id} onClick={() => onExecute(command.command)}>
-              <strong>{command.title}</strong>
+              <strong>{displayBuiltInName(command.title, labels)}</strong>
               <small>{command.command}</small>
             </button>
           ))}
         </div>
+      </section>
+    </div>
+  );
+}
+
+function SettingsDialog({
+  language,
+  onLanguageChange,
+  onClose
+}: {
+  language: Language;
+  onLanguageChange: (language: Language) => void;
+  onClose: () => void;
+}) {
+  const labels = useUiStrings();
+
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="settings-dialog"
+        role="dialog"
+        aria-label={labels.settingsTitle}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="settings-heading">
+          <div>
+            <Settings size={18} aria-hidden="true" />
+            <h2>{labels.settingsTitle}</h2>
+          </div>
+          <button type="button" aria-label={labels.close} onClick={onClose}>
+            {labels.close}
+          </button>
+        </div>
+        <p>{labels.settingsSubtitle}</p>
+        <label className="settings-field">
+          <span>{labels.settingsLanguage}</span>
+          <select value={language} onChange={(event) => onLanguageChange(event.target.value as Language)}>
+            <option value="zh-CN">{labels.languageChinese}</option>
+            <option value="en-US">{labels.languageEnglish}</option>
+          </select>
+        </label>
       </section>
     </div>
   );

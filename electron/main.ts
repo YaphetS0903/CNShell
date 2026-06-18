@@ -1,8 +1,9 @@
-import { app, BrowserWindow, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Menu } from "electron";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { AppLanguage } from "../src/shared/ipc.js";
 import { AuditLogStore, sanitizeAuditTarget, summarizeTerminalWrite, summarizeWorkspace } from "./auditLogStore.js";
 import { CloudSyncService } from "./cloudSyncService.js";
 import { CredentialStore } from "./credentialStore.js";
@@ -60,6 +61,71 @@ let cloudSyncService: CloudSyncService | null = null;
 let auditLogStore: AuditLogStore | null = null;
 let updateService: UpdateService | null = null;
 let errorReportStore: ErrorReportStore | null = null;
+let currentLanguage: AppLanguage = "zh-CN";
+
+function configureApplicationMenu(language: AppLanguage = "zh-CN") {
+  currentLanguage = language;
+  const zh = language === "zh-CN";
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: zh ? "文件" : "File",
+      submenu: [{ role: "quit", label: zh ? "退出" : "Quit" }]
+    },
+    {
+      label: zh ? "编辑" : "Edit",
+      submenu: [
+        { role: "undo", label: zh ? "撤销" : "Undo" },
+        { role: "redo", label: zh ? "重做" : "Redo" },
+        { type: "separator" },
+        { role: "cut", label: zh ? "剪切" : "Cut" },
+        { role: "copy", label: zh ? "复制" : "Copy" },
+        { role: "paste", label: zh ? "粘贴" : "Paste" },
+        { role: "selectAll", label: zh ? "全选" : "Select All" }
+      ]
+    },
+    {
+      label: zh ? "视图" : "View",
+      submenu: [
+        { role: "reload", label: zh ? "重新加载" : "Reload" },
+        { role: "toggleDevTools", label: zh ? "开发者工具" : "Developer Tools" },
+        { type: "separator" },
+        { role: "resetZoom", label: zh ? "实际大小" : "Actual Size" },
+        { role: "zoomIn", label: zh ? "放大" : "Zoom In" },
+        { role: "zoomOut", label: zh ? "缩小" : "Zoom Out" },
+        { type: "separator" },
+        { role: "togglefullscreen", label: zh ? "切换全屏" : "Toggle Full Screen" }
+      ]
+    },
+    {
+      label: zh ? "窗口" : "Window",
+      submenu: [
+        { role: "minimize", label: zh ? "最小化" : "Minimize" },
+        { role: "close", label: zh ? "关闭窗口" : "Close Window" }
+      ]
+    },
+    {
+      label: zh ? "帮助" : "Help",
+      submenu: [
+        {
+          label: zh ? "关于 CNshell" : "About CNshell",
+          click: () => {
+            const focusedWindow = BrowserWindow.getFocusedWindow();
+            if (focusedWindow) {
+              void dialog.showMessageBox(focusedWindow, {
+                type: "info",
+                title: "CNshell",
+                message: "CNshell",
+                detail: zh ? `版本 ${app.getVersion()}` : `Version ${app.getVersion()}`
+              });
+            }
+          }
+        }
+      ]
+    }
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
 
 function recordMainError(error: unknown) {
   errorReportStore?.record("main", error instanceof Error ? error : new Error(String(error)));
@@ -97,12 +163,13 @@ function createMainWindow() {
 }
 
 async function importPrivateKeyFile() {
+  const zh = currentLanguage === "zh-CN";
   const result = await dialog.showOpenDialog({
-    title: "Import SSH private key",
+    title: zh ? "导入 SSH 私钥" : "Import SSH private key",
     properties: ["openFile"],
     filters: [
-      { name: "SSH Private Keys", extensions: ["pem", "key", "ppk", "openssh", "id_rsa", "id_ed25519", "*"] },
-      { name: "All Files", extensions: ["*"] }
+      { name: zh ? "SSH 私钥" : "SSH Private Keys", extensions: ["pem", "key", "ppk", "openssh", "id_rsa", "id_ed25519", "*"] },
+      { name: zh ? "所有文件" : "All Files", extensions: ["*"] }
     ]
   });
 
@@ -113,7 +180,7 @@ async function importPrivateKeyFile() {
   const keyPath = result.filePaths[0];
   const stat = fs.statSync(keyPath);
   if (stat.size > MAX_PRIVATE_KEY_BYTES) {
-    throw new Error("Private key file is too large.");
+    throw new Error(zh ? "私钥文件过大。" : "Private key file is too large.");
   }
 
   return {
@@ -152,6 +219,7 @@ async function withAudit<T>(
 }
 
 app.whenReady().then(() => {
+  configureApplicationMenu("zh-CN");
   knownHostsStore = new KnownHostsStore(app.getPath("userData"));
   credentialStore = new CredentialStore(app.getPath("userData"));
   workspaceStore = new WorkspaceStore(app.getPath("userData"));
@@ -163,6 +231,11 @@ app.whenReady().then(() => {
   auditLogStore = new AuditLogStore(app.getPath("userData"));
   errorReportStore = new ErrorReportStore(app.getPath("userData"));
   ipcMain.handle("app:get-version", () => app.getVersion());
+  ipcMain.handle("app:set-language", (_event, language: unknown) => {
+    const nextLanguage: AppLanguage = language === "en-US" ? "en-US" : "zh-CN";
+    configureApplicationMenu(nextLanguage);
+    return true;
+  });
   ipcMain.handle("workspace:load", () => workspaceStore?.load() ?? null);
   ipcMain.handle("workspace:save", (_event, snapshot: unknown) => {
     const validatedSnapshot = validateAppSnapshot(snapshot);
@@ -308,7 +381,7 @@ app.whenReady().then(() => {
   ipcMain.handle("rdp:open", (_event, payload: unknown) => {
     const request = validateOpenRdp(payload);
     if (process.platform !== "win32") {
-      throw new Error("RDP launch is only available on Windows.");
+      throw new Error(currentLanguage === "zh-CN" ? "RDP 启动仅支持 Windows。" : "RDP launch is only available on Windows.");
     }
 
     return withAudit("rdp.open", request.host, request, () => {

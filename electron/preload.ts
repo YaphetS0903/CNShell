@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   CNshellApi,
   CloudSyncResult,
+  AppLanguage,
   CheckForUpdatesRequest,
   CollectMetricsRequest,
   CollectMetricsResult,
@@ -51,6 +52,7 @@ import type { AppSnapshot } from "../src/domain/models.js";
 
 const api = {
   getVersion: () => ipcRenderer.invoke("app:get-version") as Promise<string>,
+  setLanguage: (language: AppLanguage) => ipcRenderer.invoke("app:set-language", language) as Promise<boolean>,
   workspace: {
     load: () => ipcRenderer.invoke("workspace:load") as Promise<AppSnapshot | null>,
     save: (snapshot) => ipcRenderer.invoke("workspace:save", snapshot) as Promise<boolean>

@@ -1667,6 +1667,74 @@ textarea:focus-visible {
   color: #fff3bf;
 }
 
+.settings-dialog {
+  display: grid;
+  width: min(460px, calc(100vw - 48px));
+  gap: 14px;
+  border: 1px solid #40515d;
+  border-radius: 8px;
+  background: #101820;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  padding: 16px;
+}
+
+.settings-heading,
+.settings-heading div {
+  display: flex;
+  align-items: center;
+}
+
+.settings-heading {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.settings-heading div {
+  min-width: 0;
+  gap: 8px;
+}
+
+.settings-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.settings-heading button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.settings-dialog p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.settings-field {
+  display: grid;
+  gap: 7px;
+  color: #aebdca;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-field select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #0b131a;
+  color: var(--text);
+  padding: 0 10px;
+}
+
 .poll-rate {
   color: var(--text-muted);
   font-size: 12px;
