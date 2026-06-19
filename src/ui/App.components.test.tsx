@@ -127,6 +127,10 @@ describe("renderer workflow components", () => {
           port: "22",
           username: "deploy",
           authMethod: "privateKey",
+          password: "",
+          privateKey: "",
+          passphrase: "",
+          saveCredential: false,
           color: "#2f9e44",
           tags: "nginx, api"
         }}
@@ -147,6 +151,39 @@ describe("renderer workflow components", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ name: "prod-web-02" }));
     expect(onSave).toHaveBeenCalledOnce();
     expect(onDelete).toHaveBeenCalledOnce();
+  });
+
+  it("accepts SSH password input in the connection profile dialog", () => {
+    const onChange = vi.fn();
+    render(
+      <ConnectionEditorDialog
+        draft={{
+          name: "new-host",
+          group: "Staging",
+          protocol: "ssh",
+          host: "124.223.19.107",
+          port: "22",
+          username: "ubuntu",
+          authMethod: "password",
+          password: "",
+          privateKey: "",
+          passphrase: "",
+          saveCredential: false,
+          color: "#2f9e44",
+          tags: ""
+        }}
+        error=""
+        canDelete={false}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ password: "secret-pass" }));
   });
 
   it("manages quick command drafts", () => {

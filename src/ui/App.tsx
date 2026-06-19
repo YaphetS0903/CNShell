@@ -114,6 +114,10 @@ interface ConnectionFormDraft {
   port: string;
   username: string;
   authMethod: ConnectionProfile["authMethod"];
+  password: string;
+  privateKey: string;
+  passphrase: string;
+  saveCredential: boolean;
   color: string;
   tags: string;
 }
@@ -256,7 +260,8 @@ const translations = {
     terminalStarting: "CNshell 终端会话正在启动",
     profileLabel: "配置",
     sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
-    sshProfileSelected: "已选择 SSH 配置。请在 SSH 面板输入凭据，然后点击连接。",
+    terminalStartTimeout: "连接超时，请检查主机、端口、网络和凭据。",
+    sshProfileSelected: "已选择 SSH 配置。可在连接配置或右侧 SSH 面板输入凭据，然后点击连接。",
     rdpProfileSelected: "已选择 RDP 配置。请使用 RDP 面板启动 Windows 远程桌面。",
     terminalSearchPlaceholder: "搜索",
     find: "查找",
@@ -307,6 +312,8 @@ const translations = {
     pastePrivateKey: "粘贴本次会话使用的 OpenSSH 私钥",
     passphrase: "私钥口令",
     encryptedPrivateKeys: "用于加密私钥",
+    saveCredentialWithProfile: "保存到加密凭据库",
+    agentAuthHint: "Agent 登录会使用系统 SSH Agent 或已保存凭据，不需要在这里输入密码。",
     connect: "连接",
     saveCredential: "保存凭据",
     deleteSaved: "删除已保存",
@@ -624,7 +631,8 @@ const translations = {
     terminalStarting: "CNshell terminal session starting",
     profileLabel: "Profile",
     sessionExited: (code: number | null) => `Session exited with code ${code}.`,
-    sshProfileSelected: "SSH profile selected. Enter credentials in the SSH panel, then press Connect.",
+    terminalStartTimeout: "Connection timed out. Check host, port, network, and credentials.",
+    sshProfileSelected: "SSH profile selected. Enter credentials in the connection profile or SSH panel, then press Connect.",
     rdpProfileSelected: "RDP profile selected. Use the RDP panel to launch Windows Remote Desktop.",
     terminalSearchPlaceholder: "Search",
     find: "Find",
@@ -675,6 +683,8 @@ const translations = {
     pastePrivateKey: "Paste an OpenSSH private key for this session",
     passphrase: "Passphrase",
     encryptedPrivateKeys: "For encrypted private keys",
+    saveCredentialWithProfile: "Save to encrypted credential vault",
+    agentAuthHint: "Agent authentication uses your system SSH agent or saved credentials, so no password is needed here.",
     connect: "Connect",
     saveCredential: "Save credential",
     deleteSaved: "Delete saved",
@@ -1070,6 +1080,7 @@ const tunnelModes: Array<{ value: TunnelMode }> = [
 const connectionColors = ["#2f9e44", "#1971c2", "#d9480f", "#7048e8", "#0ca678", "#e67700"];
 
 const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
+const TERMINAL_START_TIMEOUT_MS = 20000;
 
 function createDefaultConnectionDraft(): ConnectionFormDraft {
   return {
@@ -1080,6 +1091,10 @@ function createDefaultConnectionDraft(): ConnectionFormDraft {
     port: "22",
     username: "",
     authMethod: "password",
+    password: "",
+    privateKey: "",
+    passphrase: "",
+    saveCredential: false,
     color: connectionColors[0],
     tags: ""
   };
@@ -1095,6 +1110,10 @@ function createConnectionDraft(connection: ConnectionProfile): ConnectionFormDra
     port: String(connection.port),
     username: connection.username,
     authMethod: connection.authMethod,
+    password: "",
+    privateKey: "",
+    passphrase: "",
+    saveCredential: false,
     color: connection.color,
     tags: connection.tags.join(", ")
   };
@@ -1588,6 +1607,9 @@ export function App() {
     const host = connectionDraft.host.trim();
     const username = connectionDraft.username.trim();
     const port = parsePort(connectionDraft.port);
+    const password = connectionDraft.password;
+    const privateKey = connectionDraft.privateKey;
+    const passphrase = connectionDraft.passphrase;
     if (!name) {
       setConnectionFormError(labels.connectionNameRequired);
       return;
@@ -1647,6 +1669,53 @@ export function App() {
     if (!connectionDraft.id) {
       setActiveConnectionId(connection.id);
       setActiveTabId(nextSession?.id ?? "");
+    }
+
+    if (connection.protocol === "ssh" && (password || privateKey || passphrase)) {
+      setSshDrafts((current) => ({
+        ...current,
+        [connection.id]: {
+          password,
+          privateKey,
+          passphrase
+        }
+      }));
+
+      if (connectionDraft.saveCredential) {
+        void window.cnshell?.credentials
+          .save({
+            connectionId: connection.id,
+            secret: {
+              password: password || undefined,
+              privateKey: privateKey || undefined,
+              passphrase: passphrase || undefined
+            }
+          })
+          .then((status) => {
+            setCredentialStatuses((current) => ({
+              ...current,
+              [connection.id]: status
+            }));
+            setCredentialErrors((current) => ({
+              ...current,
+              [connection.id]: ""
+            }));
+          })
+          .catch((error: Error) => {
+            setCredentialErrors((current) => ({
+              ...current,
+              [connection.id]: error.message
+            }));
+          });
+      }
+    }
+
+    if (!connectionDraft.id && connection.protocol === "ssh" && (password || privateKey)) {
+      window.setTimeout(() => {
+        if (nextSession) {
+          startSession(nextSession.id);
+        }
+      }, 0);
     }
 
     setConnectionDraft(null);
@@ -3800,6 +3869,14 @@ function TerminalPane({
 
     const startTerminalSession = () => {
       onStatusChangeRef.current(sessionId, "connecting");
+      let didTimeout = false;
+      const timeoutId = window.setTimeout(() => {
+        didTimeout = true;
+        terminal.writeln("");
+        terminal.writeln(`\x1b[31m${labelsRef.current.terminalStartTimeout}\x1b[0m`);
+        onStatusChangeRef.current(sessionId, "error");
+        void window.cnshell?.terminal.stop(sessionId);
+      }, TERMINAL_START_TIMEOUT_MS);
 
       void window.cnshell?.terminal
         .start({
@@ -3812,10 +3889,18 @@ function TerminalPane({
               ? createSshConfig(activeConnectionRef.current, sshDraftRef.current, useSavedCredentialRef.current)
               : undefined
         })
-        .then(() => onStatusChangeRef.current(sessionId, "connected"))
+        .then(() => {
+          window.clearTimeout(timeoutId);
+          if (!didTimeout) {
+            onStatusChangeRef.current(sessionId, "connected");
+          }
+        })
         .catch((error: Error) => {
-          terminal.writeln(`\x1b[31m${error.message}\x1b[0m`);
-          onStatusChangeRef.current(sessionId, "error");
+          window.clearTimeout(timeoutId);
+          if (!didTimeout) {
+            terminal.writeln(`\x1b[31m${error.message}\x1b[0m`);
+            onStatusChangeRef.current(sessionId, "error");
+          }
         });
     };
 
@@ -5478,6 +5563,53 @@ export function ConnectionEditorDialog({
               <option value="agent">Agent</option>
             </select>
           </label>
+          {draft.protocol === "ssh" && draft.authMethod === "password" ? (
+            <label>
+              <span>{labels.password}</span>
+              <input
+                type="password"
+                value={draft.password}
+                placeholder={labels.sessionOnly}
+                autoComplete="current-password"
+                onChange={(event) => update({ password: event.target.value })}
+              />
+            </label>
+          ) : null}
+          {draft.protocol === "ssh" && draft.authMethod === "privateKey" ? (
+            <label className="connection-form-wide">
+              <span>{labels.privateKey}</span>
+              <textarea
+                value={draft.privateKey}
+                placeholder={labels.pastePrivateKey}
+                onChange={(event) => update({ privateKey: event.target.value })}
+              />
+            </label>
+          ) : null}
+          {draft.protocol === "ssh" && draft.authMethod === "privateKey" ? (
+            <label>
+              <span>{labels.passphrase}</span>
+              <input
+                type="password"
+                value={draft.passphrase}
+                placeholder={labels.encryptedPrivateKeys}
+                autoComplete="off"
+                onChange={(event) => update({ passphrase: event.target.value })}
+              />
+            </label>
+          ) : null}
+          {draft.protocol === "ssh" && draft.authMethod === "agent" ? (
+            <div className="connection-form-note">{labels.agentAuthHint}</div>
+          ) : null}
+          {draft.protocol === "ssh" && draft.authMethod !== "agent" ? (
+            <label className="connection-form-check">
+              <input
+                type="checkbox"
+                checked={draft.saveCredential}
+                onChange={(event) => update({ saveCredential: event.target.checked })}
+              />
+              <span>{labels.saveCredentialWithProfile}</span>
+            </label>
+          ) : null}
           <label>
             <span>{labels.tags}</span>
             <input value={draft.tags} placeholder={labels.tagsHint} onChange={(event) => update({ tags: event.target.value })} />

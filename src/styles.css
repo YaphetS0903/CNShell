@@ -2846,6 +2846,7 @@ textarea:focus-visible {
 
 .connection-form input,
 .connection-form select,
+.connection-form textarea,
 .quick-command-form input,
 .quick-command-form select,
 .quick-command-form textarea {
@@ -2858,8 +2859,45 @@ textarea:focus-visible {
   padding: 0 10px;
 }
 
+.connection-form textarea {
+  min-height: 96px;
+  padding: 9px 10px;
+  resize: vertical;
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .connection-form select:disabled {
   color: #657381;
+}
+
+.connection-form-wide,
+.connection-form-note {
+  grid-column: 1 / -1;
+}
+
+.connection-form-note {
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+  color: #9fb0be;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px;
+}
+
+.connection-form-check {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+  flex-direction: row;
+  gap: 9px;
+}
+
+.connection-form-check input {
+  width: 16px;
+  min-height: 16px;
 }
 
 .color-field {
