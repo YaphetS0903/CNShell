@@ -213,6 +213,13 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Disable system information refresh while disconnected.~~
 - [x] ~~Add component coverage to prevent seeded data from appearing in disconnected states.~~
 
+## Compact Workspace Navigation Sprint
+
+- [x] ~~Collapse the full connection manager into a narrow left dock with an on-demand drawer.~~
+- [x] ~~Collapse the server status rail by default so terminal and SFTP get most of the workspace width.~~
+- [x] ~~Keep system information reachable from the compact rail and expandable when detailed monitoring is needed.~~
+- [x] ~~Update responsive rules so narrow docks stay compact across window sizes.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

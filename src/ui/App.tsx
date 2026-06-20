@@ -28,6 +28,7 @@ import {
   Info,
   KeyRound,
   LayoutDashboard,
+  Menu,
   Monitor,
   MoreHorizontal,
   Moon,
@@ -1573,6 +1574,8 @@ export function App() {
   const labels = translations[language];
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isOperationsOpen, setIsOperationsOpen] = useState(false);
+  const [isConnectionDrawerOpen, setIsConnectionDrawerOpen] = useState(false);
+  const [isStatusRailExpanded, setIsStatusRailExpanded] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [connectionDraft, setConnectionDraft] = useState<ConnectionFormDraft | null>(null);
@@ -3023,13 +3026,17 @@ export function App() {
         activeConnectionId={activeConnectionId}
         query={connectionQuery}
         collapsedGroups={collapsedGroups}
+        isOpen={isConnectionDrawerOpen}
         onQueryChange={setConnectionQuery}
+        onToggle={() => setIsConnectionDrawerOpen((current) => !current)}
+        onClose={() => setIsConnectionDrawerOpen(false)}
         onCreate={openNewConnectionEditor}
         onEditActive={openActiveConnectionEditor}
         onToggleGroup={toggleConnectionGroup}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onSelect={(connectionId) => {
           setActiveConnectionId(connectionId);
+          setIsConnectionDrawerOpen(false);
           const nextTab = snapshot.sessions.find((tab) => tab.connectionId === connectionId);
           if (nextTab) {
             setActiveTabId(nextTab.id);
@@ -3060,7 +3067,7 @@ export function App() {
           onCreate={createSessionForActiveConnection}
           onClose={closeSessionTab}
         />
-        <section className="workspace-grid">
+        <section className={`workspace-grid ${isStatusRailExpanded ? "status-expanded" : ""}`}>
           <ServerStatusRail
             connection={activeConnection}
             metrics={displayMetrics}
@@ -3069,6 +3076,8 @@ export function App() {
             status={metricsStatus}
             isConnected={isActiveSessionConnected}
             hasMetrics={hasActiveMetrics}
+            isExpanded={isStatusRailExpanded}
+            onToggleExpanded={() => setIsStatusRailExpanded((current) => !current)}
             onOpenSystemInfo={() => setWorkspaceView("systemInfo")}
           />
           {workspaceView === "systemInfo" ? (
@@ -3378,7 +3387,10 @@ interface ConnectionSidebarProps {
   activeConnectionId: string;
   query: string;
   collapsedGroups: Record<string, boolean>;
+  isOpen: boolean;
   onQueryChange: (query: string) => void;
+  onToggle: () => void;
+  onClose: () => void;
   onCreate: () => void;
   onEditActive: () => void;
   onToggleGroup: (group: string) => void;
@@ -3391,7 +3403,10 @@ function ConnectionSidebar({
   activeConnectionId,
   query,
   collapsedGroups,
+  isOpen,
   onQueryChange,
+  onToggle,
+  onClose,
   onCreate,
   onEditActive,
   onToggleGroup,
@@ -3400,75 +3415,105 @@ function ConnectionSidebar({
 }: ConnectionSidebarProps) {
   const labels = useUiStrings();
   const groupEntries = Object.entries(groupedConnections);
+  const activeConnection = groupEntries.flatMap(([, connections]) => connections).find((connection) => connection.id === activeConnectionId);
   return (
-    <aside className="sidebar" aria-label={labels.connectionManager}>
-      <div className="brand-row">
-        <div className="brand-mark" aria-hidden="true">
-          CN
-        </div>
-        <div>
-          <h1>CNshell</h1>
-          <p>{labels.consoleSubtitle}</p>
-        </div>
-      </div>
-
-      <label className="search-box">
-        <Search size={17} aria-hidden="true" />
-        <span className="sr-only">{labels.searchConnections}</span>
-        <input value={query} placeholder={labels.searchHostsPlaceholder} onChange={(event) => onQueryChange(event.target.value)} />
-      </label>
-
-      <div className="sidebar-actions" aria-label={labels.connectionActions}>
-        <button type="button" onClick={onCreate}>
-          <Plus size={16} aria-hidden="true" />
-          {labels.newConnection}
+    <aside className="sidebar-shell" aria-label={labels.connectionManager}>
+      <div className="sidebar-dock">
+        <button type="button" className="dock-brand" aria-label="CNshell" aria-expanded={isOpen} onClick={onToggle}>
+          <span aria-hidden="true">CN</span>
+        </button>
+        <button type="button" aria-label={labels.connectionManager} aria-expanded={isOpen} onClick={onToggle}>
+          <Menu size={18} aria-hidden="true" />
+        </button>
+        <button type="button" aria-label={labels.newConnection} onClick={onCreate}>
+          <Plus size={18} aria-hidden="true" />
         </button>
         <button type="button" aria-label={labels.editConnection} onClick={onEditActive}>
-          <Edit3 size={16} aria-hidden="true" />
+          <Edit3 size={17} aria-hidden="true" />
         </button>
         <button type="button" aria-label={labels.connectionSettings} onClick={onOpenSettings}>
-          <Settings size={16} aria-hidden="true" />
+          <Settings size={17} aria-hidden="true" />
+        </button>
+        <div className="dock-spacer" />
+        <button type="button" className="dock-active-connection" aria-label={activeConnection ? displayBuiltInName(activeConnection.name, labels) : labels.connectionManager} onClick={onToggle}>
+          {activeConnection ? <ProtocolIcon protocol={activeConnection.protocol} /> : <Server size={16} aria-hidden="true" />}
         </button>
       </div>
 
-      <nav className="connection-tree">
-        {groupEntries.length === 0 ? <div className="sidebar-empty">{labels.noConnectionsFound}</div> : null}
-        {groupEntries.map(([group, connections]) => {
-          const isCollapsed = Boolean(collapsedGroups[group]);
-          return (
-            <section key={group} className="connection-group" aria-label={labels.groupAria(group)}>
-            <button
-              type="button"
-              className="group-title"
-              aria-expanded={!isCollapsed}
-              aria-label={isCollapsed ? labels.expandGroup : labels.collapseGroup}
-              onClick={() => onToggleGroup(group)}
-            >
-              {isCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
-              {displayBuiltInGroup(group, labels)}
-              <span>{connections.length}</span>
+      {isOpen ? (
+        <div className="sidebar-drawer open">
+          <div className="brand-row">
+            <div className="brand-mark" aria-hidden="true">
+              CN
+            </div>
+            <div>
+              <h1>CNshell</h1>
+              <p>{labels.consoleSubtitle}</p>
+            </div>
+            <button type="button" className="drawer-close" aria-label={labels.close} onClick={onClose}>
+              <X size={16} aria-hidden="true" />
             </button>
-            {isCollapsed ? null : connections.map((connection) => (
-              <button
-                type="button"
-                key={connection.id}
-                className={`connection-item ${connection.id === activeConnectionId ? "active" : ""}`}
-                onClick={() => onSelect(connection.id)}
-              >
-                <span className="connection-color" style={{ background: connection.color }} aria-hidden="true" />
-                <span className="connection-copy">
-                  <strong>{displayBuiltInName(connection.name, labels)}</strong>
-                  <small>
-                    {connection.username}@{displayConnectionEndpoint(connection, labels)}
-                  </small>
-                </span>
-                <ProtocolIcon protocol={connection.protocol} />
-              </button>
-            ))}
-          </section>
-          );
-        })}
-      </nav>
+          </div>
+
+          <label className="search-box">
+            <Search size={17} aria-hidden="true" />
+            <span className="sr-only">{labels.searchConnections}</span>
+            <input value={query} placeholder={labels.searchHostsPlaceholder} onChange={(event) => onQueryChange(event.target.value)} />
+          </label>
+
+          <div className="sidebar-actions" aria-label={labels.connectionActions}>
+            <button type="button" onClick={onCreate}>
+              <Plus size={16} aria-hidden="true" />
+              {labels.newConnection}
+            </button>
+            <button type="button" aria-label={labels.editConnection} onClick={onEditActive}>
+              <Edit3 size={16} aria-hidden="true" />
+            </button>
+            <button type="button" aria-label={labels.connectionSettings} onClick={onOpenSettings}>
+              <Settings size={16} aria-hidden="true" />
+            </button>
+          </div>
+
+          <nav className="connection-tree">
+            {groupEntries.length === 0 ? <div className="sidebar-empty">{labels.noConnectionsFound}</div> : null}
+            {groupEntries.map(([group, connections]) => {
+              const isCollapsed = Boolean(collapsedGroups[group]);
+              return (
+                <section key={group} className="connection-group" aria-label={labels.groupAria(group)}>
+                <button
+                  type="button"
+                  className="group-title"
+                  aria-expanded={!isCollapsed}
+                  aria-label={isCollapsed ? labels.expandGroup : labels.collapseGroup}
+                  onClick={() => onToggleGroup(group)}
+                >
+                  {isCollapsed ? <ChevronRight size={15} aria-hidden="true" /> : <ChevronDown size={15} aria-hidden="true" />}
+                  {displayBuiltInGroup(group, labels)}
+                  <span>{connections.length}</span>
+                </button>
+                {isCollapsed ? null : connections.map((connection) => (
+                  <button
+                    type="button"
+                    key={connection.id}
+                    className={`connection-item ${connection.id === activeConnectionId ? "active" : ""}`}
+                    onClick={() => onSelect(connection.id)}
+                  >
+                    <span className="connection-color" style={{ background: connection.color }} aria-hidden="true" />
+                    <span className="connection-copy">
+                      <strong>{displayBuiltInName(connection.name, labels)}</strong>
+                      <small>
+                        {connection.username}@{displayConnectionEndpoint(connection, labels)}
+                      </small>
+                    </span>
+                    <ProtocolIcon protocol={connection.protocol} />
+                  </button>
+                ))}
+              </section>
+              );
+            })}
+          </nav>
+        </div>
+      ) : null}
     </aside>
   );
 }
@@ -3647,6 +3692,8 @@ export function ServerStatusRail({
   status,
   isConnected = true,
   hasMetrics = true,
+  isExpanded = true,
+  onToggleExpanded,
   onOpenSystemInfo
 }: {
   connection: ConnectionProfile;
@@ -3656,6 +3703,8 @@ export function ServerStatusRail({
   status: "idle" | "loading" | "error";
   isConnected?: boolean;
   hasMetrics?: boolean;
+  isExpanded?: boolean;
+  onToggleExpanded?: () => void;
   onOpenSystemInfo: () => void;
 }) {
   const labels = useUiStrings();
@@ -3670,7 +3719,29 @@ export function ServerStatusRail({
   const latestNetwork = displayInfo.networkSamples.at(-1);
 
   return (
-    <aside className="server-status-rail" aria-label={labels.serverMetrics}>
+    <aside className={`server-status-rail ${isExpanded ? "expanded" : "compact"}`} aria-label={labels.serverMetrics}>
+      <button type="button" className="status-rail-toggle" aria-expanded={isExpanded} aria-label={labels.serverMetrics} onClick={onToggleExpanded ?? onOpenSystemInfo}>
+        <Info size={17} aria-hidden="true" />
+      </button>
+      {!isExpanded ? (
+        <>
+          <button type="button" className="status-rail-icon" aria-label={labels.systemInfo} onClick={onOpenSystemInfo}>
+            <Server size={17} aria-hidden="true" />
+          </button>
+          <span className="status-rail-meter" title={`${labels.cpu} ${cpu}%`}>
+            <Activity size={15} aria-hidden="true" />
+            <em style={{ height: `${Math.max(4, Math.min(100, cpu))}%` }} />
+          </span>
+          <span className="status-rail-meter" title={`${labels.memory} ${memory}%`}>
+            <Monitor size={15} aria-hidden="true" />
+            <em style={{ height: `${Math.max(4, Math.min(100, memory))}%` }} />
+          </span>
+          <button type="button" className="status-rail-icon" aria-label={labels.monitor} onClick={onToggleExpanded}>
+            <ChevronRight size={17} aria-hidden="true" />
+          </button>
+        </>
+      ) : (
+        <>
       <div className="server-sync-row">
         <span>{labels.syncStatus}</span>
         <Circle size={9} fill="currentColor" aria-hidden="true" />
@@ -3752,6 +3823,8 @@ export function ServerStatusRail({
       </div>
       {status === "loading" ? <small className="rail-status">{labels.collectingMetrics}</small> : null}
       {!canShowMetrics && status !== "loading" ? <small className="rail-status">{labels.noSystemInfo}</small> : null}
+        </>
+      )}
     </aside>
   );
 }
