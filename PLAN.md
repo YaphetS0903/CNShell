@@ -170,6 +170,16 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Auto-trust first-seen host keys while still blocking changed host keys.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Desktop Preload Bridge Fix Sprint
+
+- [x] ~~Trace the UI timeout to a missing renderer-to-main `window.cnshell` bridge instead of SSH itself.~~
+- [x] ~~Build Electron preload as CommonJS `preload.cjs` so packaged Electron loads it reliably.~~
+- [x] ~~Point the main BrowserWindow at the CommonJS preload file.~~
+- [x] ~~Show an explicit desktop bridge error instead of a misleading SSH timeout when preload is unavailable.~~
+- [x] ~~Migrate legacy localStorage workspace data into the main-process workspace store after the bridge is restored.~~
+- [x] ~~Open the packaged app and verify `window.cnshell` plus terminal SSH startup through the UI bridge.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

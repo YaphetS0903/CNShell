@@ -277,6 +277,7 @@ const translations = {
     profileLabel: "配置",
     sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
     terminalStartTimeout: "SSH 握手超时，请检查主机、端口、安全组、防火墙、sshd 和凭据。",
+    desktopBridgeUnavailable: "CNshell 桌面桥接未加载，请重新打开应用；如果仍出现，请检查 preload 打包配置。",
     sshProfileSelected: "已选择 SSH 配置。连接配置中的凭据会直接用于连接；如需修改，请点击顶部钥匙按钮或左侧编辑连接。",
     rdpProfileSelected: "已选择 RDP 配置。请使用 RDP 面板启动 Windows 远程桌面。",
     terminalSearchPlaceholder: "搜索",
@@ -665,6 +666,7 @@ const translations = {
     profileLabel: "Profile",
     sessionExited: (code: number | null) => `Session exited with code ${code}.`,
     terminalStartTimeout: "SSH handshake timed out. Check host, port, security group, firewall, sshd, and credentials.",
+    desktopBridgeUnavailable: "CNshell desktop bridge is not loaded. Restart the app; if it remains, check the preload package.",
     sshProfileSelected: "SSH profile selected. Credentials saved in the connection profile are used directly; use the key button or Edit connection to change them.",
     rdpProfileSelected: "RDP profile selected. Use the RDP panel to launch Windows Remote Desktop.",
     terminalSearchPlaceholder: "Search",
@@ -1674,6 +1676,12 @@ export function App() {
   );
 
   const activeCredentialStatus = credentialStatuses[activeConnection.id];
+  const hasActiveSshCredential = Boolean(
+    activeConnection.authMethod === "agent" ||
+    activeSshDraft.password ||
+    activeSshDraft.privateKey ||
+    activeCredentialStatus?.hasCredential
+  );
 
   const focusPanel = useCallback((panel: PanelFocusKey) => {
     setIsOperationsOpen(true);
@@ -1947,6 +1955,11 @@ export function App() {
       return;
     }
 
+    if (!hasActiveSshCredential) {
+      setSftpStatus("idle");
+      return;
+    }
+
     const directoryPath = normalizeRemotePath(pathOverride ?? remotePath);
     setSftpStatus("loading");
     setSftpError("");
@@ -1965,7 +1978,7 @@ export function App() {
         setSftpError(error.message);
         setSftpStatus("error");
       });
-  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, remotePath, snapshot.remoteFiles, syncRemotePath]);
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, hasActiveSshCredential, remotePath, snapshot.remoteFiles, syncRemotePath]);
 
   const navigateRemotePath = useCallback((nextPath: string) => {
     const normalizedPath = normalizeRemotePath(nextPath || "/");
@@ -2449,6 +2462,11 @@ export function App() {
       return;
     }
 
+    if (!hasActiveSshCredential) {
+      setMetricsStatus("idle");
+      return;
+    }
+
     setMetricsStatus("loading");
     setMetricsError("");
 
@@ -2471,11 +2489,16 @@ export function App() {
         setMetricsError(error.message);
         setMetricsStatus("error");
       });
-  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, snapshot.serverMetrics]);
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, hasActiveSshCredential, snapshot.serverMetrics]);
 
   const refreshProcesses = useCallback(() => {
     if (activeConnection.protocol !== "ssh") {
       setRemoteProcesses(snapshot.remoteProcesses);
+      return;
+    }
+
+    if (!hasActiveSshCredential) {
+      setProcessStatus("idle");
       return;
     }
 
@@ -2495,7 +2518,7 @@ export function App() {
         setProcessError(error.message);
         setProcessStatus("error");
       });
-  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, liveMetrics, snapshot.remoteProcesses]);
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, hasActiveSshCredential, liveMetrics, snapshot.remoteProcesses]);
 
   const killProcess = (pid: number) => {
     if (activeConnection.protocol !== "ssh") {
@@ -3876,6 +3899,13 @@ function TerminalPane({
     });
 
     const startTerminalSession = () => {
+      if (!window.cnshell?.terminal) {
+        terminal.writeln("");
+        terminal.writeln(`\x1b[31m${labelsRef.current.desktopBridgeUnavailable}\x1b[0m`);
+        onStatusChangeRef.current(sessionId, "error");
+        return;
+      }
+
       onStatusChangeRef.current(sessionId, "connecting");
       let didTimeout = false;
       const timeoutId = window.setTimeout(() => {

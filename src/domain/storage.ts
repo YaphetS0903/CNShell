@@ -10,20 +10,34 @@ export interface WorkspaceStorage {
 export function createLocalWorkspaceStorage(): WorkspaceStorage {
   return {
     async loadSnapshot() {
+      const loadLocalSnapshot = () => {
+        try {
+          const storedValue = window.localStorage.getItem(SNAPSHOT_KEY);
+          return storedValue ? (JSON.parse(storedValue) as AppSnapshot) : null;
+        } catch {
+          window.localStorage.removeItem(SNAPSHOT_KEY);
+          return null;
+        }
+      };
+
       if (window.cnshell?.workspace) {
-        return window.cnshell.workspace.load();
+        const desktopSnapshot = await window.cnshell.workspace.load();
+        if (desktopSnapshot) {
+          return desktopSnapshot;
+        }
+
+        const legacySnapshot = loadLocalSnapshot();
+        if (legacySnapshot) {
+          await window.cnshell.workspace.save(legacySnapshot);
+        }
+        return legacySnapshot;
       }
 
-      try {
-        const storedValue = window.localStorage.getItem(SNAPSHOT_KEY);
-        return storedValue ? (JSON.parse(storedValue) as AppSnapshot) : null;
-      } catch {
-        window.localStorage.removeItem(SNAPSHOT_KEY);
-        return null;
-      }
+      return loadLocalSnapshot();
     },
     saveSnapshot(snapshot) {
       if (window.cnshell?.workspace) {
+        window.localStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
         return window.cnshell.workspace.save(snapshot);
       }
 
