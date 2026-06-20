@@ -225,7 +225,7 @@ const translations = {
     noOpenSessions: "暂无打开的会话",
     noOpenSessionsDetail: "从左侧选择连接，或点击 + 创建一个新会话。",
     allSessionsClosed: "所有会话都已关闭",
-    allSessionsClosedDetail: "左侧连接和右侧凭据面板仍然可用。可以重新打开当前连接，或先新建一个连接配置。",
+    allSessionsClosedDetail: "左侧连接列表仍然可用。可以重新打开当前连接，或先新建一个连接配置。",
     localProtocol: "本地",
     status: {
       connected: "已连接",
@@ -276,8 +276,8 @@ const translations = {
     terminalStarting: "CNshell 终端会话正在启动",
     profileLabel: "配置",
     sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
-    terminalStartTimeout: "连接超时，请检查主机、端口、网络和凭据。",
-    sshProfileSelected: "已选择 SSH 配置。连接配置中的凭据会直接用于连接；如需临时覆盖，可展开右侧连接凭据。",
+    terminalStartTimeout: "SSH 握手超时，请检查主机、端口、安全组、防火墙、sshd 和凭据。",
+    sshProfileSelected: "已选择 SSH 配置。连接配置中的凭据会直接用于连接；如需修改，请点击顶部钥匙按钮或左侧编辑连接。",
     rdpProfileSelected: "已选择 RDP 配置。请使用 RDP 面板启动 Windows 远程桌面。",
     terminalSearchPlaceholder: "搜索",
     find: "查找",
@@ -325,7 +325,7 @@ const translations = {
     expectedFingerprint: (fingerprint: string) => `期望 ${fingerprint}`,
     trustAndReconnect: "信任并重连",
     hostKeyTrustRequired: (host: string, port: number) =>
-      `首次连接 ${host}:${port} 需要信任主机密钥。请在连接凭据面板点击“信任并重连”。`,
+      `首次连接 ${host}:${port} 需要信任主机密钥。请在主机密钥弹窗中确认后重连。`,
     hostKeyChangedBlocked: (host: string, port: number) =>
       `${host}:${port} 的主机密钥已变化。为避免中间人风险，请确认服务器指纹后再处理 known_hosts。`,
     password: "密码",
@@ -613,7 +613,7 @@ const translations = {
     noOpenSessions: "No open sessions",
     noOpenSessionsDetail: "Select a connection on the left, or click + to create a new session.",
     allSessionsClosed: "All sessions are closed",
-    allSessionsClosedDetail: "Connections and credential panels are still available. Reopen the current connection or create a new profile.",
+    allSessionsClosedDetail: "The connection list is still available. Reopen the current connection or create a new profile.",
     localProtocol: "local",
     status: {
       connected: "connected",
@@ -664,8 +664,8 @@ const translations = {
     terminalStarting: "CNshell terminal session starting",
     profileLabel: "Profile",
     sessionExited: (code: number | null) => `Session exited with code ${code}.`,
-    terminalStartTimeout: "Connection timed out. Check host, port, network, and credentials.",
-    sshProfileSelected: "SSH profile selected. Credentials saved in the connection profile are used directly; expand Connection credentials to override them temporarily.",
+    terminalStartTimeout: "SSH handshake timed out. Check host, port, security group, firewall, sshd, and credentials.",
+    sshProfileSelected: "SSH profile selected. Credentials saved in the connection profile are used directly; use the key button or Edit connection to change them.",
     rdpProfileSelected: "RDP profile selected. Use the RDP panel to launch Windows Remote Desktop.",
     terminalSearchPlaceholder: "Search",
     find: "Find",
@@ -713,7 +713,7 @@ const translations = {
     expectedFingerprint: (fingerprint: string) => `Expected ${fingerprint}`,
     trustAndReconnect: "Trust and reconnect",
     hostKeyTrustRequired: (host: string, port: number) =>
-      `First connection to ${host}:${port} needs host key trust. Press Trust and reconnect in Connection credentials.`,
+      `First connection to ${host}:${port} needs host key trust. Review the host-key prompt and reconnect.`,
     hostKeyChangedBlocked: (host: string, port: number) =>
       `${host}:${port} presented a changed host key. Verify the server fingerprint before changing known_hosts.`,
     password: "Password",
@@ -1138,7 +1138,7 @@ const tunnelModes: Array<{ value: TunnelMode }> = [
 const connectionColors = ["#2f9e44", "#1971c2", "#d9480f", "#7048e8", "#0ca678", "#e67700"];
 
 const modifierKeys = new Set(["Alt", "Control", "Meta", "Shift"]);
-const TERMINAL_START_TIMEOUT_MS = 20000;
+const TERMINAL_START_TIMEOUT_MS = 65000;
 
 function createDefaultConnectionDraft(): ConnectionFormDraft {
   return {
@@ -1463,6 +1463,7 @@ function createSshConfig(
     privateKey: draft.privateKey || undefined,
     passphrase: draft.passphrase || undefined,
     useSavedCredential,
+    readyTimeout: 60000,
     gateways: connection.gateways
   };
 }

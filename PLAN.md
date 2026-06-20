@@ -151,6 +151,16 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Verify the reported server endpoint with a local TCP test.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## FinalShell Parity SSH Compatibility Sprint
+
+- [x] ~~Treat FinalShell's successful connection as proof that local TCP probes can be false negatives.~~
+- [x] ~~Remove the blocking TCP reachability preflight from CNshell's SSH path.~~
+- [x] ~~Let ssh2 perform the real SSH handshake and report the actual authentication or host-key result.~~
+- [x] ~~Increase SSH ready timeout to 60 seconds and align the renderer startup timeout.~~
+- [x] ~~Enable keyboard-interactive password fallback for servers that behave like FinalShell/JSch targets.~~
+- [x] ~~Update stale terminal guidance that referenced the removed right-side credential panel.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

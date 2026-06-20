@@ -1,6 +1,5 @@
 import type { ConnectConfig } from "ssh2";
 import { Client } from "ssh2";
-import net from "node:net";
 import type { CredentialStore } from "./credentialStore.js";
 import type { KnownHostsStore } from "./knownHostsStore.js";
 import type { SshSessionConfig } from "../src/shared/ipc.js";
@@ -41,7 +40,8 @@ export function buildSshConnectConfig({
     password,
     privateKey,
     passphrase,
-    readyTimeout: ssh.readyTimeout ?? 15000,
+    readyTimeout: ssh.readyTimeout ?? 60000,
+    tryKeyboard: Boolean(password),
     keepaliveInterval: 15000,
     hostVerifier: (key: Buffer) => {
       if (!knownHostsStore) {
@@ -173,8 +173,15 @@ function connectClientThrough(
 }
 
 function connectClient(client: Client, config: ConnectConfig) {
-  return checkTcpReachable(config).then(() => new Promise<void>((resolve, reject) => {
+  return new Promise<void>((resolve, reject) => {
     let settled = false;
+    const interactivePassword = typeof config.password === "string" ? config.password : "";
+
+    if (interactivePassword) {
+      client.on("keyboard-interactive", (_name, _instructions, _instructionsLang, prompts, finish) => {
+        finish(prompts.map((prompt) => (prompt.echo ? "" : interactivePassword)));
+      });
+    }
 
     client
       .once("ready", () => {
@@ -190,56 +197,6 @@ function connectClient(client: Client, config: ConnectConfig) {
         }
       })
       .connect(config);
-  }));
-}
-
-function checkTcpReachable(config: ConnectConfig) {
-  if (config.sock) {
-    return Promise.resolve();
-  }
-
-  const host = typeof config.host === "string" ? config.host : "";
-  const port = typeof config.port === "number" ? config.port : 22;
-  if (!host) {
-    return Promise.resolve();
-  }
-
-  const timeoutMs = Math.min(Math.max(config.readyTimeout ?? 15000, 3000), 6000);
-  return new Promise<void>((resolve, reject) => {
-    let settled = false;
-    const socket = net.createConnection({ host, port });
-
-    const finish = (error?: Error) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      socket.destroy();
-      if (error) {
-        reject(error);
-        return;
-      }
-
-      resolve();
-    };
-
-    socket.setTimeout(timeoutMs);
-    socket.once("connect", () => finish());
-    socket.once("timeout", () => {
-      finish(
-        new Error(
-          `无法连接到 ${host}:${port}。TCP 端口不可达，请检查云服务器安全组、防火墙、sshd 是否启动，或确认 SSH 端口是否正确。`
-        )
-      );
-    });
-    socket.once("error", (error) => {
-      finish(
-        new Error(
-          `无法连接到 ${host}:${port}（${error.message}）。请检查云服务器安全组、防火墙、sshd 是否启动，或确认 SSH 端口是否正确。`
-        )
-      );
-    });
   });
 }
 
