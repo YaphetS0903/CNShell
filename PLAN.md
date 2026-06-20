@@ -198,6 +198,13 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Open SSH file browsing in the remote user's home directory on first connect.~~
 - [x] ~~Add coverage for SSH home-directory session defaults.~~
 
+## SFTP Directory Navigation Sprint
+
+- [x] ~~Identify that manual root navigation could be overridden by automatic home-directory sync.~~
+- [x] ~~Mark manually navigated sessions so the first-connect home-directory helper no longer takes over.~~
+- [x] ~~Ignore stale SFTP directory responses so older requests cannot overwrite the latest clicked path.~~
+- [x] ~~Re-run typecheck, lint, and unit tests.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

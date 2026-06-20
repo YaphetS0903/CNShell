@@ -1630,6 +1630,7 @@ export function App() {
   const lastAutoRefreshKeyRef = useRef("");
   const lastAutoStatusRefreshKeyRef = useRef("");
   const homeDirectoryInitializedSessionsRef = useRef(new Set<string>());
+  const latestSftpRequestRef = useRef(0);
   const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
     tunnels: null,
     zmodem: null,
@@ -1975,6 +1976,8 @@ export function App() {
     }
 
     const directoryPath = normalizeRemotePath(pathOverride ?? remotePath);
+    const requestId = latestSftpRequestRef.current + 1;
+    latestSftpRequestRef.current = requestId;
     setSftpStatus("loading");
     setSftpError("");
 
@@ -1984,11 +1987,17 @@ export function App() {
         ssh: createSshConfig(activeConnection, activeSshDraft, Boolean(activeCredentialStatus?.hasCredential))
       })
       .then((listing) => {
+        if (requestId !== latestSftpRequestRef.current) {
+          return;
+        }
         syncRemotePath(listing.path);
         setRemoteFileEntries(listing.entries);
         setSftpStatus("idle");
       })
       .catch((error: Error) => {
+        if (requestId !== latestSftpRequestRef.current) {
+          return;
+        }
         setSftpError(error.message);
         setSftpStatus("error");
       });
@@ -1996,9 +2005,12 @@ export function App() {
 
   const navigateRemotePath = useCallback((nextPath: string) => {
     const normalizedPath = normalizeRemotePath(nextPath || "/");
+    if (activeTab?.id) {
+      homeDirectoryInitializedSessionsRef.current.add(activeTab.id);
+    }
     syncRemotePath(normalizedPath);
     refreshRemoteFiles(normalizedPath);
-  }, [refreshRemoteFiles, syncRemotePath]);
+  }, [activeTab?.id, refreshRemoteFiles, syncRemotePath]);
 
   const appendRecordingInput = (input: string) => {
     if (!isRecordingScript || !input) {
