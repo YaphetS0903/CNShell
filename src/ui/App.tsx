@@ -1161,6 +1161,7 @@ function createDefaultConnectionDraft(): ConnectionFormDraft {
 }
 
 function createConnectionDraft(connection: ConnectionProfile): ConnectionFormDraft {
+  const legacyPassword = findLegacyPasswordTag(connection);
   return {
     id: connection.id,
     name: connection.name,
@@ -1170,12 +1171,12 @@ function createConnectionDraft(connection: ConnectionProfile): ConnectionFormDra
     port: String(connection.port),
     username: connection.username,
     authMethod: connection.authMethod,
-    password: "",
+    password: legacyPassword ?? "",
     privateKey: "",
     passphrase: "",
-    saveCredential: false,
+    saveCredential: Boolean(legacyPassword),
     color: connection.color,
-    tags: connection.tags.join(", ")
+    tags: connection.tags.filter((tag) => tag !== legacyPassword).join(", ")
   };
 }
 
@@ -1201,6 +1202,18 @@ function normalizeTags(value: string) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function isLikelyLegacyPasswordTag(tag: string) {
+  return tag.length >= 10 && !/\s/.test(tag) && /[a-zA-Z]/.test(tag) && /\d/.test(tag) && /[^a-zA-Z0-9]/.test(tag);
+}
+
+function findLegacyPasswordTag(connection: ConnectionProfile) {
+  if (connection.protocol !== "ssh" || connection.authMethod !== "password") {
+    return undefined;
+  }
+
+  return connection.tags.find(isLikelyLegacyPasswordTag);
 }
 
 function connectionMatchesQuery(connection: ConnectionProfile, query: string, labels: UiStrings) {
@@ -2806,8 +2819,9 @@ export function App() {
         setLiveMetrics(hydratedSnapshot.serverMetrics);
         setSystemInfo(hydratedSnapshot.systemInfo);
         setRemoteProcesses(hydratedSnapshot.remoteProcesses);
-        setActiveConnectionId(hydratedSnapshot.connections[0]?.id ?? "");
-        setActiveTabId(hydratedSnapshot.sessions[0]?.id ?? "");
+        const firstSession = hydratedSnapshot.sessions[0];
+        setActiveConnectionId(firstSession?.connectionId ?? hydratedSnapshot.connections[0]?.id ?? "");
+        setActiveTabId(firstSession?.id ?? "");
       }
 
       setIsWorkspaceReady(true);
@@ -2835,6 +2849,47 @@ export function App() {
       refreshCredentialStatus(activeConnection.id);
     }
   }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus]);
+
+  useEffect(() => {
+    const legacyPassword = findLegacyPasswordTag(activeConnection);
+    if (
+      !legacyPassword ||
+      activeCredentialStatus?.hasCredential ||
+      activeSshDraft.password ||
+      activeSshDraft.privateKey ||
+      !window.cnshell?.credentials
+    ) {
+      return;
+    }
+
+    setSshDrafts((current) => ({
+      ...current,
+      [activeConnection.id]: {
+        ...(current[activeConnection.id] ?? { password: "", privateKey: "", passphrase: "" }),
+        password: legacyPassword
+      }
+    }));
+    setSnapshot((current) => ({
+      ...current,
+      connections: current.connections.map((connection) =>
+        connection.id === activeConnection.id
+          ? { ...connection, tags: connection.tags.filter((tag) => tag !== legacyPassword) }
+          : connection
+      )
+    }));
+    void window.cnshell.credentials
+      .save({
+        connectionId: activeConnection.id,
+        secret: { password: legacyPassword }
+      })
+      .then((status) => {
+        setCredentialStatuses((current) => ({
+          ...current,
+          [activeConnection.id]: status
+        }));
+      })
+      .catch((error: Error) => setConnectionFormError(error.message));
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft.password, activeSshDraft.privateKey]);
 
   useEffect(() => {
     refreshSessionLog();

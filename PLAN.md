@@ -180,6 +180,16 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Open the packaged app and verify `window.cnshell` plus terminal SSH startup through the UI bridge.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Saved Credential Recovery Sprint
+
+- [x] ~~Inspect the real app workspace and audit log after authentication failure.~~
+- [x] ~~Identify that the affected profile stored the password as a tag while the credential vault was empty.~~
+- [x] ~~Migrate password-shaped legacy tags into session credentials and the encrypted credential store.~~
+- [x] ~~Remove migrated password-shaped tags from the connection profile.~~
+- [x] ~~Pre-fill the edit dialog password field from legacy tags for manual recovery.~~
+- [x] ~~Load the active connection from the active restored session instead of always using the first profile.~~
+- [x] ~~Re-run typecheck, lint, tests, package, launch the app, verify SSH, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
