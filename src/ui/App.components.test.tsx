@@ -187,6 +187,39 @@ describe("renderer workflow components", () => {
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ password: "secret-pass" }));
   });
 
+  it("splits host and port input in the connection profile dialog", () => {
+    const onChange = vi.fn();
+    render(
+      <ConnectionEditorDialog
+        draft={{
+          name: "new-host",
+          group: "Staging",
+          protocol: "ssh",
+          host: "124.223.19.107:2222",
+          port: "22",
+          username: "ubuntu",
+          authMethod: "password",
+          password: "",
+          privateKey: "",
+          passphrase: "",
+          saveCredential: false,
+          color: "#2f9e44",
+          tags: ""
+        }}
+        error=""
+        canDelete={false}
+        onChange={onChange}
+        onSave={vi.fn()}
+        onDelete={vi.fn()}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.blur(screen.getByLabelText("Host"));
+
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ host: "124.223.19.107", port: "2222" }));
+  });
+
   it("changes theme preferences from the settings dialog", () => {
     const onThemeModeChange = vi.fn();
     const onThemeAccentChange = vi.fn();

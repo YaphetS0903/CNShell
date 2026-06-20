@@ -276,7 +276,7 @@ const translations = {
     profileLabel: "配置",
     sessionExited: (code: number | null) => `会话已退出，退出码 ${code}。`,
     terminalStartTimeout: "连接超时，请检查主机、端口、网络和凭据。",
-    sshProfileSelected: "已选择 SSH 配置。可在连接配置或右侧 SSH 面板输入凭据，然后点击连接。",
+    sshProfileSelected: "已选择 SSH 配置。连接配置中的凭据会直接用于连接；如需临时覆盖，可展开右侧连接凭据。",
     rdpProfileSelected: "已选择 RDP 配置。请使用 RDP 面板启动 Windows 远程桌面。",
     terminalSearchPlaceholder: "搜索",
     find: "查找",
@@ -299,8 +299,10 @@ const translations = {
     riskyPasteLines: (count: number) => `${count} 行`,
     riskyPasteShell: "包含 Shell 链式执行或变量展开",
     riskyPasteDangerous: "高风险命令",
-    sshCredentials: "SSH 凭据",
+    sshCredentials: "连接凭据",
     sshLogin: "SSH 登录",
+    advancedSshLogin: "高级登录",
+    sessionCredentialReady: "本次会话凭据已就绪",
     savedCredentialAvailable: "已保存凭据可用",
     noSavedCredential: "无已保存凭据",
     encryptionUnavailable: "加密不可用",
@@ -321,7 +323,7 @@ const translations = {
     expectedFingerprint: (fingerprint: string) => `期望 ${fingerprint}`,
     trustAndReconnect: "信任并重连",
     hostKeyTrustRequired: (host: string, port: number) =>
-      `首次连接 ${host}:${port} 需要信任主机密钥。请在 SSH 登录面板点击“信任并重连”。`,
+      `首次连接 ${host}:${port} 需要信任主机密钥。请在连接凭据面板点击“信任并重连”。`,
     hostKeyChangedBlocked: (host: string, port: number) =>
       `${host}:${port} 的主机密钥已变化。为避免中间人风险，请确认服务器指纹后再处理 known_hosts。`,
     password: "密码",
@@ -659,7 +661,7 @@ const translations = {
     profileLabel: "Profile",
     sessionExited: (code: number | null) => `Session exited with code ${code}.`,
     terminalStartTimeout: "Connection timed out. Check host, port, network, and credentials.",
-    sshProfileSelected: "SSH profile selected. Enter credentials in the connection profile or SSH panel, then press Connect.",
+    sshProfileSelected: "SSH profile selected. Credentials saved in the connection profile are used directly; expand Connection credentials to override them temporarily.",
     rdpProfileSelected: "RDP profile selected. Use the RDP panel to launch Windows Remote Desktop.",
     terminalSearchPlaceholder: "Search",
     find: "Find",
@@ -682,8 +684,10 @@ const translations = {
     riskyPasteLines: (count: number) => `${count} lines`,
     riskyPasteShell: "shell chaining or expansion",
     riskyPasteDangerous: "high-risk command",
-    sshCredentials: "SSH credentials",
+    sshCredentials: "Connection credentials",
     sshLogin: "SSH Login",
+    advancedSshLogin: "Advanced login",
+    sessionCredentialReady: "Session credential ready",
     savedCredentialAvailable: "Saved credential available",
     noSavedCredential: "No saved credential",
     encryptionUnavailable: "Encryption unavailable",
@@ -704,7 +708,7 @@ const translations = {
     expectedFingerprint: (fingerprint: string) => `Expected ${fingerprint}`,
     trustAndReconnect: "Trust and reconnect",
     hostKeyTrustRequired: (host: string, port: number) =>
-      `First connection to ${host}:${port} needs host key trust. Press Trust and reconnect in the SSH Login panel.`,
+      `First connection to ${host}:${port} needs host key trust. Press Trust and reconnect in Connection credentials.`,
     hostKeyChangedBlocked: (host: string, port: number) =>
       `${host}:${port} presented a changed host key. Verify the server fingerprint before changing known_hosts.`,
     password: "Password",
@@ -1230,6 +1234,54 @@ function parsePort(value: string) {
   return Number.isInteger(port) && port > 0 && port <= 65535 ? port : null;
 }
 
+function normalizeConnectionEndpoint(hostValue: string, portValue: string, fallbackPort = 22) {
+  let host = hostValue.trim().replace(/^ssh:\/\//i, "");
+  const userSeparatorIndex = host.lastIndexOf("@");
+  if (userSeparatorIndex >= 0) {
+    host = host.slice(userSeparatorIndex + 1);
+  }
+
+  let hasInlinePort = false;
+  let port = parsePort(portValue) ?? fallbackPort;
+  const bracketMatch = /^\[([^\]]+)\]:(\d{1,5})$/.exec(host);
+  if (bracketMatch) {
+    const parsedPort = parsePort(bracketMatch[2]);
+    return {
+      host: bracketMatch[1].trim(),
+      port: parsedPort ?? port,
+      hasInlinePort: Boolean(parsedPort)
+    };
+  }
+
+  const firstColonIndex = host.indexOf(":");
+  const lastColonIndex = host.lastIndexOf(":");
+  if (firstColonIndex > 0 && firstColonIndex === lastColonIndex) {
+    const maybeHost = host.slice(0, firstColonIndex).trim();
+    const maybePort = parsePort(host.slice(firstColonIndex + 1));
+    if (maybeHost && maybePort) {
+      host = maybeHost;
+      port = maybePort;
+      hasInlinePort = true;
+    }
+  }
+
+  return {
+    host,
+    port,
+    hasInlinePort
+  };
+}
+
+function displayConnectionEndpoint(connection: ConnectionProfile, labels: UiStrings) {
+  if (connection.protocol === "local") {
+    return labels.localProtocol;
+  }
+
+  const fallbackPort = connection.protocol === "rdp" ? 3389 : 22;
+  const endpoint = normalizeConnectionEndpoint(connection.host, String(connection.port || fallbackPort), fallbackPort);
+  return `${endpoint.host}:${endpoint.port}`;
+}
+
 function formatKeyEvent(event: KeyboardEvent) {
   const parts: string[] = [];
 
@@ -1396,10 +1448,11 @@ function createSshConfig(
   draft: { password: string; privateKey: string; passphrase: string },
   useSavedCredential: boolean
 ): SshSessionConfig {
+  const endpoint = normalizeConnectionEndpoint(connection.host, String(connection.port || 22), 22);
   return {
     connectionId: connection.id,
-    host: connection.host,
-    port: connection.port,
+    host: endpoint.host,
+    port: endpoint.port,
     username: connection.username,
     password: draft.password || undefined,
     privateKey: draft.privateKey || undefined,
@@ -1660,9 +1713,12 @@ export function App() {
     }
 
     const name = connectionDraft.name.trim();
-    const host = connectionDraft.host.trim();
+    const fallbackPort = connectionDraft.protocol === "rdp" ? 3389 : 22;
+    const endpoint = normalizeConnectionEndpoint(connectionDraft.host, connectionDraft.port, fallbackPort);
+    const host = endpoint.host.trim();
     const username = connectionDraft.username.trim();
-    const port = parsePort(connectionDraft.port);
+    const typedPort = parsePort(connectionDraft.port);
+    const port = connectionDraft.protocol === "local" ? 0 : endpoint.port;
     const password = connectionDraft.password;
     const privateKey = connectionDraft.privateKey;
     const passphrase = connectionDraft.passphrase;
@@ -1676,7 +1732,7 @@ export function App() {
       return;
     }
 
-    if (!port && connectionDraft.protocol !== "local") {
+    if (connectionDraft.protocol !== "local" && !endpoint.hasInlinePort && !typedPort) {
       setConnectionFormError(labels.connectionPortInvalid);
       return;
     }
@@ -1692,7 +1748,7 @@ export function App() {
       group: connectionDraft.group.trim() || labels.builtInGroups.Staging,
       protocol: connectionDraft.protocol,
       host,
-      port: connectionDraft.protocol === "local" ? 0 : port ?? 22,
+      port,
       username,
       authMethod: connectionDraft.authMethod,
       color: connectionDraft.color,
@@ -3412,7 +3468,7 @@ function ConnectionSidebar({
                 <span className="connection-copy">
                   <strong>{displayBuiltInName(connection.name, labels)}</strong>
                   <small>
-                    {connection.username}@{connection.host}
+                    {connection.username}@{displayConnectionEndpoint(connection, labels)}
                   </small>
                 </span>
                 <ProtocolIcon protocol={connection.protocol} />
@@ -3471,7 +3527,7 @@ function TopBar({
         <div>
           <strong>{activeConnection.name}</strong>
           <span>
-            {activeConnection.protocol.toUpperCase()} / {activeConnection.host}:{activeConnection.port || labels.localProtocol}
+            {activeConnection.protocol.toUpperCase()} / {displayConnectionEndpoint(activeConnection, labels)}
           </span>
         </div>
       </div>
@@ -3867,9 +3923,10 @@ function TerminalPane({
 
   const sessionId = activeTab.id;
   const connectionGateways = activeConnection.gateways;
-  const connectionHost = activeConnection.host;
+  const connectionEndpoint = normalizeConnectionEndpoint(activeConnection.host, String(activeConnection.port || 22), 22);
+  const connectionHost = connectionEndpoint.host;
   const connectionId = activeConnection.id;
-  const connectionPort = activeConnection.port;
+  const connectionPort = connectionEndpoint.port;
   const connectionProtocol = activeConnection.protocol;
   const connectionUsername = activeConnection.username;
 
@@ -4234,6 +4291,8 @@ function SshCredentialPanel({
 }) {
   const labels = useUiStrings();
   const hasDraftSecret = Boolean(draft.password || draft.privateKey);
+  const hasUsableCredential = Boolean(hasDraftSecret || credentialStatus?.hasCredential || authMethod === "agent");
+  const shouldOpenAdvancedLogin = !hasUsableCredential || Boolean(vaultError || privateKeyImportStatus);
   const isVaultMasterMode = vaultStatus?.mode === "master";
   const isVaultLocked = Boolean(vaultStatus?.locked);
   const hasVaultPassword = Boolean(vaultPassword.trim());
@@ -4244,14 +4303,18 @@ function SshCredentialPanel({
       <div className="panel-heading">
         <div>
           <KeyRound size={16} aria-hidden="true" />
-          <h2>{labels.sshLogin}</h2>
+          <h2>{labels.sshCredentials}</h2>
         </div>
         <span className="poll-rate">{authMethod}</span>
       </div>
       <div className="ssh-form">
         <div className="credential-status-row">
-          <span className={credentialStatus?.hasCredential ? "saved" : ""}>
-            {credentialStatus?.hasCredential ? labels.savedCredentialAvailable : labels.noSavedCredential}
+          <span className={hasDraftSecret || credentialStatus?.hasCredential ? "saved" : ""}>
+            {hasDraftSecret
+              ? labels.sessionCredentialReady
+              : credentialStatus?.hasCredential
+                ? labels.savedCredentialAvailable
+                : labels.noSavedCredential}
           </span>
           {credentialStatus?.hasCredential ? <small>{credentialStatus.protection}</small> : null}
           {isEncryptionUnavailable ? <small>{labels.encryptionUnavailable}</small> : null}
@@ -4261,41 +4324,6 @@ function SshCredentialPanel({
             {credentialError}
           </div>
         ) : null}
-        <div className="credential-vault-panel">
-          <div className="credential-vault-state">
-            <span>{labels.vault}</span>
-            <strong>{isVaultMasterMode ? labels.masterPassword : labels.systemKeyring}</strong>
-            <small>{isVaultMasterMode ? (isVaultLocked ? labels.locked : labels.unlocked) : labels.active}</small>
-          </div>
-          <label className="credential-vault-password">
-            <span>{labels.masterPassword}</span>
-            <input
-              type="password"
-              value={vaultPassword}
-              placeholder={isVaultMasterMode ? labels.enterMasterPassword : labels.newMasterPassword}
-              onChange={(event) => onVaultPasswordChange(event.target.value)}
-            />
-          </label>
-          {vaultError ? (
-            <div className="credential-error" role="alert">
-              {vaultError}
-            </div>
-          ) : null}
-          <div className="credential-vault-actions">
-            <button type="button" disabled={isEncryptionUnavailable || isVaultMasterMode || !hasVaultPassword} onClick={onEnableVault}>
-              {labels.enable}
-            </button>
-            <button type="button" disabled={!isVaultMasterMode || !isVaultLocked || !hasVaultPassword} onClick={onUnlockVault}>
-              {labels.unlock}
-            </button>
-            <button type="button" disabled={!isVaultMasterMode || isVaultLocked} onClick={onLockVault}>
-              {labels.lock}
-            </button>
-            <button type="button" disabled={!isVaultMasterMode || (isVaultLocked && !hasVaultPassword)} onClick={onDisableVault}>
-              {labels.disable}
-            </button>
-          </div>
-        </div>
         {hostKeyPrompt ? (
           <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
             <strong>{hostKeyPrompt.status === "changed" ? labels.hostKeyChanged : labels.unknownHostKey}</strong>
@@ -4310,56 +4338,96 @@ function SshCredentialPanel({
             </button>
           </div>
         ) : null}
-        <label>
-          <span>{labels.password}</span>
-          <input
-            type="password"
-            value={draft.password}
-            placeholder={labels.sessionOnly}
-            onChange={(event) => onChange("password", event.target.value)}
-          />
-        </label>
-        <label>
-          <span className="private-key-label">
-            {labels.privateKey}
-            <button type="button" onClick={onImportPrivateKey}>
-              <UploadCloud size={14} aria-hidden="true" />
-              {labels.import}
-            </button>
-          </span>
-          <textarea
-            value={draft.privateKey}
-            placeholder={labels.pastePrivateKey}
-            onChange={(event) => onChange("privateKey", event.target.value)}
-          />
-        </label>
-        {privateKeyImportStatus ? <div className="private-key-import-status">{privateKeyImportStatus}</div> : null}
-        <label>
-          <span>{labels.passphrase}</span>
-          <input
-            type="password"
-            value={draft.passphrase}
-            placeholder={labels.encryptedPrivateKeys}
-            onChange={(event) => onChange("passphrase", event.target.value)}
-          />
-        </label>
         <button type="button" onClick={onConnect}>
           <TerminalSquare size={16} aria-hidden="true" />
           {labels.connect}
         </button>
-        <div className="credential-actions">
-          <button
-            type="button"
-            disabled={!hasDraftSecret || isEncryptionUnavailable || (isVaultMasterMode && isVaultLocked)}
-            onClick={onSaveCredential}
-          >
-            <ShieldCheck size={16} aria-hidden="true" />
-            {labels.saveCredential}
-          </button>
-          <button type="button" disabled={!credentialStatus?.hasCredential} onClick={onDeleteCredential}>
-            {labels.deleteSaved}
-          </button>
-        </div>
+        <details className="credential-advanced" open={shouldOpenAdvancedLogin}>
+          <summary>{labels.advancedSshLogin}</summary>
+          <div className="credential-advanced-body">
+            <div className="credential-vault-panel">
+              <div className="credential-vault-state">
+                <span>{labels.vault}</span>
+                <strong>{isVaultMasterMode ? labels.masterPassword : labels.systemKeyring}</strong>
+                <small>{isVaultMasterMode ? (isVaultLocked ? labels.locked : labels.unlocked) : labels.active}</small>
+              </div>
+              <label className="credential-vault-password">
+                <span>{labels.masterPassword}</span>
+                <input
+                  type="password"
+                  value={vaultPassword}
+                  placeholder={isVaultMasterMode ? labels.enterMasterPassword : labels.newMasterPassword}
+                  onChange={(event) => onVaultPasswordChange(event.target.value)}
+                />
+              </label>
+              {vaultError ? (
+                <div className="credential-error" role="alert">
+                  {vaultError}
+                </div>
+              ) : null}
+              <div className="credential-vault-actions">
+                <button type="button" disabled={isEncryptionUnavailable || isVaultMasterMode || !hasVaultPassword} onClick={onEnableVault}>
+                  {labels.enable}
+                </button>
+                <button type="button" disabled={!isVaultMasterMode || !isVaultLocked || !hasVaultPassword} onClick={onUnlockVault}>
+                  {labels.unlock}
+                </button>
+                <button type="button" disabled={!isVaultMasterMode || isVaultLocked} onClick={onLockVault}>
+                  {labels.lock}
+                </button>
+                <button type="button" disabled={!isVaultMasterMode || (isVaultLocked && !hasVaultPassword)} onClick={onDisableVault}>
+                  {labels.disable}
+                </button>
+              </div>
+            </div>
+            <label>
+              <span>{labels.password}</span>
+              <input
+                type="password"
+                value={draft.password}
+                placeholder={labels.sessionOnly}
+                onChange={(event) => onChange("password", event.target.value)}
+              />
+            </label>
+            <label>
+              <span className="private-key-label">
+                {labels.privateKey}
+                <button type="button" onClick={onImportPrivateKey}>
+                  <UploadCloud size={14} aria-hidden="true" />
+                  {labels.import}
+                </button>
+              </span>
+              <textarea
+                value={draft.privateKey}
+                placeholder={labels.pastePrivateKey}
+                onChange={(event) => onChange("privateKey", event.target.value)}
+              />
+            </label>
+            {privateKeyImportStatus ? <div className="private-key-import-status">{privateKeyImportStatus}</div> : null}
+            <label>
+              <span>{labels.passphrase}</span>
+              <input
+                type="password"
+                value={draft.passphrase}
+                placeholder={labels.encryptedPrivateKeys}
+                onChange={(event) => onChange("passphrase", event.target.value)}
+              />
+            </label>
+            <div className="credential-actions">
+              <button
+                type="button"
+                disabled={!hasDraftSecret || isEncryptionUnavailable || (isVaultMasterMode && isVaultLocked)}
+                onClick={onSaveCredential}
+              >
+                <ShieldCheck size={16} aria-hidden="true" />
+                {labels.saveCredential}
+              </button>
+              <button type="button" disabled={!credentialStatus?.hasCredential} onClick={onDeleteCredential}>
+                {labels.deleteSaved}
+              </button>
+            </div>
+          </div>
+        </details>
       </div>
     </section>
   );
@@ -4388,7 +4456,7 @@ function RdpPanel({
       </div>
       <div className="rdp-body">
         <div className="rdp-target">
-          <strong>{connection.host}:{connection.port || 3389}</strong>
+          <strong>{displayConnectionEndpoint(connection, labels)}</strong>
           <span>{connection.username}</span>
         </div>
         {error ? (
@@ -5591,6 +5659,14 @@ export function ConnectionEditorDialog({
   const labels = useUiStrings();
   const isEditing = Boolean(draft.id);
   const update = (patch: Partial<ConnectionFormDraft>) => onChange({ ...draft, ...patch });
+  const normalizeHostField = () => {
+    if (draft.protocol === "local") {
+      return;
+    }
+
+    const endpoint = normalizeConnectionEndpoint(draft.host, draft.port, draft.protocol === "rdp" ? 3389 : 22);
+    update({ host: endpoint.host, port: String(endpoint.port) });
+  };
 
   return (
     <div className="palette-backdrop" role="presentation" onClick={onClose}>
@@ -5640,7 +5716,7 @@ export function ConnectionEditorDialog({
           </label>
           <label>
             <span>{labels.host}</span>
-            <input value={draft.host} onChange={(event) => update({ host: event.target.value })} />
+            <input value={draft.host} onBlur={normalizeHostField} onChange={(event) => update({ host: event.target.value })} />
           </label>
           <label>
             <span>{labels.port}</span>

@@ -3409,6 +3409,29 @@ textarea:focus-visible {
   background: #172530;
 }
 
+.credential-advanced {
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: #0b131a;
+}
+
+.credential-advanced summary {
+  min-height: 36px;
+  color: #c7d5df;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 36px;
+  padding: 0 10px;
+}
+
+.credential-advanced-body {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--line-soft);
+  padding: 10px;
+}
+
 .credential-vault-panel {
   display: grid;
   gap: 8px;
@@ -3831,6 +3854,9 @@ textarea:focus-visible {
 :root[data-theme="light"] .update-message,
 :root[data-theme="light"] .managed-command-list,
 :root[data-theme="light"] .quick-command-form,
+:root[data-theme="light"] .connection-form-note,
+:root[data-theme="light"] .color-field,
+:root[data-theme="light"] .credential-advanced,
 :root[data-theme="light"] .editor-status {
   background: #ffffff;
 }
@@ -3903,7 +3929,11 @@ textarea:focus-visible {
 :root[data-theme="light"] .breadcrumb,
 :root[data-theme="light"] .compose-pane > div,
 :root[data-theme="light"] .settings-field,
+:root[data-theme="light"] .connection-form label,
+:root[data-theme="light"] .quick-command-form label,
+:root[data-theme="light"] .color-field legend,
 :root[data-theme="light"] .ssh-form label,
+:root[data-theme="light"] .credential-advanced summary,
 :root[data-theme="light"] .transfer-box label,
 :root[data-theme="light"] .update-row label {
   color: var(--text-muted);
@@ -4087,12 +4117,25 @@ textarea:focus-visible {
 :root[data-theme="light"] .log-viewer input,
 :root[data-theme="light"] .update-row select,
 :root[data-theme="light"] .settings-field select,
+:root[data-theme="light"] .connection-form input,
+:root[data-theme="light"] .connection-form select,
+:root[data-theme="light"] .connection-form textarea,
 :root[data-theme="light"] .quick-command-form input,
 :root[data-theme="light"] .quick-command-form select,
 :root[data-theme="light"] .quick-command-form textarea {
   border-color: var(--line);
   background: #ffffff;
   color: var(--text);
+}
+
+:root[data-theme="light"] .connection-form-note,
+:root[data-theme="light"] .private-key-import-status {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .color-field button {
+  border-color: var(--line);
+  background: #ffffff;
 }
 
 :root[data-theme="light"] .credential-error,

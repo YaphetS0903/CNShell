@@ -133,6 +133,14 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Harden SSH failure cleanup so failed attempts do not leave stale connecting sessions.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Connection Endpoint And Credential Panel Fix Sprint
+
+- [x] ~~Normalize host fields that include a port, such as `124.223.19.107:22`, before saving and connecting.~~
+- [x] ~~Fix duplicated endpoint display like `host:22:22` in the sidebar, topbar, and terminal startup path.~~
+- [x] ~~Make the light-theme connection editor inputs readable.~~
+- [x] ~~Reduce the right SSH panel to connection status, connect action, host-key trust, and a collapsed advanced credential area.~~
+- [x] ~~Add regression tests for host/port normalization and the editor split behavior.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
