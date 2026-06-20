@@ -30,7 +30,9 @@ import {
   LayoutDashboard,
   Monitor,
   MoreHorizontal,
+  Moon,
   Network,
+  Palette,
   Plus,
   RefreshCw,
   Save,
@@ -39,6 +41,7 @@ import {
   Settings,
   ShieldCheck,
   SplitSquareHorizontal,
+  Sun,
   TerminalSquare,
   Trash2,
   Upload,
@@ -146,6 +149,8 @@ interface MetricHistoryPoint {
 
 type ZmodemMode = "idle" | "upload" | "download" | "detected";
 type Language = "zh-CN" | "en-US";
+type ThemeMode = "light" | "dark";
+type ThemeAccent = "green" | "blue" | "purple" | "orange";
 type PanelFocusKey = "credentials" | "tunnels" | "zmodem" | "logs";
 type WorkspaceView = "terminal" | "systemInfo";
 
@@ -154,6 +159,8 @@ interface AppErrorBoundaryState {
 }
 
 const LANGUAGE_STORAGE_KEY = "cnshell.ui.language.v1";
+const THEME_MODE_STORAGE_KEY = "cnshell.ui.theme.mode.v1";
+const THEME_ACCENT_STORAGE_KEY = "cnshell.ui.theme.accent.v1";
 
 const translations = {
   "zh-CN": {
@@ -165,8 +172,16 @@ const translations = {
     loadingWorkspace: "正在加载工作区",
     loadingWorkspaceDetail: "准备连接、终端和运维面板",
     settingsTitle: "偏好设置",
-    settingsSubtitle: "界面语言会立即生效，并保存到本机。",
+    settingsSubtitle: "界面语言和主题会立即生效，并保存到本机。",
     settingsLanguage: "界面语言",
+    settingsTheme: "界面主题",
+    themeLight: "浅色",
+    themeDark: "深色",
+    settingsAccent: "主题色",
+    accentGreen: "青绿",
+    accentBlue: "蓝色",
+    accentPurple: "紫色",
+    accentOrange: "橙色",
     close: "关闭",
     consoleSubtitle: "SSH 运维控制台",
     connectionManager: "连接管理",
@@ -305,6 +320,10 @@ const translations = {
     unknownHostKey: "未知主机密钥",
     expectedFingerprint: (fingerprint: string) => `期望 ${fingerprint}`,
     trustAndReconnect: "信任并重连",
+    hostKeyTrustRequired: (host: string, port: number) =>
+      `首次连接 ${host}:${port} 需要信任主机密钥。请在 SSH 登录面板点击“信任并重连”。`,
+    hostKeyChangedBlocked: (host: string, port: number) =>
+      `${host}:${port} 的主机密钥已变化。为避免中间人风险，请确认服务器指纹后再处理 known_hosts。`,
     password: "密码",
     sessionOnly: "仅本次会话",
     privateKey: "私钥",
@@ -536,8 +555,16 @@ const translations = {
     loadingWorkspace: "Loading workspace",
     loadingWorkspaceDetail: "Preparing connections, terminals, and operations panels",
     settingsTitle: "Preferences",
-    settingsSubtitle: "Interface language applies immediately and is saved on this device.",
+    settingsSubtitle: "Interface language and theme apply immediately and are saved on this device.",
     settingsLanguage: "Interface language",
+    settingsTheme: "Interface theme",
+    themeLight: "Light",
+    themeDark: "Dark",
+    settingsAccent: "Theme color",
+    accentGreen: "Teal",
+    accentBlue: "Blue",
+    accentPurple: "Purple",
+    accentOrange: "Orange",
     close: "Close",
     consoleSubtitle: "SSH Operations Console",
     connectionManager: "Connection manager",
@@ -676,6 +703,10 @@ const translations = {
     unknownHostKey: "Unknown host key",
     expectedFingerprint: (fingerprint: string) => `Expected ${fingerprint}`,
     trustAndReconnect: "Trust and reconnect",
+    hostKeyTrustRequired: (host: string, port: number) =>
+      `First connection to ${host}:${port} needs host key trust. Press Trust and reconnect in the SSH Login panel.`,
+    hostKeyChangedBlocked: (host: string, port: number) =>
+      `${host}:${port} presented a changed host key. Verify the server fingerprint before changing known_hosts.`,
     password: "Password",
     sessionOnly: "Session only",
     privateKey: "Private key",
@@ -908,6 +939,24 @@ function readPreferredLanguage(): Language {
     return storedLanguage === "en-US" ? "en-US" : "zh-CN";
   } catch {
     return "zh-CN";
+  }
+}
+
+function readPreferredThemeMode(): ThemeMode {
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_MODE_STORAGE_KEY);
+    return storedTheme === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
+function readPreferredThemeAccent(): ThemeAccent {
+  try {
+    const storedAccent = window.localStorage.getItem(THEME_ACCENT_STORAGE_KEY);
+    return storedAccent === "blue" || storedAccent === "purple" || storedAccent === "orange" ? storedAccent : "green";
+  } catch {
+    return "green";
   }
 }
 
@@ -1419,6 +1468,8 @@ export function App() {
   const [snapshot, setSnapshot] = useState(() => createInitialAppSnapshot());
   const [isWorkspaceReady, setIsWorkspaceReady] = useState(false);
   const [language, setLanguage] = useState<Language>(() => readPreferredLanguage());
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readPreferredThemeMode());
+  const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => readPreferredThemeAccent());
   const labels = translations[language];
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
@@ -1587,6 +1638,11 @@ export function App() {
       panelRefs.current[panel] = element;
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    document.documentElement.dataset.accent = themeAccent;
+  }, [themeAccent, themeMode]);
 
   const openNewConnectionEditor = () => {
     setConnectionFormError("");
@@ -2021,6 +2077,24 @@ export function App() {
     }
   };
 
+  const changeThemeMode = (nextThemeMode: ThemeMode) => {
+    setThemeMode(nextThemeMode);
+    try {
+      window.localStorage.setItem(THEME_MODE_STORAGE_KEY, nextThemeMode);
+    } catch {
+      // Ignore storage failures; the visible theme still updates immediately.
+    }
+  };
+
+  const changeThemeAccent = (nextThemeAccent: ThemeAccent) => {
+    setThemeAccent(nextThemeAccent);
+    try {
+      window.localStorage.setItem(THEME_ACCENT_STORAGE_KEY, nextThemeAccent);
+    } catch {
+      // Ignore storage failures; the visible accent still updates immediately.
+    }
+  };
+
   const exportCloudSyncSettings = () => {
     setCloudSyncStatus(labels.exportingEncryptedSettings);
     void window.cnshell?.cloudSync
@@ -2073,6 +2147,10 @@ export function App() {
 
   const startActiveSession = () => {
     const tab = activeTab ?? createSessionForConnection(activeConnection);
+    setCredentialErrors((current) => ({
+      ...current,
+      [activeConnection.id]: ""
+    }));
     setActiveTabId(tab.id);
     setActiveConnectionId(tab.connectionId);
     setSessionStartTokens((current) => ({
@@ -2104,6 +2182,10 @@ export function App() {
         delete next[activeTab.id];
         return next;
       });
+      setCredentialErrors((current) => ({
+        ...current,
+        [activeConnection.id]: ""
+      }));
       startActiveSession();
     });
   };
@@ -2798,13 +2880,26 @@ export function App() {
 
   useEffect(() => {
     return window.cnshell?.terminal.onHostKeyVerification((event) => {
-      setHostKeyPrompts((current) => ({
-        ...current,
-        [event.id]: event
-      }));
-      setSessionStatus(event.id, "error");
-    });
-  }, [setSessionStatus]);
+        setHostKeyPrompts((current) => ({
+          ...current,
+          [event.id]: event
+        }));
+        const matchedSession = snapshot.sessions.find((session) => session.id === event.id);
+        const matchedConnection = matchedSession
+          ? snapshot.connections.find((connection) => connection.id === matchedSession.connectionId)
+          : undefined;
+        if (matchedConnection) {
+          setCredentialErrors((current) => ({
+            ...current,
+            [matchedConnection.id]:
+              event.status === "changed"
+                ? labels.hostKeyChangedBlocked(event.host, event.port)
+                : labels.hostKeyTrustRequired(event.host, event.port)
+          }));
+        }
+        setSessionStatus(event.id, "error");
+      });
+  }, [labels, setSessionStatus, snapshot.connections, snapshot.sessions]);
 
   useEffect(() => {
     if (activeConnection.protocol === "ssh") {
@@ -3184,7 +3279,11 @@ export function App() {
       {isSettingsOpen ? (
         <SettingsDialog
           language={language}
+          themeMode={themeMode}
+          themeAccent={themeAccent}
           onLanguageChange={changeLanguage}
+          onThemeModeChange={changeThemeMode}
+          onThemeAccentChange={changeThemeAccent}
           onClose={() => setIsSettingsOpen(false)}
         />
       ) : null}
@@ -5815,16 +5914,30 @@ export function RemoteOperationDialog({
   );
 }
 
-function SettingsDialog({
+export function SettingsDialog({
   language,
+  themeMode,
+  themeAccent,
   onLanguageChange,
+  onThemeModeChange,
+  onThemeAccentChange,
   onClose
 }: {
   language: Language;
+  themeMode: ThemeMode;
+  themeAccent: ThemeAccent;
   onLanguageChange: (language: Language) => void;
+  onThemeModeChange: (themeMode: ThemeMode) => void;
+  onThemeAccentChange: (themeAccent: ThemeAccent) => void;
   onClose: () => void;
 }) {
   const labels = useUiStrings();
+  const accentOptions: Array<{ value: ThemeAccent; label: string }> = [
+    { value: "green", label: labels.accentGreen },
+    { value: "blue", label: labels.accentBlue },
+    { value: "purple", label: labels.accentPurple },
+    { value: "orange", label: labels.accentOrange }
+  ];
 
   return (
     <div className="palette-backdrop" role="presentation" onClick={onClose}>
@@ -5851,6 +5964,44 @@ function SettingsDialog({
             <option value="en-US">{labels.languageEnglish}</option>
           </select>
         </label>
+        <div className="settings-field">
+          <span>{labels.settingsTheme}</span>
+          <div className="theme-mode-switch">
+            <button
+              type="button"
+              aria-pressed={themeMode === "light"}
+              onClick={() => onThemeModeChange("light")}
+            >
+              <Sun size={16} aria-hidden="true" />
+              {labels.themeLight}
+            </button>
+            <button
+              type="button"
+              aria-pressed={themeMode === "dark"}
+              onClick={() => onThemeModeChange("dark")}
+            >
+              <Moon size={16} aria-hidden="true" />
+              {labels.themeDark}
+            </button>
+          </div>
+        </div>
+        <div className="settings-field">
+          <span>{labels.settingsAccent}</span>
+          <div className="theme-accent-grid">
+            {accentOptions.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                className={`theme-accent-option ${option.value}`}
+                aria-pressed={themeAccent === option.value}
+                onClick={() => onThemeAccentChange(option.value)}
+              >
+                <Palette size={15} aria-hidden="true" />
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </section>
     </div>
   );

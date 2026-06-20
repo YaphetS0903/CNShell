@@ -125,6 +125,14 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Update tests for workspace recovery and the new status/system-info components.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Theme And Connection Stabilization Sprint
+
+- [x] ~~Add light/dark theme switching in Preferences, defaulting to a brighter UI.~~
+- [x] ~~Re-tokenize major workspace, sidebar, panel, dialog, table, and form surfaces for both themes.~~
+- [x] ~~Improve SSH first-connect host key guidance so the user sees what to do instead of a vague connection failure.~~
+- [x] ~~Harden SSH failure cleanup so failed attempts do not leave stale connecting sessions.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

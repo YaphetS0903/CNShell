@@ -164,13 +164,23 @@ export class TerminalSessionManager {
 
     return new Promise((resolve, reject) => {
       let settled = false;
+      let hostKeyVerificationPending = false;
+      let hostKeyVerificationError = "";
 
       const fail = (error: Error) => {
-        this.window.webContents.send("terminal:error", { id: request.id, message: error.message });
+        const message = hostKeyVerificationPending && hostKeyVerificationError ? hostKeyVerificationError : error.message;
+        client.end();
+        const existingSession = this.sessions.get(request.id);
+        if (existingSession?.kind === "ssh") {
+          for (const gateway of existingSession.gateways) {
+            gateway.end();
+          }
+        }
+        this.sessions.delete(request.id);
+        this.window.webContents.send("terminal:error", { id: request.id, message });
         if (!settled) {
           settled = true;
-          this.sessions.delete(request.id);
-          reject(error);
+          reject(new Error(message));
         }
       };
 
@@ -233,6 +243,11 @@ export class TerminalSessionManager {
         credentialStore: this.credentialStore,
         knownHostsStore: this.knownHostsStore,
         onHostKeyVerification: (event) => {
+          hostKeyVerificationPending = true;
+          hostKeyVerificationError =
+            event.status === "changed"
+              ? `Host key changed for ${event.host}:${event.port}. Verify the fingerprint before updating known_hosts.`
+              : `Host key verification required for ${event.host}:${event.port} (${event.fingerprint}). Trust the host key and reconnect.`;
           this.window.webContents.send("terminal:host-key-verification", {
             id: request.id,
             ...event

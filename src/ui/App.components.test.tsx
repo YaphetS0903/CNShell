@@ -11,6 +11,7 @@ import {
   QuickCommandPanel,
   RemoteOperationDialog,
   ServerStatusRail,
+  SettingsDialog,
   SystemInfoWorkspace,
   TabStrip
 } from "./App";
@@ -184,6 +185,28 @@ describe("renderer workflow components", () => {
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "secret-pass" } });
 
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ password: "secret-pass" }));
+  });
+
+  it("changes theme preferences from the settings dialog", () => {
+    const onThemeModeChange = vi.fn();
+    const onThemeAccentChange = vi.fn();
+    render(
+      <SettingsDialog
+        language="zh-CN"
+        themeMode="light"
+        themeAccent="green"
+        onLanguageChange={vi.fn()}
+        onThemeModeChange={onThemeModeChange}
+        onThemeAccentChange={onThemeAccentChange}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Dark/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Blue/i }));
+
+    expect(onThemeModeChange).toHaveBeenCalledWith("dark");
+    expect(onThemeAccentChange).toHaveBeenCalledWith("blue");
   });
 
   it("manages quick command drafts", () => {

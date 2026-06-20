@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family:
     Inter,
     ui-sans-serif,
@@ -8,10 +8,31 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #0b1117;
-  color: #d7e2ea;
+  background: #eef3f8;
+  color: #14212c;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  --bg: #eef3f8;
+  --panel: #ffffff;
+  --panel-strong: #f8fbfd;
+  --panel-soft: #edf4fa;
+  --text: #14212c;
+  --text-muted: #5d6d7a;
+  --line: #c8d5df;
+  --line-soft: #e0e8ef;
+  --accent: #23895f;
+  --accent-2: #1971c2;
+  --accent-soft: rgba(35, 137, 95, 0.13);
+  --accent-border: rgba(35, 137, 95, 0.42);
+  --warning: #9a6700;
+  --danger: #c92a2a;
+  --radius: 8px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  background: #0b1117;
+  color: #d7e2ea;
   --bg: #0b1117;
   --panel: #101820;
   --panel-strong: #131d26;
@@ -22,9 +43,31 @@
   --line-soft: #1b2730;
   --accent: #2f9e44;
   --accent-2: #4dabf7;
+  --accent-soft: rgba(47, 158, 68, 0.13);
+  --accent-border: rgba(47, 158, 68, 0.42);
   --warning: #f2cc60;
   --danger: #ff8787;
-  --radius: 8px;
+}
+
+:root[data-accent="blue"] {
+  --accent: #1971c2;
+  --accent-2: #339af0;
+  --accent-soft: rgba(25, 113, 194, 0.13);
+  --accent-border: rgba(25, 113, 194, 0.42);
+}
+
+:root[data-accent="purple"] {
+  --accent: #7950f2;
+  --accent-2: #9775fa;
+  --accent-soft: rgba(121, 80, 242, 0.13);
+  --accent-border: rgba(121, 80, 242, 0.42);
+}
+
+:root[data-accent="orange"] {
+  --accent: #d9480f;
+  --accent-2: #f76707;
+  --accent-soft: rgba(217, 72, 15, 0.13);
+  --accent-border: rgba(217, 72, 15, 0.42);
 }
 
 * {
@@ -3163,6 +3206,68 @@ textarea:focus-visible {
   padding: 0 10px;
 }
 
+.theme-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-mode-switch button,
+.theme-accent-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel-soft);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.theme-mode-switch button[aria-pressed="true"],
+.theme-accent-grid button[aria-pressed="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.theme-accent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-accent-option {
+  position: relative;
+}
+
+.theme-accent-option::before {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  content: "";
+}
+
+.theme-accent-option.green::before {
+  background: #23895f;
+}
+
+.theme-accent-option.blue::before {
+  background: #1971c2;
+}
+
+.theme-accent-option.purple::before {
+  background: #7950f2;
+}
+
+.theme-accent-option.orange::before {
+  background: #d9480f;
+}
+
 .poll-rate {
   color: var(--text-muted);
   font-size: 12px;
@@ -3662,6 +3767,394 @@ textarea:focus-visible {
   color: #ffd8d8;
   cursor: pointer;
   font-size: 11px;
+}
+
+:root[data-theme="light"] .boot-error-shell {
+  background: var(--bg);
+}
+
+:root[data-theme="light"] .boot-error-shell button,
+:root[data-theme="light"] .error-boundary button,
+:root[data-theme="light"] .empty-session-state button,
+:root[data-theme="light"] .dialog-actions .primary-action,
+:root[data-theme="light"] .rdp-body button {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+:root[data-theme="light"] .sidebar,
+:root[data-theme="light"] .workspace,
+:root[data-theme="light"] .topbar,
+:root[data-theme="light"] .tab-strip,
+:root[data-theme="light"] .server-status-rail,
+:root[data-theme="light"] .ops-panel {
+  background: var(--panel-strong);
+  color: var(--text);
+}
+
+:root[data-theme="light"] .sidebar,
+:root[data-theme="light"] .server-status-rail,
+:root[data-theme="light"] .main-workbench,
+:root[data-theme="light"] .empty-session-state,
+:root[data-theme="light"] .system-info-workspace {
+  border-color: var(--line);
+}
+
+:root[data-theme="light"] .brand-mark {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+:root[data-theme="light"] .search-box,
+:root[data-theme="light"] .terminal-search,
+:root[data-theme="light"] .credential-vault-panel,
+:root[data-theme="light"] .jump-host-row,
+:root[data-theme="light"] .rdp-target,
+:root[data-theme="light"] .metric-tile,
+:root[data-theme="light"] .monitor-chart,
+:root[data-theme="light"] .process-row,
+:root[data-theme="light"] .path-row,
+:root[data-theme="light"] .sftp-state,
+:root[data-theme="light"] .transfer-box,
+:root[data-theme="light"] .transfer-row,
+:root[data-theme="light"] .zmodem-state,
+:root[data-theme="light"] .trigger-row,
+:root[data-theme="light"] .tunnel-mode-switch button,
+:root[data-theme="light"] .tunnel-row,
+:root[data-theme="light"] .relay-row,
+:root[data-theme="light"] .keymap-profile-toggle,
+:root[data-theme="light"] .keymap-row,
+:root[data-theme="light"] .script-row,
+:root[data-theme="light"] .cloud-sync-state,
+:root[data-theme="light"] .update-message,
+:root[data-theme="light"] .managed-command-list,
+:root[data-theme="light"] .quick-command-form,
+:root[data-theme="light"] .editor-status {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .sidebar-actions button,
+:root[data-theme="light"] .topbar-actions button,
+:root[data-theme="light"] .terminal-tools button,
+:root[data-theme="light"] .panel-heading button,
+:root[data-theme="light"] .new-tab,
+:root[data-theme="light"] .compose-pane button,
+:root[data-theme="light"] .credential-actions button,
+:root[data-theme="light"] .credential-vault-actions button,
+:root[data-theme="light"] .jump-host-row button,
+:root[data-theme="light"] .server-ip-row button,
+:root[data-theme="light"] .system-info-button,
+:root[data-theme="light"] .path-control button,
+:root[data-theme="light"] .file-toolbar-actions button,
+:root[data-theme="light"] .remote-file-actions button,
+:root[data-theme="light"] .remote-editor-inline-header button,
+:root[data-theme="light"] .transfer-actions button,
+:root[data-theme="light"] .zmodem-actions button,
+:root[data-theme="light"] .file-row-actions button,
+:root[data-theme="light"] .tunnel-row button,
+:root[data-theme="light"] .relay-row button,
+:root[data-theme="light"] .keymap-row button,
+:root[data-theme="light"] .script-actions button,
+:root[data-theme="light"] .script-row button,
+:root[data-theme="light"] .cloud-sync-actions button,
+:root[data-theme="light"] .update-panel button,
+:root[data-theme="light"] .settings-heading button,
+:root[data-theme="light"] .dialog-actions button {
+  background: #ffffff;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .sidebar-actions button:hover,
+:root[data-theme="light"] .topbar-actions button:hover,
+:root[data-theme="light"] .terminal-tools button:hover,
+:root[data-theme="light"] .panel-heading button:hover,
+:root[data-theme="light"] .new-tab:hover,
+:root[data-theme="light"] .compose-pane button:hover,
+:root[data-theme="light"] .credential-actions button:hover,
+:root[data-theme="light"] .credential-vault-actions button:hover,
+:root[data-theme="light"] .path-control button:hover:not(:disabled),
+:root[data-theme="light"] .file-toolbar-actions button:hover:not(:disabled),
+:root[data-theme="light"] .remote-file-actions button:hover:not(:disabled),
+:root[data-theme="light"] .palette-results button:hover,
+:root[data-theme="light"] .palette-results button:focus-visible,
+:root[data-theme="light"] .managed-command-list button:hover,
+:root[data-theme="light"] .managed-command-list button.active,
+:root[data-theme="light"] .file-row:hover,
+:root[data-theme="light"] .quick-command:hover {
+  border-color: var(--line);
+  background: #e8f0f7;
+}
+
+:root[data-theme="light"] .topbar-actions button.active,
+:root[data-theme="light"] .terminal-tools button.active,
+:root[data-theme="light"] .tunnel-mode-switch button[aria-pressed="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+:root[data-theme="light"] .group-title,
+:root[data-theme="light"] .session-tab,
+:root[data-theme="light"] .new-tab,
+:root[data-theme="light"] .server-sync-row,
+:root[data-theme="light"] .server-basic-lines,
+:root[data-theme="light"] .breadcrumb,
+:root[data-theme="light"] .compose-pane > div,
+:root[data-theme="light"] .settings-field,
+:root[data-theme="light"] .ssh-form label,
+:root[data-theme="light"] .transfer-box label,
+:root[data-theme="light"] .update-row label {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .connection-item:hover {
+  background: #edf4fa;
+}
+
+:root[data-theme="light"] .connection-item.active,
+:root[data-theme="light"] .session-tab.active {
+  border-color: var(--accent-border);
+  background: #ffffff;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .session-tab small {
+  background: #edf4fa;
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .status-pill {
+  color: #2b8a3e;
+}
+
+:root[data-theme="light"] .status-pill.connecting {
+  color: #9a6700;
+}
+
+:root[data-theme="light"] .status-pill.disconnected {
+  color: #637381;
+}
+
+:root[data-theme="light"] .status-pill.error {
+  color: #c92a2a;
+}
+
+:root[data-theme="light"] .server-ip-row strong,
+:root[data-theme="light"] .server-basic-lines,
+:root[data-theme="light"] .usage-meter span,
+:root[data-theme="light"] .usage-meter strong,
+:root[data-theme="light"] .mini-process-table strong,
+:root[data-theme="light"] .network-mini-chart > div:first-child,
+:root[data-theme="light"] .network-mini-chart strong,
+:root[data-theme="light"] .latency-box,
+:root[data-theme="light"] .metric-tile strong,
+:root[data-theme="light"] .monitor-chart strong,
+:root[data-theme="light"] .process-row span,
+:root[data-theme="light"] .rdp-target strong,
+:root[data-theme="light"] .credential-vault-state strong,
+:root[data-theme="light"] .editor-status span,
+:root[data-theme="light"] .update-message strong,
+:root[data-theme="light"] .trigger-row span,
+:root[data-theme="light"] .tunnel-row span,
+:root[data-theme="light"] .relay-row span,
+:root[data-theme="light"] .transfer-row span,
+:root[data-theme="light"] .remote-file-empty strong {
+  color: var(--text);
+}
+
+:root[data-theme="light"] .mini-process-table,
+:root[data-theme="light"] .filesystem-mini-table,
+:root[data-theme="light"] .network-mini-chart,
+:root[data-theme="light"] .latency-box,
+:root[data-theme="light"] .usage-meter > div {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .mini-process-table div:not(:first-child):nth-child(even),
+:root[data-theme="light"] .filesystem-mini-table div:not(:first-child):nth-child(even) {
+  background: #f5f8fb;
+}
+
+:root[data-theme="light"] .main-workbench,
+:root[data-theme="light"] .terminal-workbench,
+:root[data-theme="light"] .empty-session-state {
+  background: #f2f6fa;
+}
+
+:root[data-theme="light"] .terminal-toolbar,
+:root[data-theme="light"] .compose-pane,
+:root[data-theme="light"] .split-session-banner {
+  border-color: var(--line);
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .terminal-surface,
+:root[data-theme="light"] .terminal-host,
+:root[data-theme="light"] .compose-pane textarea,
+:root[data-theme="light"] .safe-paste-review pre,
+:root[data-theme="light"] .log-lines,
+:root[data-theme="light"] .remote-editor textarea,
+:root[data-theme="light"] .remote-editor-inline textarea {
+  background: #071016;
+  color: #d7e2ea;
+}
+
+:root[data-theme="light"] .panel-section,
+:root[data-theme="light"] .settings-dialog,
+:root[data-theme="light"] .editor-dialog,
+:root[data-theme="light"] .command-palette,
+:root[data-theme="light"] .bulk-command-dialog {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--text);
+}
+
+:root[data-theme="light"] .palette-backdrop {
+  background: rgba(15, 23, 32, 0.36);
+}
+
+:root[data-theme="light"] .file-workspace,
+:root[data-theme="light"] .file-toolbar,
+:root[data-theme="light"] .remote-file-table,
+:root[data-theme="light"] .remote-editor-inline,
+:root[data-theme="light"] .file-transfer-list {
+  background: #ffffff;
+}
+
+:root[data-theme="light"] .file-workspace-tabs,
+:root[data-theme="light"] .remote-editor-inline-header,
+:root[data-theme="light"] .remote-file-header {
+  border-color: var(--line);
+  background: #edf4fa;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .file-workspace-tabs button {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .file-workspace-tabs button.active {
+  background: #ffffff;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .remote-tree {
+  border-color: var(--line);
+  background: #f8fbfd;
+}
+
+:root[data-theme="light"] .remote-tree button,
+:root[data-theme="light"] .remote-file-row,
+:root[data-theme="light"] .remote-editor-inline-header div {
+  color: var(--text);
+}
+
+:root[data-theme="light"] .remote-tree button:hover:not(:disabled),
+:root[data-theme="light"] .remote-tree button.active,
+:root[data-theme="light"] .remote-file-row:hover {
+  background: #e8f0f7;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .remote-file-row:nth-child(even) {
+  background: #f8fbfd;
+}
+
+:root[data-theme="light"] .remote-file-row.directory .remote-file-name {
+  color: #9a6700;
+}
+
+:root[data-theme="light"] .remote-file-row.symlink .remote-file-name,
+:root[data-theme="light"] .latency-box strong {
+  color: #1971c2;
+}
+
+:root[data-theme="light"] .path-control input,
+:root[data-theme="light"] .file-toolbar-actions input,
+:root[data-theme="light"] .ssh-form input,
+:root[data-theme="light"] .ssh-form textarea,
+:root[data-theme="light"] .credential-vault-password input,
+:root[data-theme="light"] .jump-host-row input,
+:root[data-theme="light"] .transfer-box input,
+:root[data-theme="light"] .zmodem-panel input,
+:root[data-theme="light"] .keymap-row input[type="text"],
+:root[data-theme="light"] .keymap-row input:not([type]),
+:root[data-theme="light"] .log-viewer input,
+:root[data-theme="light"] .update-row select,
+:root[data-theme="light"] .settings-field select,
+:root[data-theme="light"] .quick-command-form input,
+:root[data-theme="light"] .quick-command-form select,
+:root[data-theme="light"] .quick-command-form textarea {
+  border-color: var(--line);
+  background: #ffffff;
+  color: var(--text);
+}
+
+:root[data-theme="light"] .credential-error,
+:root[data-theme="light"] .sftp-state.error,
+:root[data-theme="light"] .delete-confirmation {
+  border-color: rgba(201, 42, 42, 0.28);
+  background: rgba(201, 42, 42, 0.08);
+  color: #a61e1e;
+}
+
+:root[data-theme="light"] .host-key-prompt {
+  border-color: rgba(154, 103, 0, 0.32);
+  background: rgba(154, 103, 0, 0.08);
+}
+
+:root[data-theme="light"] .host-key-prompt strong {
+  color: #8a5a00;
+}
+
+:root[data-theme="light"] .host-key-prompt.changed strong,
+:root[data-theme="light"] .host-key-prompt.changed {
+  color: #a61e1e;
+}
+
+:root[data-theme="light"] .host-key-prompt span,
+:root[data-theme="light"] .host-key-prompt small,
+:root[data-theme="light"] .credential-vault-state span,
+:root[data-theme="light"] .credential-vault-state small,
+:root[data-theme="light"] .metric-tile span,
+:root[data-theme="light"] .monitor-chart span,
+:root[data-theme="light"] .process-row strong,
+:root[data-theme="light"] .process-row small,
+:root[data-theme="light"] .transfer-row strong,
+:root[data-theme="light"] .transfer-row small,
+:root[data-theme="light"] .trigger-row strong,
+:root[data-theme="light"] .trigger-row small {
+  color: var(--text-muted);
+}
+
+:root[data-theme="light"] .host-key-prompt code {
+  background: #fffdf5;
+  color: #513c06;
+}
+
+:root[data-theme="light"] .dialog-actions .danger-action,
+:root[data-theme="light"] .process-row button {
+  border-color: rgba(201, 42, 42, 0.32);
+  background: rgba(201, 42, 42, 0.08);
+  color: #a61e1e;
+}
+
+:root[data-theme="light"] .sync-pill,
+:root[data-theme="light"] .zmodem-pill.upload,
+:root[data-theme="light"] .zmodem-pill.download,
+:root[data-theme="light"] .zmodem-pill.detected,
+:root[data-theme="light"] .rdp-status.launching,
+:root[data-theme="light"] .update-state.available,
+:root[data-theme="light"] .update-state.downloading,
+:root[data-theme="light"] .update-state.downloaded {
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 @media (max-width: 1500px) {
