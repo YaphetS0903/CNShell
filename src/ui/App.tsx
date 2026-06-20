@@ -944,6 +944,32 @@ const translations = {
 
 type UiStrings = (typeof translations)["zh-CN"];
 
+const EMPTY_SERVER_METRICS: ReturnType<typeof createInitialAppSnapshot>["serverMetrics"] = [
+  { label: "CPU", value: 0, unit: "%", trend: "flat" },
+  { label: "Memory", value: 0, unit: "%", trend: "flat" },
+  { label: "Disk", value: 0, unit: "%", trend: "flat" },
+  { label: "Ping", value: 0, unit: "ms", trend: "flat" }
+];
+
+const EMPTY_SYSTEM_INFO: ReturnType<typeof createInitialAppSnapshot>["systemInfo"] = {
+  os: "",
+  kernel: "",
+  kernelVersion: "",
+  architecture: "",
+  hostname: "",
+  cpuModel: "",
+  cpuCores: 0,
+  uptimeDays: 0,
+  loadAverage: "",
+  memoryUsed: "",
+  memoryTotal: "",
+  swapUsed: "",
+  swapTotal: "",
+  networkInterface: "",
+  filesystems: [],
+  networkSamples: []
+};
+
 function readPreferredLanguage(): Language {
   try {
     const storedLanguage = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
@@ -1569,12 +1595,13 @@ export function App() {
   const [sftpError, setSftpError] = useState("");
   const [remoteOperationDraft, setRemoteOperationDraft] = useState<RemoteOperationDraft | null>(null);
   const [remoteOperationError, setRemoteOperationError] = useState("");
-  const [liveMetrics, setLiveMetrics] = useState(snapshot.serverMetrics);
-  const [systemInfo, setSystemInfo] = useState(snapshot.systemInfo);
+  const [liveMetrics, setLiveMetrics] = useState(EMPTY_SERVER_METRICS);
+  const [systemInfo, setSystemInfo] = useState(EMPTY_SYSTEM_INFO);
   const [metricsStatus, setMetricsStatus] = useState<"idle" | "loading" | "error">("idle");
   const [metricsError, setMetricsError] = useState("");
+  const [lastMetricsConnectionId, setLastMetricsConnectionId] = useState("");
   const [metricHistory, setMetricHistory] = useState<MetricHistoryPoint[]>([]);
-  const [remoteProcesses, setRemoteProcesses] = useState(snapshot.remoteProcesses);
+  const [remoteProcesses, setRemoteProcesses] = useState<ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"]>([]);
   const [processStatus, setProcessStatus] = useState<"idle" | "loading" | "error">("idle");
   const [processError, setProcessError] = useState("");
   const [transferLocalPath, setTransferLocalPath] = useState("");
@@ -1676,6 +1703,11 @@ export function App() {
   const activeTabSessionId = activeTab?.id ?? "";
   const activeTabCwd = activeTab?.cwd ?? "/";
   const activeTabStatus = activeTab?.status;
+  const isActiveSessionConnected = activeConnection.protocol === "ssh" && activeTabStatus === "connected";
+  const hasActiveMetrics = isActiveSessionConnected && lastMetricsConnectionId === activeConnection.id;
+  const displayMetrics = hasActiveMetrics ? liveMetrics : EMPTY_SERVER_METRICS;
+  const displaySystemInfo = hasActiveMetrics ? systemInfo : EMPTY_SYSTEM_INFO;
+  const displayProcesses = hasActiveMetrics ? remoteProcesses : [];
   const activeHostKeyPrompt = activeTab ? hostKeyPrompts[activeTab.id] : undefined;
 
   const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
@@ -2201,9 +2233,10 @@ export function App() {
         const importedSnapshot = hydrateAppSnapshot(result.importedSnapshot);
         setSnapshot(importedSnapshot);
         setRemoteFileEntries(importedSnapshot.remoteFiles);
-        setLiveMetrics(importedSnapshot.serverMetrics);
-        setSystemInfo(importedSnapshot.systemInfo);
-        setRemoteProcesses(importedSnapshot.remoteProcesses);
+        setLiveMetrics(EMPTY_SERVER_METRICS);
+        setSystemInfo(EMPTY_SYSTEM_INFO);
+        setRemoteProcesses([]);
+        setLastMetricsConnectionId("");
         setActiveConnectionId(importedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(importedSnapshot.sessions[0]?.id ?? "");
         setCloudSyncStatus(labels.importedPath(result.path ?? ""));
@@ -2483,12 +2516,17 @@ export function App() {
   }, [remoteProcesses.length]);
 
   const refreshMetrics = useCallback(() => {
-    if (activeConnection.protocol !== "ssh") {
-      setLiveMetrics(snapshot.serverMetrics);
+    if (activeConnection.protocol !== "ssh" || activeTabStatus !== "connected") {
+      setLiveMetrics(EMPTY_SERVER_METRICS);
+      setSystemInfo(EMPTY_SYSTEM_INFO);
+      setLastMetricsConnectionId("");
       return;
     }
 
     if (!hasActiveSshCredential) {
+      setLiveMetrics(EMPTY_SERVER_METRICS);
+      setSystemInfo(EMPTY_SYSTEM_INFO);
+      setLastMetricsConnectionId("");
       setMetricsStatus("idle");
       return;
     }
@@ -2508,6 +2546,7 @@ export function App() {
             networkSamples: [...current.networkSamples, ...result.systemInfo!.networkSamples].slice(-24)
           }));
         }
+        setLastMetricsConnectionId(activeConnection.id);
         appendMetricHistory(result.metrics);
         setMetricsStatus("idle");
       })
@@ -2515,15 +2554,16 @@ export function App() {
         setMetricsError(error.message);
         setMetricsStatus("error");
       });
-  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, hasActiveSshCredential, snapshot.serverMetrics]);
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, activeTabStatus, appendMetricHistory, hasActiveSshCredential]);
 
   const refreshProcesses = useCallback(() => {
-    if (activeConnection.protocol !== "ssh") {
-      setRemoteProcesses(snapshot.remoteProcesses);
+    if (activeConnection.protocol !== "ssh" || activeTabStatus !== "connected") {
+      setRemoteProcesses([]);
       return;
     }
 
     if (!hasActiveSshCredential) {
+      setRemoteProcesses([]);
       setProcessStatus("idle");
       return;
     }
@@ -2544,7 +2584,7 @@ export function App() {
         setProcessError(error.message);
         setProcessStatus("error");
       });
-  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, appendMetricHistory, hasActiveSshCredential, liveMetrics, snapshot.remoteProcesses]);
+  }, [activeConnection, activeCredentialStatus?.hasCredential, activeSshDraft, activeTabStatus, appendMetricHistory, hasActiveSshCredential, liveMetrics]);
 
   const killProcess = (pid: number) => {
     if (activeConnection.protocol !== "ssh") {
@@ -2829,9 +2869,10 @@ export function App() {
         const hydratedSnapshot = hydrateAppSnapshot(storedSnapshot);
         setSnapshot(hydratedSnapshot);
         setRemoteFileEntries(hydratedSnapshot.remoteFiles);
-        setLiveMetrics(hydratedSnapshot.serverMetrics);
-        setSystemInfo(hydratedSnapshot.systemInfo);
-        setRemoteProcesses(hydratedSnapshot.remoteProcesses);
+        setLiveMetrics(EMPTY_SERVER_METRICS);
+        setSystemInfo(EMPTY_SYSTEM_INFO);
+        setRemoteProcesses([]);
+        setLastMetricsConnectionId("");
         const firstSession = hydratedSnapshot.sessions[0];
         setActiveConnectionId(firstSession?.connectionId ?? hydratedSnapshot.connections[0]?.id ?? "");
         setActiveTabId(firstSession?.id ?? "");
@@ -3022,20 +3063,24 @@ export function App() {
         <section className="workspace-grid">
           <ServerStatusRail
             connection={activeConnection}
-            metrics={liveMetrics}
-            systemInfo={systemInfo}
-            processes={remoteProcesses}
+            metrics={displayMetrics}
+            systemInfo={displaySystemInfo}
+            processes={displayProcesses}
             status={metricsStatus}
+            isConnected={isActiveSessionConnected}
+            hasMetrics={hasActiveMetrics}
             onOpenSystemInfo={() => setWorkspaceView("systemInfo")}
           />
           {workspaceView === "systemInfo" ? (
             <SystemInfoWorkspace
               connection={activeConnection}
-              metrics={liveMetrics}
-              systemInfo={systemInfo}
-              processes={remoteProcesses}
+              metrics={displayMetrics}
+              systemInfo={displaySystemInfo}
+              processes={displayProcesses}
               status={metricsStatus}
               error={metricsError}
+              isConnected={isActiveSessionConnected}
+              hasMetrics={hasActiveMetrics}
               onRefresh={refreshMetrics}
             />
           ) : activeTab ? (
@@ -3151,14 +3196,14 @@ export function App() {
               }}
             />
             <MetricsPanel
-              metrics={liveMetrics}
-              history={metricHistory}
+              metrics={displayMetrics}
+              history={hasActiveMetrics ? metricHistory : []}
               status={metricsStatus}
               error={metricsError}
               onRefresh={refreshMetrics}
             />
             <ProcessPanel
-              processes={remoteProcesses}
+              processes={displayProcesses}
               status={processStatus}
               error={processError}
               onRefresh={refreshProcesses}
@@ -3600,6 +3645,8 @@ export function ServerStatusRail({
   systemInfo,
   processes,
   status,
+  isConnected = true,
+  hasMetrics = true,
   onOpenSystemInfo
 }: {
   connection: ConnectionProfile;
@@ -3607,14 +3654,20 @@ export function ServerStatusRail({
   systemInfo: ReturnType<typeof createInitialAppSnapshot>["systemInfo"];
   processes: ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"];
   status: "idle" | "loading" | "error";
+  isConnected?: boolean;
+  hasMetrics?: boolean;
   onOpenSystemInfo: () => void;
 }) {
   const labels = useUiStrings();
-  const cpu = metricValue(metrics, "CPU");
-  const memory = metricValue(metrics, "Memory");
-  const swapPercent = storageUsagePercent(systemInfo.swapUsed, systemInfo.swapTotal);
-  const topProcesses = processes.slice(0, 4);
-  const latestNetwork = systemInfo.networkSamples.at(-1);
+  const canShowMetrics = isConnected && hasMetrics;
+  const displayInfo = canShowMetrics ? systemInfo : EMPTY_SYSTEM_INFO;
+  const displayMetrics = canShowMetrics ? metrics : EMPTY_SERVER_METRICS;
+  const displayProcesses = canShowMetrics ? processes : [];
+  const cpu = metricValue(displayMetrics, "CPU");
+  const memory = metricValue(displayMetrics, "Memory");
+  const swapPercent = storageUsagePercent(displayInfo.swapUsed, displayInfo.swapTotal);
+  const topProcesses = displayProcesses.slice(0, 4);
+  const latestNetwork = displayInfo.networkSamples.at(-1);
 
   return (
     <aside className="server-status-rail" aria-label={labels.serverMetrics}>
@@ -3633,9 +3686,9 @@ export function ServerStatusRail({
         {labels.systemInfo}
       </button>
       <div className="server-basic-lines">
-        <span>{labels.runningDays(systemInfo.uptimeDays)}</span>
+        <span>{canShowMetrics ? labels.runningDays(displayInfo.uptimeDays) : labels.noSystemInfo}</span>
         <span>
-          {labels.loadAverage} {systemInfo.loadAverage || "-"}
+          {labels.loadAverage} {canShowMetrics ? displayInfo.loadAverage || "-" : "-"}
         </span>
       </div>
       <div className="usage-stack">
@@ -3643,12 +3696,12 @@ export function ServerStatusRail({
         <UsageMeter
           label={labels.memory}
           value={memory}
-          detail={`${splitMemoryValue(systemInfo.memoryUsed)}/${splitMemoryValue(systemInfo.memoryTotal)}`}
+          detail={canShowMetrics ? `${splitMemoryValue(displayInfo.memoryUsed)}/${splitMemoryValue(displayInfo.memoryTotal)}` : "-"}
         />
         <UsageMeter
           label={labels.swap}
           value={swapPercent}
-          detail={`${splitMemoryValue(systemInfo.swapUsed)}/${splitMemoryValue(systemInfo.swapTotal)}`}
+          detail={canShowMetrics ? `${splitMemoryValue(displayInfo.swapUsed)}/${splitMemoryValue(displayInfo.swapTotal)}` : "-"}
         />
       </div>
       <div className="mini-process-table">
@@ -3669,10 +3722,10 @@ export function ServerStatusRail({
         <div>
           <span>up {latestNetwork?.outboundKb ?? 0}K</span>
           <span>down {latestNetwork?.inboundKb ?? 0}K</span>
-          <strong>{systemInfo.networkInterface || labels.localNetwork}</strong>
+          <strong>{displayInfo.networkInterface || labels.localNetwork}</strong>
         </div>
         <div className="network-bars">
-          {systemInfo.networkSamples.slice(-18).map((sample, index) => (
+          {displayInfo.networkSamples.slice(-18).map((sample, index) => (
             <span
               key={`${sample.at}-${index}`}
               style={{ height: `${Math.max(4, Math.min(60, sample.inboundKb + sample.outboundKb))}%` }}
@@ -3681,7 +3734,7 @@ export function ServerStatusRail({
         </div>
       </div>
       <div className="latency-box">
-        <strong>{metricDisplay(metrics, "Ping")}</strong>
+        <strong>{canShowMetrics ? metricDisplay(displayMetrics, "Ping") : "-"}</strong>
         <span>{labels.localNetwork}</span>
       </div>
       <div className="filesystem-mini-table">
@@ -3689,7 +3742,7 @@ export function ServerStatusRail({
           <span>{labels.filesystemPath}</span>
           <span>{labels.filesystemAvailableSize}</span>
         </div>
-        {systemInfo.filesystems.slice(0, 10).map((fileSystem) => (
+        {displayInfo.filesystems.slice(0, 10).map((fileSystem) => (
           <div key={fileSystem.path}>
             <strong>{fileSystem.path}</strong>
             <span>{filesystemDisplay(fileSystem)}</span>
@@ -3698,6 +3751,7 @@ export function ServerStatusRail({
         ))}
       </div>
       {status === "loading" ? <small className="rail-status">{labels.collectingMetrics}</small> : null}
+      {!canShowMetrics && status !== "loading" ? <small className="rail-status">{labels.noSystemInfo}</small> : null}
     </aside>
   );
 }
@@ -3721,6 +3775,8 @@ export function SystemInfoWorkspace({
   processes,
   status,
   error,
+  isConnected = true,
+  hasMetrics = true,
   onRefresh
 }: {
   connection: ConnectionProfile;
@@ -3729,22 +3785,27 @@ export function SystemInfoWorkspace({
   processes: ReturnType<typeof createInitialAppSnapshot>["remoteProcesses"];
   status: "idle" | "loading" | "error";
   error: string;
+  isConnected?: boolean;
+  hasMetrics?: boolean;
   onRefresh: () => void;
 }) {
   const labels = useUiStrings();
+  const canShowMetrics = isConnected && hasMetrics;
+  const displayInfo = canShowMetrics ? systemInfo : EMPTY_SYSTEM_INFO;
+  const displayMetrics = canShowMetrics ? metrics : EMPTY_SERVER_METRICS;
+  const displayProcesses = canShowMetrics ? processes : [];
   const details = [
-    [labels.operatingSystem, systemInfo.os || "-"],
-    [labels.kernel, systemInfo.kernel || "-"],
-    [labels.kernelVersion, systemInfo.kernelVersion || "-"],
-    [labels.architecture, systemInfo.architecture || "-"],
-    [labels.hostname, systemInfo.hostname || connection.host],
-    [labels.cpu, `${systemInfo.cpuModel || "-"} ${systemInfo.cpuCores ? `(${systemInfo.cpuCores})` : ""}`],
-    [labels.cpuUsage, metricDisplay(metrics, "CPU")],
-    [labels.memory, `${systemInfo.memoryUsed}/${systemInfo.memoryTotal}`],
-    [labels.swap, `${systemInfo.swapUsed}/${systemInfo.swapTotal}`],
-    [labels.networkPort, systemInfo.networkInterface || "-"]
+    [labels.operatingSystem, displayInfo.os || "-"],
+    [labels.kernel, displayInfo.kernel || "-"],
+    [labels.kernelVersion, displayInfo.kernelVersion || "-"],
+    [labels.architecture, displayInfo.architecture || "-"],
+    [labels.hostname, canShowMetrics ? displayInfo.hostname || connection.host : "-"],
+    [labels.cpu, `${displayInfo.cpuModel || "-"} ${displayInfo.cpuCores ? `(${displayInfo.cpuCores})` : ""}`],
+    [labels.cpuUsage, canShowMetrics ? metricDisplay(displayMetrics, "CPU") : "-"],
+    [labels.memory, canShowMetrics ? `${displayInfo.memoryUsed}/${displayInfo.memoryTotal}` : "-"],
+    [labels.swap, canShowMetrics ? `${displayInfo.swapUsed}/${displayInfo.swapTotal}` : "-"],
+    [labels.networkPort, displayInfo.networkInterface || "-"]
   ];
-  const hasSystemInfo = Boolean(systemInfo.os || systemInfo.kernel || systemInfo.hostname || systemInfo.filesystems.length);
 
   return (
     <section className="system-info-workspace" aria-label={labels.systemInfo}>
@@ -3753,13 +3814,13 @@ export function SystemInfoWorkspace({
           <Info size={18} aria-hidden="true" />
           <h2>{labels.systemInfoTabTitle(connection.name)}</h2>
         </div>
-        <button type="button" onClick={onRefresh} disabled={status === "loading"}>
+        <button type="button" onClick={onRefresh} disabled={!isConnected || status === "loading"}>
           <RefreshCw size={15} aria-hidden="true" />
           {labels.refreshMetrics}
         </button>
       </header>
       {status === "error" ? <div className="sftp-state error">{error}</div> : null}
-      {!hasSystemInfo ? <div className="sftp-state">{labels.noSystemInfo}</div> : null}
+      {!canShowMetrics ? <div className="sftp-state">{labels.noSystemInfo}</div> : null}
       <div className="system-info-list">
         {details.map(([label, value]) => (
           <div key={label}>
@@ -3771,7 +3832,7 @@ export function SystemInfoWorkspace({
       <section className="system-info-section">
         <h3>{labels.filesystem}</h3>
         <div className="system-filesystem-table">
-          {systemInfo.filesystems.map((fileSystem) => (
+          {displayInfo.filesystems.length ? displayInfo.filesystems.map((fileSystem) => (
             <div key={fileSystem.path}>
               <strong>{fileSystem.path}</strong>
               <span>{filesystemDisplay(fileSystem)}</span>
@@ -3779,13 +3840,21 @@ export function SystemInfoWorkspace({
                 <i style={{ width: `${Math.min(100, fileSystem.percent)}%` }} />
               </em>
             </div>
-          ))}
+          )) : (
+            <div>
+              <strong>-</strong>
+              <span>{labels.noSystemInfo}</span>
+              <em>
+                <i style={{ width: "0%" }} />
+              </em>
+            </div>
+          )}
         </div>
       </section>
       <section className="system-info-section">
         <h3>{labels.highUsageProcesses}</h3>
         <div className="system-process-table">
-          {(processes.length ? processes.slice(0, 12) : [{ pid: 0, ppid: 0, cpu: 0, memory: 0, command: "-", args: labels.noProcessData }]).map((process) => (
+          {(displayProcesses.length ? displayProcesses.slice(0, 12) : [{ pid: 0, ppid: 0, cpu: 0, memory: 0, command: "-", args: labels.noProcessData }]).map((process) => (
             <div key={`${process.pid}-${process.command}-${process.args}`}>
               <span>{process.pid || "-"}</span>
               <strong>{process.command}</strong>

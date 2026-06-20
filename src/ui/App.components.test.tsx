@@ -317,6 +317,25 @@ describe("renderer workflow components", () => {
     expect(onOpenSystemInfo).toHaveBeenCalledOnce();
   });
 
+  it("hides seeded system metrics while the ssh session is disconnected", () => {
+    render(
+      <ServerStatusRail
+        connection={connectionProfiles[0]}
+        metrics={serverMetrics}
+        systemInfo={systemInfo}
+        processes={[{ pid: 101, ppid: 1, cpu: 20.3, memory: 5.1, command: "nginx", args: "worker" }]}
+        status="idle"
+        isConnected={false}
+        hasMetrics={false}
+        onOpenSystemInfo={vi.fn()}
+      />
+    );
+
+    expect(screen.getAllByText("No system information yet. Connect and refresh metrics to collect it.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("enp0s6")).not.toBeInTheDocument();
+    expect(screen.queryByText("nginx")).not.toBeInTheDocument();
+  });
+
   it("renders a detailed system information workspace", () => {
     const onRefresh = vi.fn();
     render(
@@ -337,6 +356,28 @@ describe("renderer workflow components", () => {
     fireEvent.click(screen.getByRole("button", { name: /Refresh metrics/i }));
 
     expect(onRefresh).toHaveBeenCalledOnce();
+  });
+
+  it("does not show system information details before the ssh session connects", () => {
+    const onRefresh = vi.fn();
+    render(
+      <SystemInfoWorkspace
+        connection={connectionProfiles[0]}
+        metrics={serverMetrics}
+        systemInfo={systemInfo}
+        processes={[{ pid: 101, ppid: 1, cpu: 20.3, memory: 5.1, command: "nginx", args: "worker" }]}
+        status="idle"
+        error=""
+        isConnected={false}
+        hasMetrics={false}
+        onRefresh={onRefresh}
+      />
+    );
+
+    expect(screen.getAllByText("No system information yet. Connect and refresh metrics to collect it.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Ubuntu 22.04 LTS")).not.toBeInTheDocument();
+    expect(screen.queryByText("5.15.0")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Refresh metrics/i })).toBeDisabled();
   });
 
   it("exposes SFTP file management actions", () => {

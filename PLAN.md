@@ -205,6 +205,14 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Ignore stale SFTP directory responses so older requests cannot overwrite the latest clicked path.~~
 - [x] ~~Re-run typecheck, lint, and unit tests.~~
 
+## Disconnected Metrics Empty-State Sprint
+
+- [x] ~~Trace unconnected system information to seeded demo metrics leaking into the live UI.~~
+- [x] ~~Initialize runtime metrics, system information, and process data as empty until a connection collects them.~~
+- [x] ~~Hide system information and server rail details unless the active SSH session is connected and has fresh metrics.~~
+- [x] ~~Disable system information refresh while disconnected.~~
+- [x] ~~Add component coverage to prevent seeded data from appearing in disconnected states.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
