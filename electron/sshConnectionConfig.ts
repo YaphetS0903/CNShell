@@ -53,6 +53,11 @@ export function buildSshConnectConfig({
         return true;
       }
 
+      if (verification.status === "unknown") {
+        knownHostsStore.trustHost(verification.host, verification.port, verification.fingerprint, key.toString("base64"));
+        return true;
+      }
+
       onHostKeyVerification?.({
         status: verification.status,
         host: verification.host,

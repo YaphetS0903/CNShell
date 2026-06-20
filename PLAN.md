@@ -161,6 +161,15 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Update stale terminal guidance that referenced the removed right-side credential panel.~~
 - [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
 
+## Real SSH Credential Verification Sprint
+
+- [x] ~~Read the user's SSH credential file locally without exposing secrets in responses.~~
+- [x] ~~Verify the server with raw ssh2 and a remote `whoami/hostname` command.~~
+- [x] ~~Verify CNshell's `connectSshClient` backend path with temporary known_hosts storage.~~
+- [x] ~~Verify CNshell's `TerminalSessionManager` can open an interactive SSH shell and read remote output.~~
+- [x] ~~Auto-trust first-seen host keys while still blocking changed host keys.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
