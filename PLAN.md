@@ -190,6 +190,14 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Load the active connection from the active restored session instead of always using the first profile.~~
 - [x] ~~Re-run typecheck, lint, tests, package, launch the app, verify SSH, commit, and push.~~
 
+## File Workspace Visibility Sprint
+
+- [x] ~~Lock the desktop shell to viewport height so the bottom workbench cannot fall below the window.~~
+- [x] ~~Make the terminal, server rail, SFTP table, and transfer list scroll inside their own regions.~~
+- [x] ~~Keep the FinalShell-style file workspace visible under the terminal after SSH connection.~~
+- [x] ~~Open SSH file browsing in the remote user's home directory on first connect.~~
+- [x] ~~Add coverage for SSH home-directory session defaults.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~

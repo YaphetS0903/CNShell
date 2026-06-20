@@ -11,12 +11,24 @@ import {
   sessionTabs
 } from "./seed";
 
+export function getDefaultSessionCwd(connection: ConnectionProfile) {
+  if (connection.protocol === "local") {
+    return "~";
+  }
+
+  if (connection.protocol === "ssh") {
+    return connection.username === "root" ? "/root" : `/home/${connection.username || "user"}`;
+  }
+
+  return "/";
+}
+
 export function createHomeSessionForConnection(connection: ConnectionProfile): SessionTab {
   return {
     id: `tab-${connection.id}-home`,
     connectionId: connection.id,
     title: connection.name,
-    cwd: connection.protocol === "local" ? "~" : "/",
+    cwd: getDefaultSessionCwd(connection),
     status: "disconnected",
     startedAt: new Date().toISOString()
   };

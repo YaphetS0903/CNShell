@@ -52,7 +52,7 @@ import {
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { Terminal } from "@xterm/xterm";
-import { createHomeSessionForConnection, createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "../domain/appState";
+import { createHomeSessionForConnection, createInitialAppSnapshot, getDefaultSessionCwd, groupConnections, hydrateAppSnapshot } from "../domain/appState";
 import { createLocalWorkspaceStorage } from "../domain/storage";
 import type {
   ConnectionProfile,
@@ -1243,7 +1243,7 @@ function makeSessionForConnection(connection: ConnectionProfile): SessionTab {
     id: `tab-${connection.id}-${Date.now()}`,
     connectionId: connection.id,
     title: connection.name,
-    cwd: connection.protocol === "local" ? "~" : "/",
+    cwd: getDefaultSessionCwd(connection),
     status: "disconnected",
     startedAt: new Date().toISOString()
   };
@@ -1629,6 +1629,7 @@ export function App() {
   );
   const lastAutoRefreshKeyRef = useRef("");
   const lastAutoStatusRefreshKeyRef = useRef("");
+  const homeDirectoryInitializedSessionsRef = useRef(new Set<string>());
   const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
     tunnels: null,
     zmodem: null,
@@ -2727,7 +2728,7 @@ export function App() {
       id: sessionId,
       connectionId: connection.id,
       title: `${connection.name}${titleSuffix}`,
-      cwd: connection.protocol === "local" ? "~" : "/",
+      cwd: getDefaultSessionCwd(connection),
       status: "disconnected",
       startedAt: new Date().toISOString()
     };
@@ -2912,14 +2913,19 @@ export function App() {
       return;
     }
 
-    const refreshKey = `${activeTabSessionId}:${remotePath}`;
+    const shouldOpenHomeDirectory = activeTabCwd === "/" && !homeDirectoryInitializedSessionsRef.current.has(activeTabSessionId);
+    const firstConnectedPath = shouldOpenHomeDirectory ? getDefaultSessionCwd(activeConnection) : remotePath;
+    const refreshKey = `${activeTabSessionId}:${firstConnectedPath}`;
     if (lastAutoRefreshKeyRef.current === refreshKey) {
       return;
     }
 
     lastAutoRefreshKeyRef.current = refreshKey;
-    refreshRemoteFiles(remotePath);
-  }, [activeConnection.protocol, activeTabSessionId, activeTabStatus, refreshRemoteFiles, remotePath]);
+    if (shouldOpenHomeDirectory) {
+      homeDirectoryInitializedSessionsRef.current.add(activeTabSessionId);
+    }
+    refreshRemoteFiles(firstConnectedPath);
+  }, [activeConnection, activeTabCwd, activeTabSessionId, activeTabStatus, refreshRemoteFiles, remotePath]);
 
   useEffect(() => {
     if (!activeTabSessionId || activeConnection.protocol !== "ssh" || activeTabStatus !== "connected") {

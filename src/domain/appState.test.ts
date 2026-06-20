@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInitialAppSnapshot, groupConnections, hydrateAppSnapshot } from "./appState";
+import { createHomeSessionForConnection, createInitialAppSnapshot, getDefaultSessionCwd, groupConnections, hydrateAppSnapshot } from "./appState";
 import type { AppSnapshot } from "./models";
 
 describe("appState", () => {
@@ -47,6 +47,24 @@ describe("appState", () => {
       connectionId: hydrated.connections[0].id,
       status: "disconnected"
     }));
+  });
+
+  it("starts ssh sessions in the remote user's home directory", () => {
+    const fallback = createInitialAppSnapshot();
+    const sshConnection = {
+      ...fallback.connections[0],
+      protocol: "ssh" as const,
+      username: "ubuntu"
+    };
+    const rootConnection = {
+      ...sshConnection,
+      id: "root-host",
+      username: "root"
+    };
+
+    expect(getDefaultSessionCwd(sshConnection)).toBe("/home/ubuntu");
+    expect(getDefaultSessionCwd(rootConnection)).toBe("/root");
+    expect(createHomeSessionForConnection(sshConnection).cwd).toBe("/home/ubuntu");
   });
 
   it("recovers from empty or mismatched persisted workspace state", () => {

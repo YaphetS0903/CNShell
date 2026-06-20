@@ -115,6 +115,8 @@ textarea:focus-visible {
   display: grid;
   grid-template-columns: clamp(252px, 17vw, 304px) minmax(0, 1fr);
   height: 100vh;
+  min-height: 0;
+  overflow: hidden;
   background: var(--bg);
 }
 
@@ -194,6 +196,8 @@ textarea:focus-visible {
   flex-direction: column;
   gap: 14px;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
   padding: 16px;
   border-right: 1px solid var(--line);
   background: #0f171f;
@@ -448,7 +452,9 @@ textarea:focus-visible {
 .workspace {
   display: flex;
   min-width: 0;
+  min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   background: #0b1117;
 }
 
@@ -622,6 +628,7 @@ textarea:focus-visible {
   grid-template-columns: clamp(236px, 17vw, 300px) minmax(0, 1fr);
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .server-status-rail {
@@ -891,9 +898,10 @@ textarea:focus-visible {
 
 .main-workbench {
   display: grid;
-  grid-template-rows: minmax(280px, 1fr) minmax(250px, 34vh);
+  grid-template-rows: minmax(220px, 1fr) minmax(300px, 38%);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border-right: 1px solid var(--line);
   background: #071016;
 }
@@ -902,6 +910,7 @@ textarea:focus-visible {
   display: grid;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .terminal-split-layout.active {
@@ -967,6 +976,7 @@ textarea:focus-visible {
   min-width: 0;
   min-height: 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 0;
   background: #071016;
 }
@@ -1005,6 +1015,7 @@ textarea:focus-visible {
 .terminal-host {
   min-height: 0;
   flex: 1;
+  overflow: hidden;
   padding: 12px;
 }
 
@@ -1012,6 +1023,7 @@ textarea:focus-visible {
   display: grid;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 
 .terminal-host .xterm {
@@ -1478,6 +1490,7 @@ textarea:focus-visible {
   grid-template-rows: 34px 42px auto minmax(0, 1fr) auto;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
   border-top: 1px solid var(--line);
   background: #0d141b;
 }
@@ -1604,6 +1617,7 @@ textarea:focus-visible {
   grid-template-columns: clamp(154px, 18%, 204px) minmax(0, 1fr) minmax(220px, 30%);
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
 }
 
 .remote-tree {
@@ -1858,6 +1872,8 @@ textarea:focus-visible {
 }
 
 .file-transfer-list {
+  max-height: 82px;
+  overflow: auto;
   border-top: 1px solid #24313a;
   background: #0d151c;
   padding: 7px 10px;
