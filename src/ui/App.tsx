@@ -70,7 +70,6 @@ import type {
 } from "../domain/models";
 import type {
   CredentialStatus,
-  CredentialVaultStatus,
   HostKeyVerificationEvent,
   RelayInfo,
   SshSessionConfig,
@@ -151,7 +150,7 @@ type ZmodemMode = "idle" | "upload" | "download" | "detected";
 type Language = "zh-CN" | "en-US";
 type ThemeMode = "light" | "dark";
 type ThemeAccent = "green" | "blue" | "purple" | "orange";
-type PanelFocusKey = "credentials" | "tunnels" | "zmodem" | "logs";
+type PanelFocusKey = "tunnels" | "zmodem" | "logs";
 type WorkspaceView = "terminal" | "systemInfo";
 
 interface AppErrorBoundaryState {
@@ -204,6 +203,7 @@ const translations = {
     connectionHostRequired: "请输入主机地址。",
     connectionPortInvalid: "端口必须是 1 到 65535。",
     connectionUserRequired: "请输入用户名。",
+    connectionCredentialRequired: "请先在连接配置中填写密码、私钥或启用 Agent 登录。",
     noConnectionsFound: "没有匹配的连接",
     connectionSettings: "连接设置",
     expandGroup: "展开分组",
@@ -216,7 +216,8 @@ const translations = {
     toggleSyncInput: "切换同步输入",
     toggleHighlightRules: "切换高亮规则",
     openTunnelingManager: "打开隧道管理",
-    openCredentialVault: "打开凭据保险库",
+    openCredentialVault: "编辑当前连接凭据",
+    operationsDrawer: "运维工具",
     focusPanel: (panel: string) => `定位到${panel}`,
     sessionTabs: "会话标签",
     newSessionTab: "新建会话标签",
@@ -305,6 +306,7 @@ const translations = {
     sessionCredentialReady: "本次会话凭据已就绪",
     savedCredentialAvailable: "已保存凭据可用",
     noSavedCredential: "无已保存凭据",
+    credentialManagedInEditor: "凭据已移到左侧编辑连接中管理。",
     encryptionUnavailable: "加密不可用",
     vault: "保险库",
     masterPassword: "主密码",
@@ -589,6 +591,7 @@ const translations = {
     connectionHostRequired: "Enter a host.",
     connectionPortInvalid: "Port must be between 1 and 65535.",
     connectionUserRequired: "Enter a username.",
+    connectionCredentialRequired: "Enter a password, private key, or enable Agent authentication in the connection profile first.",
     noConnectionsFound: "No matching connections",
     connectionSettings: "Connection settings",
     expandGroup: "Expand group",
@@ -601,7 +604,8 @@ const translations = {
     toggleSyncInput: "Toggle synchronized input",
     toggleHighlightRules: "Toggle highlight rules",
     openTunnelingManager: "Open tunneling manager",
-    openCredentialVault: "Open credential vault",
+    openCredentialVault: "Edit current connection credentials",
+    operationsDrawer: "Operations tools",
     focusPanel: (panel: string) => `Focus ${panel}`,
     sessionTabs: "Session tabs",
     newSessionTab: "Open new session tab",
@@ -690,6 +694,7 @@ const translations = {
     sessionCredentialReady: "Session credential ready",
     savedCredentialAvailable: "Saved credential available",
     noSavedCredential: "No saved credential",
+    credentialManagedInEditor: "Credentials are managed from Edit connection on the left.",
     encryptionUnavailable: "Encryption unavailable",
     vault: "Vault",
     masterPassword: "Master password",
@@ -1147,7 +1152,7 @@ function createDefaultConnectionDraft(): ConnectionFormDraft {
     password: "",
     privateKey: "",
     passphrase: "",
-    saveCredential: false,
+    saveCredential: true,
     color: connectionColors[0],
     tags: ""
   };
@@ -1525,6 +1530,7 @@ export function App() {
   const [themeAccent, setThemeAccent] = useState<ThemeAccent>(() => readPreferredThemeAccent());
   const labels = translations[language];
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isOperationsOpen, setIsOperationsOpen] = useState(false);
   const [connectionQuery, setConnectionQuery] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [connectionDraft, setConnectionDraft] = useState<ConnectionFormDraft | null>(null);
@@ -1539,11 +1545,6 @@ export function App() {
   const [sessionStartTokens, setSessionStartTokens] = useState<Record<string, number>>({});
   const [hostKeyPrompts, setHostKeyPrompts] = useState<Record<string, HostKeyVerificationEvent>>({});
   const [credentialStatuses, setCredentialStatuses] = useState<Record<string, CredentialStatus>>({});
-  const [credentialErrors, setCredentialErrors] = useState<Record<string, string>>({});
-  const [credentialVaultStatus, setCredentialVaultStatus] = useState<CredentialVaultStatus | null>(null);
-  const [credentialVaultPassword, setCredentialVaultPassword] = useState("");
-  const [credentialVaultError, setCredentialVaultError] = useState("");
-  const [privateKeyImportStatus, setPrivateKeyImportStatus] = useState("");
   const [rdpStatus, setRdpStatus] = useState<"idle" | "launching" | "error">("idle");
   const [rdpError, setRdpError] = useState("");
   const [remoteFileEntries, setRemoteFileEntries] = useState(snapshot.remoteFiles);
@@ -1613,7 +1614,6 @@ export function App() {
   const lastAutoRefreshKeyRef = useRef("");
   const lastAutoStatusRefreshKeyRef = useRef("");
   const panelRefs = useRef<Record<PanelFocusKey, HTMLElement | null>>({
-    credentials: null,
     tunnels: null,
     zmodem: null,
     logs: null
@@ -1658,6 +1658,7 @@ export function App() {
   const activeTabSessionId = activeTab?.id ?? "";
   const activeTabCwd = activeTab?.cwd ?? "/";
   const activeTabStatus = activeTab?.status;
+  const activeHostKeyPrompt = activeTab ? hostKeyPrompts[activeTab.id] : undefined;
 
   const setSessionStatus = useCallback((sessionId: string, status: SessionStatus) => {
     setSessionStatuses((current) => ({
@@ -1674,16 +1675,19 @@ export function App() {
   const activeCredentialStatus = credentialStatuses[activeConnection.id];
 
   const focusPanel = useCallback((panel: PanelFocusKey) => {
-    const element = panelRefs.current[panel];
-    if (!element) {
-      return;
-    }
-
-    element.scrollIntoView({ block: "start", behavior: "smooth" });
-    element.classList.add("panel-section-focused");
+    setIsOperationsOpen(true);
     window.setTimeout(() => {
-      element.classList.remove("panel-section-focused");
-    }, 900);
+      const element = panelRefs.current[panel];
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({ block: "start", behavior: "smooth" });
+      element.classList.add("panel-section-focused");
+      window.setTimeout(() => {
+        element.classList.remove("panel-section-focused");
+      }, 900);
+    }, 0);
   }, []);
 
   const setPanelRef = useCallback((panel: PanelFocusKey) => {
@@ -1808,17 +1812,8 @@ export function App() {
               ...current,
               [connection.id]: status
             }));
-            setCredentialErrors((current) => ({
-              ...current,
-              [connection.id]: ""
-            }));
           })
-          .catch((error: Error) => {
-            setCredentialErrors((current) => ({
-              ...current,
-              [connection.id]: error.message
-            }));
-          });
+          .catch((error: Error) => setConnectionFormError(error.message));
       }
     }
 
@@ -1915,16 +1910,6 @@ export function App() {
     setCollapsedGroups((current) => ({
       ...current,
       [group]: !current[group]
-    }));
-  };
-
-  const updateActiveSshDraft = (field: "password" | "privateKey" | "passphrase", value: string) => {
-    setSshDrafts((current) => ({
-      ...current,
-      [activeConnection.id]: {
-        ...(current[activeConnection.id] ?? { password: "", privateKey: "", passphrase: "" }),
-        [field]: value
-      }
     }));
   };
 
@@ -2203,10 +2188,18 @@ export function App() {
 
   const startActiveSession = () => {
     const tab = activeTab ?? createSessionForConnection(activeConnection);
-    setCredentialErrors((current) => ({
-      ...current,
-      [activeConnection.id]: ""
-    }));
+    const hasSessionCredential = Boolean(activeSshDraft.password || activeSshDraft.privateKey);
+    if (
+      activeConnection.protocol === "ssh" &&
+      activeConnection.authMethod !== "agent" &&
+      !hasSessionCredential &&
+      activeCredentialStatus?.hasCredential === false
+    ) {
+      setConnectionFormError(labels.connectionCredentialRequired);
+      setConnectionDraft(createConnectionDraft(activeConnection));
+      return;
+    }
+
     setActiveTabId(tab.id);
     setActiveConnectionId(tab.connectionId);
     setSessionStartTokens((current) => ({
@@ -2238,10 +2231,6 @@ export function App() {
         delete next[activeTab.id];
         return next;
       });
-      setCredentialErrors((current) => ({
-        ...current,
-        [activeConnection.id]: ""
-      }));
       startActiveSession();
     });
   };
@@ -2254,132 +2243,6 @@ export function App() {
       }));
     });
   }, []);
-
-  const refreshCredentialVaultStatus = useCallback(() => {
-    void window.cnshell?.credentials.vaultStatus().then((status) => {
-      setCredentialVaultStatus(status);
-    });
-  }, []);
-
-  const refreshActiveCredentialSecurity = useCallback(() => {
-    refreshCredentialVaultStatus();
-    if (activeConnection.protocol === "ssh") {
-      refreshCredentialStatus(activeConnection.id);
-    }
-  }, [activeConnection.id, activeConnection.protocol, refreshCredentialStatus, refreshCredentialVaultStatus]);
-
-  const enableCredentialVault = () => {
-    setCredentialVaultError("");
-    void window.cnshell?.credentials
-      .enableVault({ masterPassword: credentialVaultPassword })
-      .then((status) => {
-        setCredentialVaultStatus(status);
-        setCredentialVaultPassword("");
-        refreshActiveCredentialSecurity();
-      })
-      .catch((error: Error) => {
-        setCredentialVaultError(error.message);
-      });
-  };
-
-  const unlockCredentialVault = () => {
-    setCredentialVaultError("");
-    void window.cnshell?.credentials
-      .unlockVault({ masterPassword: credentialVaultPassword })
-      .then((status) => {
-        setCredentialVaultStatus(status);
-        setCredentialVaultPassword("");
-        refreshActiveCredentialSecurity();
-      })
-      .catch((error: Error) => {
-        setCredentialVaultError(error.message);
-      });
-  };
-
-  const lockCredentialVault = () => {
-    setCredentialVaultError("");
-    void window.cnshell?.credentials.lockVault().then((status) => {
-      setCredentialVaultStatus(status);
-      refreshActiveCredentialSecurity();
-    });
-  };
-
-  const disableCredentialVault = () => {
-    setCredentialVaultError("");
-    void window.cnshell?.credentials
-      .disableVault({ masterPassword: credentialVaultPassword || undefined })
-      .then((status) => {
-        setCredentialVaultStatus(status);
-        setCredentialVaultPassword("");
-        refreshActiveCredentialSecurity();
-      })
-      .catch((error: Error) => {
-        setCredentialVaultError(error.message);
-      });
-  };
-
-  const saveActiveCredential = () => {
-    void window.cnshell?.credentials
-      .save({
-        connectionId: activeConnection.id,
-        secret: {
-          password: activeSshDraft.password || undefined,
-          privateKey: activeSshDraft.privateKey || undefined,
-          passphrase: activeSshDraft.passphrase || undefined
-        }
-      })
-      .then((status) => {
-        setCredentialStatuses((current) => ({
-          ...current,
-          [activeConnection.id]: status
-        }));
-        setCredentialErrors((current) => ({
-          ...current,
-          [activeConnection.id]: ""
-        }));
-        setSshDrafts((current) => ({
-          ...current,
-          [activeConnection.id]: { password: "", privateKey: "", passphrase: "" }
-        }));
-      })
-      .catch((error: Error) => {
-        setCredentialErrors((current) => ({
-          ...current,
-          [activeConnection.id]: error.message
-        }));
-      });
-  };
-
-  const deleteActiveCredential = () => {
-    void window.cnshell?.credentials.delete(activeConnection.id).then((status) => {
-      setCredentialStatuses((current) => ({
-        ...current,
-        [activeConnection.id]: status
-      }));
-      setCredentialErrors((current) => ({
-        ...current,
-        [activeConnection.id]: ""
-      }));
-    });
-  };
-
-  const importPrivateKey = () => {
-    setPrivateKeyImportStatus(labels.openingKeyFile);
-    void window.cnshell?.credentials
-      .importPrivateKey()
-      .then((result) => {
-        if (!result.ok || !result.privateKey) {
-          setPrivateKeyImportStatus(labels.privateKeyImportCanceled);
-          return;
-        }
-
-        updateActiveSshDraft("privateKey", result.privateKey);
-        setPrivateKeyImportStatus(labels.privateKeyImported(result.fileName ?? labels.privateKeyFallbackName));
-      })
-      .catch((error: Error) => {
-        setPrivateKeyImportStatus(error.message);
-      });
-  };
 
   const openActiveRdp = () => {
     if (activeConnection.protocol !== "rdp") {
@@ -2903,9 +2766,8 @@ export function App() {
   useEffect(() => {
     void window.cnshell?.getVersion().then(setAppVersion);
     void window.cnshell?.setLanguage(language);
-    refreshCredentialVaultStatus();
     void window.cnshell?.updates.status().then(setUpdateStatus);
-  }, [language, refreshCredentialVaultStatus]);
+  }, [language]);
 
   useEffect(() => {
     return window.cnshell?.updates.onStatus(setUpdateStatus);
@@ -2940,22 +2802,9 @@ export function App() {
           ...current,
           [event.id]: event
         }));
-        const matchedSession = snapshot.sessions.find((session) => session.id === event.id);
-        const matchedConnection = matchedSession
-          ? snapshot.connections.find((connection) => connection.id === matchedSession.connectionId)
-          : undefined;
-        if (matchedConnection) {
-          setCredentialErrors((current) => ({
-            ...current,
-            [matchedConnection.id]:
-              event.status === "changed"
-                ? labels.hostKeyChangedBlocked(event.host, event.port)
-                : labels.hostKeyTrustRequired(event.host, event.port)
-          }));
-        }
         setSessionStatus(event.id, "error");
       });
-  }, [labels, setSessionStatus, snapshot.connections, snapshot.sessions]);
+  }, [setSessionStatus]);
 
   useEffect(() => {
     if (activeConnection.protocol === "ssh") {
@@ -3060,6 +2909,7 @@ export function App() {
           onToggleSyncInput={() => setIsSyncInputEnabled((current) => !current)}
           onToggleHighlight={() => setIsHighlightEnabled((current) => !current)}
           onFocusPanel={focusPanel}
+          onEditConnection={openActiveConnectionEditor}
         />
         <TabStrip
           tabs={sessionTabsWithStatus}
@@ -3167,32 +3017,17 @@ export function App() {
           ) : (
             <EmptySessionState onCreate={createSessionForActiveConnection} onCreateConnection={openNewConnectionEditor} />
           )}
-          <aside className="ops-panel" aria-label={labels.operationsPanels}>
-            {activeConnection.protocol === "ssh" ? (
-              <SshCredentialPanel
-                panelRef={setPanelRef("credentials")}
-                authMethod={activeConnection.authMethod}
-                draft={activeSshDraft}
-                credentialStatus={activeCredentialStatus}
-                credentialError={credentialErrors[activeConnection.id]}
-                vaultStatus={credentialVaultStatus}
-                vaultPassword={credentialVaultPassword}
-                vaultError={credentialVaultError}
-                privateKeyImportStatus={privateKeyImportStatus}
-                hostKeyPrompt={activeTab ? hostKeyPrompts[activeTab.id] : undefined}
-                onChange={updateActiveSshDraft}
-                onVaultPasswordChange={setCredentialVaultPassword}
-                onImportPrivateKey={importPrivateKey}
-                onConnect={startActiveSession}
-                onSaveCredential={saveActiveCredential}
-                onDeleteCredential={deleteActiveCredential}
-                onEnableVault={enableCredentialVault}
-                onUnlockVault={unlockCredentialVault}
-                onLockVault={lockCredentialVault}
-                onDisableVault={disableCredentialVault}
-                onTrustHost={trustActiveHost}
-              />
-            ) : null}
+          {isOperationsOpen ? (
+          <aside className="ops-drawer" aria-label={labels.operationsPanels}>
+            <div className="ops-drawer-heading">
+              <div>
+                <LayoutDashboard size={16} aria-hidden="true" />
+                <strong>{labels.operationsDrawer}</strong>
+              </div>
+              <button type="button" aria-label={labels.close} onClick={() => setIsOperationsOpen(false)}>
+                <X size={16} aria-hidden="true" />
+              </button>
+            </div>
             {activeConnection.protocol === "rdp" ? (
               <RdpPanel connection={activeConnection} status={rdpStatus} error={rdpError} onOpen={openActiveRdp} />
             ) : null}
@@ -3306,6 +3141,7 @@ export function App() {
               onInstall={installDownloadedUpdate}
             />
           </aside>
+          ) : null}
         </section>
       </section>
       {isCommandPaletteOpen ? (
@@ -3330,6 +3166,19 @@ export function App() {
           })}
           onConfirm={confirmBulkCommand}
           onCancel={cancelBulkCommand}
+        />
+      ) : null}
+      {activeHostKeyPrompt ? (
+        <HostKeyPromptDialog
+          prompt={activeHostKeyPrompt}
+          onTrust={trustActiveHost}
+          onClose={() =>
+            setHostKeyPrompts((current) => {
+              const next = { ...current };
+              delete next[activeHostKeyPrompt.id];
+              return next;
+            })
+          }
         />
       ) : null}
       {isSettingsOpen ? (
@@ -3504,7 +3353,8 @@ function TopBar({
   onOpenCommandPalette,
   onToggleSyncInput,
   onToggleHighlight,
-  onFocusPanel
+  onFocusPanel,
+  onEditConnection
 }: {
   activeConnection: ConnectionProfile;
   status: SessionStatus;
@@ -3515,6 +3365,7 @@ function TopBar({
   onToggleSyncInput: () => void;
   onToggleHighlight: () => void;
   onFocusPanel: (panel: PanelFocusKey) => void;
+  onEditConnection: () => void;
 }) {
   const labels = useUiStrings();
   return (
@@ -3556,7 +3407,7 @@ function TopBar({
         <button type="button" aria-label={labels.openTunnelingManager} onClick={() => onFocusPanel("tunnels")}>
           <Network size={17} aria-hidden="true" />
         </button>
-        <button type="button" aria-label={labels.openCredentialVault} onClick={() => onFocusPanel("credentials")}>
+        <button type="button" aria-label={labels.openCredentialVault} onClick={onEditConnection}>
           <KeyRound size={17} aria-hidden="true" />
         </button>
         <span className="version-label">v{version}</span>
@@ -4239,195 +4090,6 @@ function TerminalPane({
         <button type="button" onClick={sendComposeValue}>
           {labels.send}
         </button>
-      </div>
-    </section>
-  );
-}
-
-function SshCredentialPanel({
-  panelRef,
-  authMethod,
-  draft,
-  credentialStatus,
-  credentialError,
-  vaultStatus,
-  vaultPassword,
-  vaultError,
-  privateKeyImportStatus,
-  hostKeyPrompt,
-  onChange,
-  onVaultPasswordChange,
-  onImportPrivateKey,
-  onConnect,
-  onSaveCredential,
-  onDeleteCredential,
-  onEnableVault,
-  onUnlockVault,
-  onLockVault,
-  onDisableVault,
-  onTrustHost
-}: {
-  panelRef?: (element: HTMLElement | null) => void;
-  authMethod: ConnectionProfile["authMethod"];
-  draft: { password: string; privateKey: string; passphrase: string };
-  credentialStatus?: CredentialStatus;
-  credentialError?: string;
-  vaultStatus: CredentialVaultStatus | null;
-  vaultPassword: string;
-  vaultError: string;
-  privateKeyImportStatus: string;
-  hostKeyPrompt?: HostKeyVerificationEvent;
-  onChange: (field: "password" | "privateKey" | "passphrase", value: string) => void;
-  onVaultPasswordChange: (value: string) => void;
-  onImportPrivateKey: () => void;
-  onConnect: () => void;
-  onSaveCredential: () => void;
-  onDeleteCredential: () => void;
-  onEnableVault: () => void;
-  onUnlockVault: () => void;
-  onLockVault: () => void;
-  onDisableVault: () => void;
-  onTrustHost: () => void;
-}) {
-  const labels = useUiStrings();
-  const hasDraftSecret = Boolean(draft.password || draft.privateKey);
-  const hasUsableCredential = Boolean(hasDraftSecret || credentialStatus?.hasCredential || authMethod === "agent");
-  const shouldOpenAdvancedLogin = !hasUsableCredential || Boolean(vaultError || privateKeyImportStatus);
-  const isVaultMasterMode = vaultStatus?.mode === "master";
-  const isVaultLocked = Boolean(vaultStatus?.locked);
-  const hasVaultPassword = Boolean(vaultPassword.trim());
-  const isEncryptionUnavailable = credentialStatus?.encryptionAvailable === false || vaultStatus?.encryptionAvailable === false;
-
-  return (
-    <section ref={panelRef} className="panel-section ssh-panel" aria-label={labels.sshCredentials}>
-      <div className="panel-heading">
-        <div>
-          <KeyRound size={16} aria-hidden="true" />
-          <h2>{labels.sshCredentials}</h2>
-        </div>
-        <span className="poll-rate">{authMethod}</span>
-      </div>
-      <div className="ssh-form">
-        <div className="credential-status-row">
-          <span className={hasDraftSecret || credentialStatus?.hasCredential ? "saved" : ""}>
-            {hasDraftSecret
-              ? labels.sessionCredentialReady
-              : credentialStatus?.hasCredential
-                ? labels.savedCredentialAvailable
-                : labels.noSavedCredential}
-          </span>
-          {credentialStatus?.hasCredential ? <small>{credentialStatus.protection}</small> : null}
-          {isEncryptionUnavailable ? <small>{labels.encryptionUnavailable}</small> : null}
-        </div>
-        {credentialError ? (
-          <div className="credential-error" role="alert">
-            {credentialError}
-          </div>
-        ) : null}
-        {hostKeyPrompt ? (
-          <div className={`host-key-prompt ${hostKeyPrompt.status}`} role="alert">
-            <strong>{hostKeyPrompt.status === "changed" ? labels.hostKeyChanged : labels.unknownHostKey}</strong>
-            <span>
-              {hostKeyPrompt.host}:{hostKeyPrompt.port}
-            </span>
-            <code>{hostKeyPrompt.fingerprint}</code>
-            {hostKeyPrompt.expectedFingerprint ? <small>{labels.expectedFingerprint(hostKeyPrompt.expectedFingerprint)}</small> : null}
-            <button type="button" disabled={hostKeyPrompt.status === "changed"} onClick={onTrustHost}>
-              <ShieldCheck size={16} aria-hidden="true" />
-              {labels.trustAndReconnect}
-            </button>
-          </div>
-        ) : null}
-        <button type="button" onClick={onConnect}>
-          <TerminalSquare size={16} aria-hidden="true" />
-          {labels.connect}
-        </button>
-        <details className="credential-advanced" open={shouldOpenAdvancedLogin}>
-          <summary>{labels.advancedSshLogin}</summary>
-          <div className="credential-advanced-body">
-            <div className="credential-vault-panel">
-              <div className="credential-vault-state">
-                <span>{labels.vault}</span>
-                <strong>{isVaultMasterMode ? labels.masterPassword : labels.systemKeyring}</strong>
-                <small>{isVaultMasterMode ? (isVaultLocked ? labels.locked : labels.unlocked) : labels.active}</small>
-              </div>
-              <label className="credential-vault-password">
-                <span>{labels.masterPassword}</span>
-                <input
-                  type="password"
-                  value={vaultPassword}
-                  placeholder={isVaultMasterMode ? labels.enterMasterPassword : labels.newMasterPassword}
-                  onChange={(event) => onVaultPasswordChange(event.target.value)}
-                />
-              </label>
-              {vaultError ? (
-                <div className="credential-error" role="alert">
-                  {vaultError}
-                </div>
-              ) : null}
-              <div className="credential-vault-actions">
-                <button type="button" disabled={isEncryptionUnavailable || isVaultMasterMode || !hasVaultPassword} onClick={onEnableVault}>
-                  {labels.enable}
-                </button>
-                <button type="button" disabled={!isVaultMasterMode || !isVaultLocked || !hasVaultPassword} onClick={onUnlockVault}>
-                  {labels.unlock}
-                </button>
-                <button type="button" disabled={!isVaultMasterMode || isVaultLocked} onClick={onLockVault}>
-                  {labels.lock}
-                </button>
-                <button type="button" disabled={!isVaultMasterMode || (isVaultLocked && !hasVaultPassword)} onClick={onDisableVault}>
-                  {labels.disable}
-                </button>
-              </div>
-            </div>
-            <label>
-              <span>{labels.password}</span>
-              <input
-                type="password"
-                value={draft.password}
-                placeholder={labels.sessionOnly}
-                onChange={(event) => onChange("password", event.target.value)}
-              />
-            </label>
-            <label>
-              <span className="private-key-label">
-                {labels.privateKey}
-                <button type="button" onClick={onImportPrivateKey}>
-                  <UploadCloud size={14} aria-hidden="true" />
-                  {labels.import}
-                </button>
-              </span>
-              <textarea
-                value={draft.privateKey}
-                placeholder={labels.pastePrivateKey}
-                onChange={(event) => onChange("privateKey", event.target.value)}
-              />
-            </label>
-            {privateKeyImportStatus ? <div className="private-key-import-status">{privateKeyImportStatus}</div> : null}
-            <label>
-              <span>{labels.passphrase}</span>
-              <input
-                type="password"
-                value={draft.passphrase}
-                placeholder={labels.encryptedPrivateKeys}
-                onChange={(event) => onChange("passphrase", event.target.value)}
-              />
-            </label>
-            <div className="credential-actions">
-              <button
-                type="button"
-                disabled={!hasDraftSecret || isEncryptionUnavailable || (isVaultMasterMode && isVaultLocked)}
-                onClick={onSaveCredential}
-              >
-                <ShieldCheck size={16} aria-hidden="true" />
-                {labels.saveCredential}
-              </button>
-              <button type="button" disabled={!credentialStatus?.hasCredential} onClick={onDeleteCredential}>
-                {labels.deleteSaved}
-              </button>
-            </div>
-          </div>
-        </details>
       </div>
     </section>
   );
@@ -5578,6 +5240,54 @@ export function BulkCommandConfirmation({
           </button>
           <button type="button" onClick={onConfirm}>
             {labels.sendToAll}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function HostKeyPromptDialog({
+  prompt,
+  onTrust,
+  onClose
+}: {
+  prompt: HostKeyVerificationEvent;
+  onTrust: () => void;
+  onClose: () => void;
+}) {
+  const labels = useUiStrings();
+  return (
+    <div className="palette-backdrop" role="presentation" onClick={onClose}>
+      <section
+        className="host-key-dialog"
+        role="dialog"
+        aria-label={prompt.status === "changed" ? labels.hostKeyChanged : labels.unknownHostKey}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="dialog-heading">
+          <div>
+            <ShieldCheck size={18} aria-hidden="true" />
+            <h2>{prompt.status === "changed" ? labels.hostKeyChanged : labels.unknownHostKey}</h2>
+          </div>
+          <button type="button" aria-label={labels.close} onClick={onClose}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+        <div className={`host-key-prompt ${prompt.status}`} role="alert">
+          <span>
+            {prompt.host}:{prompt.port}
+          </span>
+          <code>{prompt.fingerprint}</code>
+          {prompt.expectedFingerprint ? <small>{labels.expectedFingerprint(prompt.expectedFingerprint)}</small> : null}
+        </div>
+        <div className="dialog-actions">
+          <button type="button" onClick={onClose}>
+            {labels.cancel}
+          </button>
+          <button type="button" className="primary-action" disabled={prompt.status === "changed"} onClick={onTrust}>
+            <ShieldCheck size={15} aria-hidden="true" />
+            {labels.trustAndReconnect}
           </button>
         </div>
       </section>

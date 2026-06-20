@@ -619,7 +619,7 @@ textarea:focus-visible {
 
 .workspace-grid {
   display: grid;
-  grid-template-columns: clamp(236px, 17vw, 300px) minmax(0, 1fr) clamp(286px, 19vw, 340px);
+  grid-template-columns: clamp(236px, 17vw, 300px) minmax(0, 1fr);
   min-height: 0;
   flex: 1;
 }
@@ -1328,7 +1328,8 @@ textarea:focus-visible {
   resize: vertical;
 }
 
-.ops-panel {
+.ops-panel,
+.ops-drawer {
   display: flex;
   min-width: 0;
   min-height: 0;
@@ -1337,6 +1338,50 @@ textarea:focus-visible {
   overflow: auto;
   padding: 10px;
   background: #0e151d;
+}
+
+.ops-drawer {
+  position: fixed;
+  top: 80px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 60;
+  width: min(380px, calc(100vw - 48px));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
+}
+
+.ops-drawer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 10px;
+}
+
+.ops-drawer-heading div,
+.ops-drawer-heading button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ops-drawer-heading strong {
+  font-size: 13px;
+}
+
+.ops-drawer-heading button {
+  justify-content: center;
+  min-width: 30px;
+  min-height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #111c24;
+  color: #c7d5df;
+  cursor: pointer;
 }
 
 .panel-section {
@@ -2703,6 +2748,17 @@ textarea:focus-visible {
   padding: 14px;
 }
 
+.host-key-dialog {
+  display: grid;
+  width: min(520px, calc(100vw - 48px));
+  gap: 12px;
+  border: 1px solid #40515d;
+  border-radius: 8px;
+  background: #101820;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.34);
+  padding: 14px;
+}
+
 .bulk-command-heading,
 .bulk-command-heading div,
 .bulk-command-actions {
@@ -3811,7 +3867,8 @@ textarea:focus-visible {
 :root[data-theme="light"] .topbar,
 :root[data-theme="light"] .tab-strip,
 :root[data-theme="light"] .server-status-rail,
-:root[data-theme="light"] .ops-panel {
+:root[data-theme="light"] .ops-panel,
+:root[data-theme="light"] .ops-drawer {
   background: var(--panel-strong);
   color: var(--text);
 }
@@ -3887,6 +3944,7 @@ textarea:focus-visible {
 :root[data-theme="light"] .cloud-sync-actions button,
 :root[data-theme="light"] .update-panel button,
 :root[data-theme="light"] .settings-heading button,
+:root[data-theme="light"] .ops-drawer-heading button,
 :root[data-theme="light"] .dialog-actions button {
   background: #ffffff;
   color: var(--text);
@@ -4036,7 +4094,8 @@ textarea:focus-visible {
 :root[data-theme="light"] .settings-dialog,
 :root[data-theme="light"] .editor-dialog,
 :root[data-theme="light"] .command-palette,
-:root[data-theme="light"] .bulk-command-dialog {
+:root[data-theme="light"] .bulk-command-dialog,
+:root[data-theme="light"] .host-key-dialog {
   border-color: var(--line);
   background: var(--panel);
   color: var(--text);
@@ -4206,7 +4265,7 @@ textarea:focus-visible {
   }
 
   .workspace-grid {
-    grid-template-columns: 250px minmax(0, 1fr) 300px;
+    grid-template-columns: 250px minmax(0, 1fr);
   }
 
   .server-status-rail {
@@ -4245,7 +4304,7 @@ textarea:focus-visible {
   }
 
   .workspace-grid {
-    grid-template-columns: 230px minmax(0, 1fr) 286px;
+    grid-template-columns: 230px minmax(0, 1fr);
   }
 
   .topbar-actions {

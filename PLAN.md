@@ -141,6 +141,16 @@ CNshell is a desktop SSH and server operations client inspired by FinalShell's i
 - [x] ~~Reduce the right SSH panel to connection status, connect action, host-key trust, and a collapsed advanced credential area.~~
 - [x] ~~Add regression tests for host/port normalization and the editor split behavior.~~
 
+## SSH Connectivity Diagnostics And Operations Drawer Sprint
+
+- [x] ~~Add a TCP reachability preflight before starting SSH authentication.~~
+- [x] ~~Replace vague SSH timeouts with Chinese guidance for security group, firewall, sshd, and port checks.~~
+- [x] ~~Remove the permanent right-side SSH login panel from the main workspace.~~
+- [x] ~~Move operations panels into an on-demand drawer opened from toolbar actions.~~
+- [x] ~~Keep SSH credentials managed from the left connection editor and show host-key trust in a modal dialog.~~
+- [x] ~~Verify the reported server endpoint with a local TCP test.~~
+- [x] ~~Re-run typecheck, lint, tests, package, commit, and push.~~
+
 ## Current Sprint
 
 - [x] ~~Create `PLAN.md` and initial milestone checklist.~~
