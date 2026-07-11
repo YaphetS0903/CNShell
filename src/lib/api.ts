@@ -1,0 +1,191 @@
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import type {
+  AppSettings,
+  BackgroundTask,
+  ConnectionProfile,
+  Folder,
+  MonitorSnapshot,
+  RdpPreflight,
+  RemoteFile,
+  SaveConnectionInput,
+  SystemInfo,
+  TerminalOutput,
+  TerminalStatus,
+  TerminalSession,
+  TransferTask
+} from "../types";
+import type { CommandSnippet, PortForward, ProxyProfile, SaveProxyInput } from "../types";
+
+const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+const demoConnection: ConnectionProfile = {
+  id: "demo-localhost",
+  folderId: null,
+  protocol: "ssh",
+  name: "演示服务器",
+  host: "127.0.0.1",
+  port: 22,
+  username: "developer",
+  authType: "sshAgent",
+  privateKeyPath: null,
+  hostKeyPolicy: "strict",
+  note: "连接到真实服务器后显示实时数据",
+  tags: ["Demo"],
+  encoding: "UTF-8",
+  startupCommand: null,
+  proxyId: null,
+  environment: {},
+  hasCredential: false,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+  ,lastConnectedAt: null
+};
+
+let browserConnections = [demoConnection];
+let browserDeletedConnections:ConnectionProfile[]=[];
+let browserSnippets:CommandSnippet[]=[];
+
+export const api = {
+  isDesktop: isTauri,
+  async listConnections(): Promise<ConnectionProfile[]> {
+    return isTauri() ? invoke("connection_list") : browserConnections;
+  },
+  async listDeletedConnections(): Promise<ConnectionProfile[]> { return isTauri() ? invoke("connection_deleted_list") : browserDeletedConnections; },
+  async listFolders(): Promise<Folder[]> {
+    return isTauri() ? invoke("folder_list") : [];
+  },
+  async saveFolder(id: string, name: string, parentId: string | null = null): Promise<Folder> { return invoke("folder_save", { id, name, parentId }); },
+  async deleteFolder(id: string): Promise<void> { return invoke("folder_delete", { id }); },
+  async moveConnection(id: string, folderId: string | null): Promise<void> { return invoke("connection_move", { id, folderId }); },
+  async saveConnection(input: SaveConnectionInput): Promise<ConnectionProfile> {
+    if (isTauri()) return invoke("connection_save", { input });
+    const now = new Date().toISOString();
+    const saved: ConnectionProfile = { ...input, hasCredential: Boolean(input.credential), createdAt: now, updatedAt: now, lastConnectedAt: null };
+    browserConnections = [...browserConnections.filter((item) => item.id !== saved.id), saved];
+    return saved;
+  },
+  async duplicateConnection(id:string,newId:string):Promise<ConnectionProfile>{return invoke("connection_duplicate",{id,newId});},
+  async deleteConnection(id: string): Promise<void> {
+    if (isTauri()) await invoke("connection_delete", { id });
+    else {const deleted=browserConnections.find((item)=>item.id===id);if(deleted)browserDeletedConnections=[deleted,...browserDeletedConnections.filter((item)=>item.id!==id)];browserConnections=browserConnections.filter((item) => item.id !== id);}
+  },
+  async restoreConnection(id: string): Promise<void> { if(isTauri())await invoke("connection_restore",{id});else{const restored=browserDeletedConnections.find((item)=>item.id===id);if(restored)browserConnections=[...browserConnections,restored];browserDeletedConnections=browserDeletedConnections.filter((item)=>item.id!==id);} },
+  async purgeConnection(id: string): Promise<void> { if(isTauri())await invoke("connection_purge",{id});else browserDeletedConnections=browserDeletedConnections.filter((item)=>item.id!==id); },
+  async startConnectionTest(id: string): Promise<BackgroundTask> {
+    if (isTauri()) return invoke("connection_test_start", { id });
+    return { id: crypto.randomUUID(), kind: "connectionDiagnostic", status: "completed", result: [{ stage: "tcp", ok: false, message: "浏览器预览不建立真实 SSH 连接，请启动桌面版。" }], error: null, createdAt: new Date().toISOString() };
+  },
+  async trustHost(id: string, fingerprint: string, algorithm: string): Promise<void> {
+    if (isTauri()) await invoke("connection_trust_host", { id, fingerprint, algorithm });
+  },
+  async listProxies(): Promise<ProxyProfile[]> { return isTauri() ? invoke("proxy_list") : []; },
+  async saveProxy(input: SaveProxyInput): Promise<ProxyProfile> { return invoke("proxy_save", { input }); },
+  async deleteProxy(id: string): Promise<void> { return invoke("proxy_delete", { id }); },
+  async listForwards(connectionId: string): Promise<PortForward[]> { return isTauri() ? invoke("tunnel_list", { connectionId }) : []; },
+  async saveForward(input: PortForward): Promise<PortForward> { return invoke("tunnel_save", { input }); },
+  async startForward(id: string): Promise<void> { return invoke("tunnel_start", { id }); },
+  async stopForward(id: string): Promise<void> { return invoke("tunnel_stop", { id }); },
+  async deleteForward(id: string): Promise<void> { return invoke("tunnel_delete", { id }); },
+  async openTerminal(connectionId: string, cols: number, rows: number): Promise<TerminalSession> {
+    if (isTauri()) return invoke("terminal_open", { connectionId, cols, rows });
+    return { id: crypto.randomUUID(), connectionId, sessionType: "terminal", title: "预览终端", status: "online", startedAt: new Date().toISOString(), lastError: null };
+  },
+  async terminalInput(sessionId: string, data: string) {
+    if (isTauri()) await invoke("terminal_input", { sessionId, data });
+  },
+  async terminalResize(sessionId: string, cols: number, rows: number) {
+    if (isTauri()) await invoke("terminal_resize", { sessionId, cols, rows });
+  },
+  async closeTerminal(sessionId: string) {
+    if (isTauri()) await invoke("terminal_close", { sessionId });
+  },
+  async onTerminalOutput(handler: (output: TerminalOutput) => void): Promise<UnlistenFn> {
+    if (isTauri()) return listen<TerminalOutput>("terminal-output", (event) => handler(event.payload));
+    return () => undefined;
+  },
+  async onTerminalStatus(handler: (status: TerminalStatus) => void): Promise<UnlistenFn> {
+    if (isTauri()) return listen<TerminalStatus>("terminal-status", (event) => handler(event.payload));
+    return () => undefined;
+  },
+  async listFiles(sessionId: string, path: string, showHidden: boolean): Promise<RemoteFile[]> {
+    if (isTauri()) return invoke("sftp_list", { sessionId, path, showHidden });
+    return [];
+  },
+  async joinRemotePath(parent:string,name:string):Promise<string>{return isTauri()?invoke("sftp_join_path",{parent,name}):`${parent.replace(/\/$/,"")}/${name}`;},
+  async createDirectory(sessionId: string, path: string) {
+    return invoke("sftp_mkdir", { sessionId, path });
+  },
+  async renameRemote(sessionId: string, source: string, destination: string) {
+    return invoke("sftp_rename", { sessionId, source, destination });
+  },
+  async deleteRemote(sessionId: string, path: string, recursive = false) {
+    return invoke("sftp_delete", { sessionId, path, recursive });
+  },
+  async chmodRemote(sessionId: string, path: string, mode: number) {
+    return invoke("sftp_chmod", { sessionId, path, mode });
+  },
+  async openText(sessionId: string, path: string): Promise<{ content: string; modifiedAt: number | null }> {
+    return invoke("sftp_open_text", { sessionId, path });
+  },
+  async saveText(sessionId: string, path: string, content: string, expectedModifiedAt: number | null) {
+    return invoke("sftp_save_text", { sessionId, path, content, expectedModifiedAt });
+  },
+  async startArchiveRemote(sessionId: string, path: string, extract: boolean): Promise<BackgroundTask> { return invoke("sftp_archive_start", { sessionId, path, extract }); },
+  async startOpenRemoteLocally(sessionId: string, path: string): Promise<BackgroundTask> { return invoke("sftp_open_local_start", { sessionId, path }); },
+  async getTask(id:string):Promise<BackgroundTask>{return invoke("task_get",{id});},
+  async cancelTask(id:string):Promise<void>{if(isTauri())await invoke("task_cancel",{id});},
+  async onBackgroundTask(handler:(task:BackgroundTask)=>void):Promise<UnlistenFn>{return isTauri()?listen<BackgroundTask>("background-task",(event)=>handler(event.payload)):()=>undefined;},
+  async enqueueTransfer(input: import("../types").TransferInput): Promise<TransferTask> {
+    return invoke("transfer_enqueue", { input });
+  },
+  async listTransfers(): Promise<TransferTask[]> {
+    return isTauri() ? invoke("transfer_list") : [];
+  },
+  async cancelTransfer(id: string) {
+    return invoke("transfer_cancel", { id });
+  },
+  async retryTransfer(id: string) {
+    return invoke<TransferTask>("transfer_retry", { id });
+  },
+  async pauseTransfer(id: string) { return invoke("transfer_pause", { id }); },
+  async resumeTransfer(id: string) { return invoke("transfer_resume", { id }); },
+  async onTransfer(handler: (task: TransferTask) => void): Promise<UnlistenFn> {
+    if (isTauri()) return listen<TransferTask>("transfer-progress", (event) => handler(event.payload));
+    return () => undefined;
+  },
+  async monitorSnapshot(sessionId: string): Promise<MonitorSnapshot> {
+    return invoke("monitor_snapshot", { sessionId });
+  },
+  async systemInfo(sessionId: string): Promise<SystemInfo> {
+    return invoke("monitor_system_info", { sessionId });
+  },
+  async exportSystemInfo(sessionId: string, path: string): Promise<void> { return invoke("monitor_export_system_info", { sessionId, path }); },
+  async rdpPreflight(): Promise<RdpPreflight> {
+    return isTauri() ? invoke("rdp_preflight") : { available: false, executable: null, message: "桌面版可检测 FreeRDP。" };
+  },
+  async rdpOpen(connectionId: string): Promise<TerminalSession> {
+    return invoke("rdp_open", { connectionId });
+  },
+  async rdpClose(sessionId:string):Promise<void>{if(isTauri())await invoke("rdp_close",{sessionId});},
+  async getSettings(): Promise<AppSettings> {
+    if (!isTauri()) return JSON.parse(localStorage.getItem("cnshell-settings") ?? "null") ?? { theme: "system", monitorIntervalMs: 2000, rememberCommandHistory: true, confirmCloseActiveSession: true, showHiddenFiles: false };
+    return invoke("settings_get");
+  },
+  async saveSettings(settings: AppSettings): Promise<AppSettings> {
+    if (!isTauri()) { localStorage.setItem("cnshell-settings", JSON.stringify(settings)); return settings; }
+    return invoke("settings_save", { settings });
+  },
+  async listSnippets(): Promise<CommandSnippet[]> { return isTauri() ? invoke("snippet_list") : browserSnippets; },
+  async saveSnippet(input: CommandSnippet): Promise<CommandSnippet> { if(isTauri())return invoke("snippet_save", { input });browserSnippets=[...browserSnippets.filter((item)=>item.id!==input.id),input];return input; },
+  async deleteSnippet(id: string): Promise<void> { if(isTauri())await invoke("snippet_delete", { id });else browserSnippets=browserSnippets.filter((item)=>item.id!==id); },
+  async addHistory(connectionId: string, command: string): Promise<void> { if (isTauri()) await invoke("history_add", { connectionId, command }); },
+  async listHistory(connectionId: string): Promise<string[]> { return isTauri() ? invoke("history_list", { connectionId }) : []; },
+  async clearHistory(): Promise<number> { return isTauri() ? invoke("history_clear") : 0; },
+  async exportConnections(path: string, includeSecrets = false, passphrase?: string): Promise<void> { return invoke("connection_export", { path, includeSecrets, passphrase }); },
+  async exportConnection(id:string,path:string):Promise<void>{return invoke("connection_export_one",{id,path});},
+  async importConnections(path: string, passphrase?: string): Promise<number> { return invoke("connection_import", { path, passphrase }); },
+  async saveWorkspace(value: unknown): Promise<void> { if (isTauri()) await invoke("workspace_save", { value }); },
+  async loadWorkspace<T>(): Promise<T | null> { return isTauri() ? invoke("workspace_load") : null; }
+  ,async exportDiagnostics(path: string): Promise<void> { return invoke("diagnostics_export", { path }); }
+};

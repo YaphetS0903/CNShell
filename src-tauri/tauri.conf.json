@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "CNshell",
+  "version": "0.1.0",
+  "identifier": "com.cnshell.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "title": "CNshell",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 620,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "icon": ["icons/icon.icns"],
+    "targets": ["dmg", "app"],
+    "category": "DeveloperTool",
+    "shortDescription": "SSH, SFTP and server monitoring for macOS",
+    "longDescription": "CNshell brings secure remote terminals, file transfer and Linux monitoring into one macOS workspace.",
+    "copyright": "Copyright © 2026 CNshell Contributors",
+    "macOS": { "minimumSystemVersion": "13.0" }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [],
+      "pubkey": ""
+    }
+  }
+}

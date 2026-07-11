@@ -1,0 +1,54 @@
+import { lazy, Suspense, useCallback, useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { Activity, FolderOpen, HelpCircle, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Settings, TerminalSquare, X } from "lucide-react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { api } from "./lib/api";
+import { useAppStore } from "./store/app-store";
+import type { ConnectionProfile } from "./types";
+import { ConnectionSidebar } from "./features/connections/ConnectionSidebar";
+import { ConnectionEditor } from "./features/connections/ConnectionEditor";
+import { errorMessage } from "./lib/format";
+import { MonitorSidebar } from "./features/monitor/MonitorSidebar";
+import { IconButton } from "./components/IconButton";
+import { Modal } from "./components/Modal";
+import { clampPanelSize, resizeFromKeyboard } from "./lib/layout";
+
+const TerminalWorkspace = lazy(() => import("./features/terminal/TerminalWorkspace"));
+const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
+const HelpModal = lazy(() => import("./features/help/HelpModal"));
+
+interface HostKeyPrompt { connection: ConnectionProfile; fingerprint: string; algorithm: string }
+
+export default function App() {
+  const { bootstrap, loading, error, setError, addSession, connections, openConnectionEditor, setSettingsOpen, setHelpOpen, settings, settingsOpen, connectionEditorOpen } = useAppStore();
+  const [connectionsOpen,setConnectionsOpen]=useState(true);const[monitorOpen,setMonitorOpen]=useState(true);const[connectionWidth,setConnectionWidth]=useState(260);const[monitorWidth,setMonitorWidth]=useState(232);const[connecting,setConnecting]=useState<string|null>(null);const[hostPrompt,setHostPrompt]=useState<HostKeyPrompt|null>(null);
+  useEffect(()=>{void bootstrap();},[bootstrap]);
+  useEffect(()=>{if(!loading&&!settingsOpen&&!connectionEditorOpen&&settings.showWelcomeHelp&&!localStorage.getItem("cnshell-welcome-seen")){setHelpOpen(true);localStorage.setItem("cnshell-welcome-seen","1");}},[loading,settingsOpen,connectionEditorOpen,settings.showWelcomeHelp,setHelpOpen]);
+  useEffect(()=>{const root=document.documentElement;root.dataset.theme=settings.theme;if(settings.theme==="system")delete root.dataset.theme;},[settings.theme]);
+  const connect=useCallback(async(connection:ConnectionProfile)=>{
+    if(connection.protocol==="rdp"){setConnecting(connection.id);try{const check=await api.rdpPreflight();if(!check.available){setError(check.message);return;}addSession(await api.rdpOpen(connection.id));}catch(reason){setError(errorMessage(reason));}finally{setConnecting(null);}return;}
+    setConnecting(connection.id);try{const session=await api.openTerminal(connection.id,120,36);addSession(session);const forwards=await api.listForwards(connection.id);for(const forward of forwards.filter((item)=>item.autoStart&&item.status!=="running")){api.startForward(forward.id).catch((error)=>setError(`隧道 ${forward.bindPort} 启动失败：${errorMessage(error)}`));}}catch(reason){const errorObject=reason as {code?:string;fingerprint?:string;algorithm?:string;message?:string};if(errorObject?.code==="host_key_unknown"&&errorObject.fingerprint){setHostPrompt({connection,fingerprint:errorObject.fingerprint,algorithm:errorObject.algorithm??"unknown"});}else setError(errorMessage(reason));}finally{setConnecting(null);}
+  },[addSession,setError]);
+  const trustAndConnect=async()=>{if(!hostPrompt)return;const prompt=hostPrompt;setHostPrompt(null);try{await api.trustHost(prompt.connection.id,prompt.fingerprint,prompt.algorithm);await connect(prompt.connection);}catch(reason){setError(errorMessage(reason));}};
+  useEffect(()=>{if(!api.isDesktop())return;const promise=listen<string>("menu-action",(event)=>{if(event.payload==="new_connection"){setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();}if(event.payload==="show_help"){setSettingsOpen(false);setHelpOpen(true);}if(event.payload==="toggle_files")setConnectionsOpen((value)=>!value);if(event.payload==="close_session")window.dispatchEvent(new Event("cnshell-close-session"));if(event.payload==="new_terminal"){const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];if(profile)void connect(profile);}});return()=>{void promise.then((unlisten)=>unlisten());};},[connect,connections,openConnectionEditor,setHelpOpen,setSettingsOpen]);
+  useEffect(()=>{if(!api.isDesktop()||!connections.length)return;void api.loadWorkspace<{connectionIds:string[];connectionsOpen:boolean;monitorOpen:boolean;connectionWidth?:number;monitorWidth?:number}>().then((workspace)=>{if(!workspace)return;setConnectionsOpen(workspace.connectionsOpen);setMonitorOpen(workspace.monitorOpen);if(workspace.connectionWidth)setConnectionWidth(clampPanelSize(workspace.connectionWidth,210,420));if(workspace.monitorWidth)setMonitorWidth(clampPanelSize(workspace.monitorWidth,200,360));const restorable=workspace.connectionIds.map((id)=>connections.find((item)=>item.id===id)).filter((item):item is ConnectionProfile=>Boolean(item&&item.protocol==="ssh"));if(restorable.length&&confirm(`恢复上次的 ${restorable.length} 个 SSH 会话？不会重放任何命令。`)){for(const profile of restorable)void connect(profile);}});},[connections,connect]);
+  useEffect(()=>{const handler=()=>{const connectionIds=useAppStore.getState().sessions.map((session)=>session.connectionId);void api.saveWorkspace({connectionIds,connectionsOpen,monitorOpen,connectionWidth,monitorWidth});};window.addEventListener("beforeunload",handler);return()=>window.removeEventListener("beforeunload",handler);},[connectionsOpen,monitorOpen,connectionWidth,monitorWidth]);
+  useEffect(()=>{if(!api.isDesktop())return;let allowClose=false;const listener=getCurrentWindow().onCloseRequested(async(event)=>{if(allowClose)return;const activeTransfers=useAppStore.getState().transfers.filter((task)=>["queued","running","paused"].includes(task.status));if(!activeTransfers.length)return;event.preventDefault();if(confirm(`仍有 ${activeTransfers.length} 个传输任务未完成。关闭 CNshell 会中断这些任务，确定继续吗？`)){allowClose=true;await getCurrentWindow().destroy();}});return()=>{void listener.then((unlisten)=>unlisten());};},[]);
+  if(loading)return <div className="app-loading"><img src="/app-mark.svg" alt=""/><LoaderCircle className="spin"/><span>正在启动安全工作区…</span></div>;
+  const beginResize=(event:ReactPointerEvent<HTMLDivElement>,current:number,setValue:(value:number)=>void,minimum:number,maximum:number)=>{event.currentTarget.setPointerCapture(event.pointerId);const startX=event.clientX;const move=(moveEvent:PointerEvent)=>setValue(clampPanelSize(current+moveEvent.clientX-startX,minimum,maximum));const stop=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",stop);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",stop);};
+  const resizeKey=(event:React.KeyboardEvent<HTMLDivElement>,current:number,setValue:(value:number)=>void,minimum:number,maximum:number)=>{const next=resizeFromKeyboard(current,event.key,"vertical");if(next===current)return;event.preventDefault();setValue(clampPanelSize(next,minimum,maximum));};
+  const layoutStyle={"--connections-width":`${connectionWidth}px`,"--monitor-width":`${monitorWidth}px`} as CSSProperties;
+  return <div className={`app-shell ${connectionsOpen?"connections-open":""} ${monitorOpen?"monitor-open":""}`} style={layoutStyle}>
+    <header className="titlebar" data-tauri-drag-region><div className="traffic-light-space"/><div className="brand"><img src="/app-mark.svg" alt=""/><strong>CNshell</strong><span>Secure Remote Workspace</span></div><nav>
+      <IconButton icon={connectionsOpen?PanelLeftClose:PanelLeftOpen} label={connectionsOpen?"隐藏连接库":"显示连接库"} onClick={()=>setConnectionsOpen(!connectionsOpen)}/>
+      <IconButton icon={FolderOpen} label="连接管理器" onClick={()=>setConnectionsOpen(true)}/><IconButton icon={Plus} label="新建连接" onClick={()=>openConnectionEditor()}/>
+      <span className="toolbar-separator"/><IconButton icon={Activity} label={monitorOpen?"隐藏监控":"显示监控"} active={monitorOpen} onClick={()=>setMonitorOpen(!monitorOpen)}/>
+      <IconButton icon={HelpCircle} label="使用帮助" onClick={()=>{setSettingsOpen(false);setHelpOpen(true);}}/><IconButton icon={Settings} label="设置" onClick={()=>{setHelpOpen(false);setSettingsOpen(true);}}/>
+    </nav><div className="desktop-badge"><span className={api.isDesktop()?"online":"preview"}/>{api.isDesktop()?"桌面运行":"浏览器预览"}</div></header>
+    <div className="app-body">{connectionsOpen&&<><ConnectionSidebar connect={connect}/><div className="panel-resizer vertical connections-resizer" role="separator" aria-label="调整连接库宽度" aria-orientation="vertical" aria-valuemin={210} aria-valuemax={420} aria-valuenow={connectionWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,connectionWidth,setConnectionWidth,210,420)} onKeyDown={(event)=>resizeKey(event,connectionWidth,setConnectionWidth,210,420)}/></>} {monitorOpen&&<><MonitorSidebar/><div className="panel-resizer vertical monitor-resizer" role="separator" aria-label="调整监控栏宽度" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={360} aria-valuenow={monitorWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,monitorWidth,setMonitorWidth,200,360)} onKeyDown={(event)=>resizeKey(event,monitorWidth,setMonitorWidth,200,360)}/></>}<Suspense fallback={<main className="loading-state"><LoaderCircle className="spin"/>加载终端工作区…</main>}><TerminalWorkspace connect={connect}/></Suspense></div>
+    {connecting&&<div className="connection-overlay"><LoaderCircle className="spin"/><span>正在安全连接 {connections.find((item)=>item.id===connecting)?.name}…</span></div>}
+    {error&&<div className="toast error-toast" role="alert"><span>{error}</span><IconButton icon={X} label="关闭错误" onClick={()=>setError(null)}/></div>}
+    <ConnectionEditor/><Suspense fallback={null}><SettingsModal/><HelpModal/></Suspense>
+    {hostPrompt&&<Modal title="核对服务器身份" onClose={()=>setHostPrompt(null)}><div className="host-key-prompt"><div className="host-key-icon"><TerminalSquare size={27}/></div><h3>{hostPrompt.connection.name}</h3><p>这是首次连接。请通过服务器控制台或管理员核对下面的主机密钥指纹。确认后 CNshell 会保存记录，今后若发生变化将阻止连接。</p><dl><div><dt>主机</dt><dd>{hostPrompt.connection.host}:{hostPrompt.connection.port}</dd></div><div><dt>算法</dt><dd>{hostPrompt.algorithm}</dd></div><div><dt>SHA-256 指纹</dt><dd><code>{hostPrompt.fingerprint}</code></dd></div></dl><footer className="form-actions"><button className="button secondary" onClick={()=>setHostPrompt(null)}>取消</button><button className="button primary" onClick={trustAndConnect}>我已核对，信任并连接</button></footer></div></Modal>}
+  </div>;
+}

@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Frontend and Rust
+    runs-on: macos-13
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: npm audit --audit-level=moderate
+
+  desktop-ui:
+    name: Browser UI and PTY fixture
+    runs-on: macos-13
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install webkit
+      - run: npm run test:e2e
+      - run: python3 -m pip install --user paramiko
+      - run: npm run test:pty-fixture
+
+  universal-build:
+    name: Universal App smoke build
+    runs-on: macos-13
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app
+      - name: Verify architectures and minimum macOS
+        run: |
+          set -euo pipefail
+          app=src-tauri/target/universal-apple-darwin/release/bundle/macos/CNshell.app
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Contents/Info.plist")
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" = 13.0
+          architectures="$(lipo -archs "$app/Contents/MacOS/$executable")"
+          [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]]
+          codesign --verify --deep --strict --verbose=2 "$app"

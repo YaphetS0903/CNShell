@@ -1,0 +1,16 @@
+import { useEffect, useRef, useState } from "react";
+import { Ban, CheckCircle2, DownloadCloud, LoaderCircle, Pause, Play, RotateCcw, UploadCloud } from "lucide-react";
+import { api } from "../../lib/api";
+import { IconButton } from "../../components/IconButton";
+import { useAppStore } from "../../store/app-store";
+import { formatBytes } from "../../lib/format";
+import { updateTransferMetric, type TransferMetric } from "../../lib/runtime-metrics";
+
+export function TransferQueue(){
+  const{transfers,setTransfers,upsertTransfer,setError}=useAppStore();const metricsRef=useRef(new Map<string,TransferMetric>());const[,renderMetrics]=useState(0);
+  useEffect(()=>{void api.listTransfers().then(setTransfers);const listener=api.onTransfer((task)=>{metricsRef.current.set(task.id,updateTransferMetric(metricsRef.current.get(task.id),task,performance.now()));renderMetrics((value)=>value+1);upsertTransfer(task);});return()=>{void listener.then((unlisten)=>unlisten());};},[setTransfers,upsertTransfer]);
+  return <div className="transfer-list">{transfers.map((task)=>{const percent=task.totalBytes?Math.min(100,task.transferredBytes/task.totalBytes*100):0;const metric=metricsRef.current.get(task.id);return <article className="transfer-task" key={task.id}><span className={`transfer-icon ${task.status}`}>{task.direction==="upload"?<UploadCloud size={18}/>:<DownloadCloud size={18}/>}</span><div className="transfer-copy"><strong>{task.source.split("/").at(-1)}</strong><small>{task.source} → {task.destination}</small><div className="transfer-progress"><i style={{width:`${percent}%`}}/></div><small>{formatBytes(task.transferredBytes)} / {formatBytes(task.totalBytes)} · {statusLabel(task.status)}{task.status==="running"&&metric&&metric.speed>0?` · ${formatBytes(metric.speed)}/s · 剩余 ${formatDuration(metric.etaSeconds)}`:""}{task.error&&` · ${task.error}`}</small></div><div className="transfer-controls">{task.status==="running"&&<><IconButton icon={Pause} label="暂停传输" onClick={()=>api.pauseTransfer(task.id).catch((error)=>setError(String(error)))}/><IconButton icon={Ban} label="取消传输" onClick={()=>api.cancelTransfer(task.id).catch((error)=>setError(String(error)))}/></>} {task.status==="paused"&&<><IconButton icon={Play} label="继续传输" onClick={()=>api.resumeTransfer(task.id).catch((error)=>setError(String(error)))}/><IconButton icon={Ban} label="取消传输" onClick={()=>api.cancelTransfer(task.id).catch((error)=>setError(String(error)))}/></>} {["failed","cancelled"].includes(task.status)&&<IconButton icon={RotateCcw} label="重试传输" onClick={()=>api.retryTransfer(task.id).then(upsertTransfer).catch((error)=>setError(String(error)))}/>} {task.status==="completed"&&<CheckCircle2 className="success" size={18}/>} {task.status==="queued"&&<LoaderCircle className="spin" size={18}/>}</div></article>;})}{!transfers.length&&<div className="empty-files"><CheckCircle2 size={28}/><span>暂无传输任务</span></div>}</div>;
+}
+
+const statusLabel=(status:string)=>({queued:"等待中",running:"传输中",paused:"已暂停",completed:"已完成",failed:"失败",cancelled:"已取消"}[status]??status);
+const formatDuration=(seconds:number|null)=>seconds===null?"计算中":seconds<60?`${Math.ceil(seconds)} 秒`:seconds<3600?`${Math.ceil(seconds/60)} 分钟`:`${Math.floor(seconds/3600)} 小时 ${Math.ceil(seconds%3600/60)} 分钟`;

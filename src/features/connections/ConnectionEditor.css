@@ -1,0 +1,19 @@
+.private-key-field {
+  display: flex;
+  gap: 8px;
+}
+
+.private-key-field input {
+  min-width: 0;
+  flex: 1;
+}
+
+.private-key-field .button {
+  flex: 0 0 auto;
+}
+
+.field-group > small {
+  margin-top: 5px;
+  color: var(--faint);
+  font-size: 9px;
+}

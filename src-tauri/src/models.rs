@@ -1,0 +1,343 @@
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundTask {
+    pub id: String,
+    pub kind: String,
+    pub status: String,
+    pub result: Option<serde_json::Value>,
+    pub error: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionProfile {
+    pub id: String,
+    pub folder_id: Option<String>,
+    pub protocol: String,
+    pub name: String,
+    pub host: String,
+    pub port: i64,
+    pub username: String,
+    pub auth_type: String,
+    pub private_key_path: Option<String>,
+    pub host_key_policy: String,
+    pub note: String,
+    #[sqlx(skip)]
+    pub tags: Vec<String>,
+    pub encoding: String,
+    pub startup_command: Option<String>,
+    pub proxy_id: Option<String>,
+    #[sqlx(skip)]
+    pub environment: std::collections::BTreeMap<String, String>,
+    #[sqlx(skip)]
+    pub has_credential: bool,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_connected_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveConnectionInput {
+    pub id: String,
+    pub folder_id: Option<String>,
+    pub protocol: String,
+    pub name: String,
+    pub host: String,
+    pub port: i64,
+    pub username: String,
+    pub auth_type: String,
+    pub private_key_path: Option<String>,
+    pub host_key_policy: String,
+    pub note: String,
+    pub tags: Vec<String>,
+    pub encoding: String,
+    pub startup_command: Option<String>,
+    pub proxy_id: Option<String>,
+    pub environment: std::collections::BTreeMap<String, String>,
+    pub credential: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct ProxyProfile {
+    pub id: String,
+    pub name: String,
+    #[sqlx(rename = "type")]
+    #[serde(rename = "type")]
+    pub proxy_type: String,
+    pub host: String,
+    pub port: i64,
+    pub username: Option<String>,
+    pub jump_connection_id: Option<String>,
+    #[sqlx(skip)]
+    pub has_credential: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveProxyInput {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub proxy_type: String,
+    pub host: String,
+    pub port: i64,
+    pub username: Option<String>,
+    pub jump_connection_id: Option<String>,
+    pub credential: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct PortForward {
+    pub id: String,
+    pub connection_id: String,
+    #[sqlx(rename = "type")]
+    #[serde(rename = "type")]
+    pub forward_type: String,
+    pub bind_host: String,
+    pub bind_port: i64,
+    pub destination_host: Option<String>,
+    pub destination_port: Option<i64>,
+    pub auto_start: bool,
+    #[sqlx(skip)]
+    pub status: Option<String>,
+    #[sqlx(skip)]
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandSnippet {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+    pub description: String,
+    pub tags: Vec<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    pub parent_id: Option<String>,
+    pub sort_order: i64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionDiagnostic {
+    pub stage: String,
+    pub ok: bool,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u128>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fingerprint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub algorithm: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSession {
+    pub id: String,
+    pub connection_id: String,
+    pub session_type: String,
+    pub title: String,
+    pub status: String,
+    pub started_at: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalOutput {
+    pub session_id: String,
+    pub data_base64: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalStatus {
+    pub session_id: String,
+    pub status: String,
+    pub last_error: Option<String>,
+    pub attempt: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFile {
+    pub name: String,
+    pub path: String,
+    pub kind: String,
+    pub size: u64,
+    pub modified_at: Option<u64>,
+    pub permissions: String,
+    pub owner: Option<u32>,
+    pub group: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferTask {
+    pub id: String,
+    pub session_id: String,
+    pub direction: String,
+    pub source: String,
+    pub destination: String,
+    pub total_bytes: i64,
+    pub transferred_bytes: i64,
+    pub status: String,
+    pub conflict_policy: String,
+    pub error: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TransferInput {
+    pub session_id: String,
+    pub direction: String,
+    pub source: String,
+    pub destination: String,
+    pub conflict_policy: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub user: String,
+    pub cpu_percent: f64,
+    pub memory_percent: f64,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiskInfo {
+    pub filesystem: String,
+    pub mount_point: String,
+    pub total_bytes: u64,
+    pub used_bytes: u64,
+    pub available_bytes: u64,
+    pub used_percent: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkInfo {
+    pub interface_name: String,
+    pub rx_bytes_per_second: u64,
+    pub tx_bytes_per_second: u64,
+    pub rx_total_bytes: u64,
+    pub tx_total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MonitorSnapshot {
+    pub session_id: String,
+    pub timestamp: i64,
+    pub hostname: String,
+    pub ip: String,
+    pub uptime_seconds: u64,
+    pub load: [f64; 3],
+    pub cpu_percent: f64,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub swap_used_bytes: u64,
+    pub swap_total_bytes: u64,
+    pub latency_ms: Option<f64>,
+    pub processes: Vec<ProcessInfo>,
+    pub disks: Vec<DiskInfo>,
+    pub networks: Vec<NetworkInfo>,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkInterface {
+    pub name: String,
+    pub addresses: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    pub hostname: String,
+    pub os: String,
+    pub kernel: String,
+    pub architecture: String,
+    pub cpu_model: String,
+    pub cpu_cores: u32,
+    pub memory_total_bytes: u64,
+    pub interfaces: Vec<NetworkInterface>,
+    pub disks: Vec<DiskInfo>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RdpPreflight {
+    pub available: bool,
+    pub executable: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppSettings {
+    pub theme: String,
+    pub monitor_interval_ms: u64,
+    pub remember_command_history: bool,
+    pub confirm_close_active_session: bool,
+    pub show_hidden_files: bool,
+    #[serde(default = "default_true")]
+    pub show_welcome_help: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            theme: "system".into(),
+            monitor_interval_ms: 2000,
+            remember_command_history: true,
+            confirm_close_active_session: true,
+            show_hidden_files: false,
+            show_welcome_help: true,
+        }
+    }
+}
+fn default_true() -> bool {
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_profile_uses_the_frontend_contract_field_name() {
+        let profile = ProxyProfile {
+            id: "proxy".into(),
+            name: "SOCKS".into(),
+            proxy_type: "socks5".into(),
+            host: "127.0.0.1".into(),
+            port: 1080,
+            username: None,
+            jump_connection_id: None,
+            has_credential: false,
+        };
+        let value = serde_json::to_value(profile).unwrap();
+        assert_eq!(value["type"], "socks5");
+        assert!(value.get("proxyType").is_none());
+    }
+}

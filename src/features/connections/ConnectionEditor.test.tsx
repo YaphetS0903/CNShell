@@ -1,0 +1,60 @@
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useAppStore } from "../../store/app-store";
+import { ConnectionEditor } from "./ConnectionEditor";
+import type { ConnectionProfile } from "../../types";
+import { api } from "../../lib/api";
+
+const dialog = vi.hoisted(() => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-dialog", () => dialog);
+
+describe("ConnectionEditor", () => {
+  beforeEach(() => {
+    dialog.open.mockReset();
+    vi.restoreAllMocks();
+    useAppStore.setState({ connectionEditorOpen: true, editingConnection: null, connections: [], error: null });
+  });
+  it("shows secure SSH defaults and switches RDP port", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionEditor/>);
+    expect(screen.getByRole("combobox", { name: "主机密钥策略" })).toHaveValue("strict");
+    await user.type(screen.getByPlaceholderText("例如：tmux attach || tmux"), "tmux attach");
+    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "rdp");
+    expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(3389);
+    expect(screen.getByLabelText("Windows 密码")).toBeRequired();
+    expect(screen.queryByText("主机密钥策略")).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "ssh");
+    expect(screen.getByPlaceholderText("例如：tmux attach || tmux")).toHaveValue("");
+  });
+
+  it("fills a persisted connection without exposing its credential", () => {
+    const connection: ConnectionProfile = {
+      id: "persisted", folderId: null, protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
+      username: "ubuntu", authType: "password", privateKeyPath: null, hostKeyPolicy: "strict", note: "验收", tags: ["云主机"],
+      encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, hasCredential: true, createdAt: "", updatedAt: "", lastConnectedAt: null
+    };
+    useAppStore.setState({ connectionEditorOpen: true, editingConnection: connection });
+
+    render(<ConnectionEditor/>);
+
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("持久化测试机");
+    expect(screen.getByRole("textbox", { name: "主机" })).toHaveValue("example.test");
+    expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(2222);
+    expect(screen.getByLabelText("密码")).toHaveValue("");
+    expect(screen.getByPlaceholderText("留空以保留已保存凭据")).toBeInTheDocument();
+  });
+
+  it("selects an extensionless private key with the native picker", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "isDesktop").mockReturnValue(true);
+    dialog.open.mockResolvedValue("/Users/test/.ssh/id_ed25519");
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "privateKey");
+    await user.click(screen.getByRole("button", { name: "选择…" }));
+
+    expect(dialog.open).toHaveBeenCalledWith({ multiple: false, directory: false });
+    expect(screen.getByRole("textbox", { name: "私钥路径" })).toHaveValue("/Users/test/.ssh/id_ed25519");
+  });
+});

@@ -1,0 +1,203 @@
+mod backup;
+mod bookmark;
+mod commands;
+mod db;
+mod diagnostics;
+mod error;
+mod models;
+mod monitor;
+mod rdp;
+mod sftp;
+mod ssh;
+mod task;
+mod tunnel;
+
+use db::Database;
+use monitor::MonitorState;
+use rdp::RdpManager;
+use sftp::TransferManager;
+use ssh::SessionManager;
+use task::TaskManager;
+use tauri::{
+    Emitter, Manager,
+    menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
+};
+use tunnel::TunnelManager;
+
+pub struct AppState {
+    db: Database,
+    sessions: SessionManager,
+    transfers: TransferManager,
+    monitor: MonitorState,
+    tunnels: TunnelManager,
+    tasks: TaskManager,
+    rdp: RdpManager,
+}
+
+fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
+    let about_metadata = AboutMetadata {
+        name: Some("CNshell".into()),
+        version: Some(env!("CARGO_PKG_VERSION").into()),
+        ..Default::default()
+    };
+    let about = PredefinedMenuItem::about(app, Some("关于 CNshell"), Some(about_metadata))?;
+    let app_menu = SubmenuBuilder::new(app, "CNshell")
+        .item(&about)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let file = SubmenuBuilder::new(app, "文件")
+        .item(
+            &MenuItemBuilder::with_id("new_connection", "新建连接")
+                .accelerator("CmdOrCtrl+N")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("new_terminal", "新建终端")
+                .accelerator("CmdOrCtrl+T")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("close_session", "关闭当前会话")
+                .accelerator("CmdOrCtrl+W")
+                .build(app)?,
+        )
+        .build()?;
+    let edit = SubmenuBuilder::new(app, "编辑")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let view = SubmenuBuilder::new(app, "显示")
+        .item(
+            &MenuItemBuilder::with_id("toggle_files", "切换文件面板")
+                .accelerator("CmdOrCtrl+J")
+                .build(app)?,
+        )
+        .fullscreen()
+        .build()?;
+    let help = SubmenuBuilder::new(app, "帮助")
+        .item(
+            &MenuItemBuilder::with_id("show_help", "CNshell 使用帮助")
+                .accelerator("CmdOrCtrl+?")
+                .build(app)?,
+        )
+        .build()?;
+    MenuBuilder::new(app)
+        .items(&[&app_menu, &file, &edit, &view, &help])
+        .build()
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            let _ = sftp::cleanup_preview_cache();
+            let data_dir = handle.path().app_data_dir()?;
+            let db =
+                tauri::async_runtime::block_on(Database::open(&data_dir.join("cnshell.sqlite")))
+                    .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+            app.manage(AppState {
+                db,
+                sessions: SessionManager::default(),
+                transfers: TransferManager::default(),
+                monitor: MonitorState::default(),
+                tunnels: TunnelManager::default(),
+                tasks: TaskManager::default(),
+                rdp: RdpManager::default(),
+            });
+            app.set_menu(build_menu(app)?)?;
+            Ok(())
+        })
+        .on_menu_event(|app, event| {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit("menu-action", event.id().as_ref());
+            }
+        })
+        .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                window.state::<AppState>().rdp.close_all();
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::connection_list,
+            commands::connection_deleted_list,
+            commands::folder_list,
+            commands::folder_save,
+            commands::folder_delete,
+            commands::connection_move,
+            commands::connection_save,
+            commands::connection_duplicate,
+            commands::connection_delete,
+            commands::connection_restore,
+            commands::connection_purge,
+            commands::connection_test_start,
+            commands::connection_trust_host,
+            commands::terminal_open,
+            commands::terminal_input,
+            commands::terminal_resize,
+            commands::terminal_close,
+            commands::sftp_list,
+            commands::sftp_join_path,
+            commands::sftp_mkdir,
+            commands::sftp_rename,
+            commands::sftp_delete,
+            commands::sftp_chmod,
+            commands::sftp_open_text,
+            commands::sftp_save_text,
+            commands::sftp_archive_start,
+            commands::sftp_open_local_start,
+            commands::task_get,
+            commands::task_cancel,
+            commands::transfer_enqueue,
+            commands::transfer_list,
+            commands::transfer_cancel,
+            commands::transfer_pause,
+            commands::transfer_resume,
+            commands::transfer_retry,
+            commands::proxy_list,
+            commands::proxy_save,
+            commands::proxy_delete,
+            commands::tunnel_list,
+            commands::tunnel_save,
+            commands::tunnel_start,
+            commands::tunnel_stop,
+            commands::tunnel_delete,
+            commands::snippet_list,
+            commands::snippet_save,
+            commands::snippet_delete,
+            commands::history_add,
+            commands::history_list,
+            commands::history_clear,
+            commands::workspace_save,
+            commands::workspace_load,
+            commands::connection_export,
+            commands::connection_export_one,
+            commands::connection_import,
+            commands::monitor_snapshot,
+            commands::monitor_system_info,
+            commands::monitor_export_system_info,
+            commands::rdp_preflight,
+            commands::rdp_open,
+            commands::rdp_close,
+            commands::settings_get,
+            commands::settings_save,
+            commands::diagnostics_export
+        ])
+        .run(tauri::generate_context!())
+        .expect("CNshell 启动失败");
+}
