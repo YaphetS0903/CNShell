@@ -7,19 +7,19 @@
 
 | PLAN 要求 | 状态 | 实现位置 | 验收证据 |
 | --- | --- | --- | --- |
-| 文件夹式连接管理、搜索、协议筛选、最近连接、排序、右键与软删除恢复 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src-tauri/src/db.rs` | Playwright 覆盖创建连接、废纸篓恢复；连接支持拖到文件夹、拖拽排序和右键操作；Rust 覆盖恢复与永久删除 |
+| 文件夹式连接管理、搜索、协议筛选、最近连接、排序、右键与软删除恢复 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src-tauri/src/db.rs` | Playwright 覆盖创建连接、嵌套文件夹、连接菜单移动入口和废纸篓恢复；连接支持拖放或菜单移动到任意层级；Rust 覆盖循环拒绝、递归删除、恢复与永久删除 |
 | SSH 密码、私钥、Agent 与严格主机指纹 | 通过 | `src/features/connections/ConnectionEditor.tsx`、`src-tauri/src/bookmark.rs`、`src-tauri/src/ssh.rs` | 真实 OpenSSH/Paramiko 覆盖正确与错误凭据、未知与变化指纹；私钥支持原生文件选择和绝对路径输入，并通过 Keychain 内只读 security-scoped Bookmark 持久访问 |
 | 分阶段连接诊断 | 通过 | `src-tauri/src/ssh.rs`、`src/features/connections/ConnectionDiagnostics.tsx` | 协议测试验证 TCP、主机密钥、认证、Shell 阶段；认证与 Shell 阻塞均有 30 秒恢复超时，macOS Keychain 授权等待不会让界面永久停在连接中 |
 | SOCKS5、HTTP CONNECT、SSH Jump | 通过 | `src-tauri/src/ssh.rs`、`src/features/settings/AdvancedSettings.tsx` | 真实代理链协议测试全部通过 |
 | 本地、远程、动态端口转发 | 通过 | `src-tauri/src/tunnel.rs`、`src/features/connections/TunnelManager.tsx` | 三类真实转发协议测试通过 |
 | xterm.js、多标签、拆分、搜索、剪贴板、IME、True Color、PTY resize | 通过 | `src/features/terminal/TerminalView.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src-tauri/src/ssh.rs` | E2E 直接验证拆分后主标签保持选中、左右各显示独立终端，选择副标签会安全收拢布局；单元/E2E、1 MB 输出及 PTY roundtrip 通过；浏览器端 IME 风格文本插入保留中文与 Emoji；本机密码 SSH 夹具验证交互 PTY、中文/Emoji 双向字节和 ANSI/True Color 全屏序列；最终 universal DMG 的只读挂载应用经真实 Canvas 截图确认中文宽字符、Emoji、线框、光标定位和 RGB 颜色无明显错位；腾讯云 PTY 的 `vim`、`top`、`tmux` 验收亦通过 |
 | 自动重连与安全错误停止重试 | 通过 | `src-tauri/src/ssh.rs` | Rust 测试验证 1/2/5/10/30 秒及认证/指纹错误停止策略 |
-| SFTP 目录树、导航、排序、隐藏文件、虚拟滚动与文件操作 | 通过 | `src/features/files/RemoteDirectoryTree.tsx`、`src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 左侧目录树根节点默认展开，子目录按需加载，可独立展开、折叠和导航；文件行支持右键上下文菜单并复用工具栏操作，Escape 可关闭；组件/E2E 覆盖嵌套加载、导航和右键入口。真实 SFTP 覆盖空目录、10 万文件、UTF-8 特殊文件名、符号链接、无权限目录；非法 UTF-8 原始字节使用无损 Base64 路径令牌和 `\\xNN` 显示，单测覆盖不碰撞、目录拼接与解码 |
+| SFTP 目录树、导航、排序、隐藏文件、虚拟滚动与文件操作 | 通过 | `src/features/files/RemoteDirectoryTree.tsx`、`src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 左侧目录树按需加载并自动展开活动路径祖先；文件右键含下载、上传、新建文件/文件夹、打开方式、编辑、复制、重命名、权限、压缩/解压和删除，新建文件采用排他创建不覆盖同名目标；组件/E2E 与真实 SFTP 小型协议覆盖。此前空目录、10 万文件、特殊文件名、符号链接和无权限目录证据保留 |
 | 上传下载队列、速度/ETA、暂停/取消/重试、冲突策略 | 通过 | `src/features/files/TransferQueue.tsx`、`src-tauri/src/sftp.rs` | 1 GB 真实 SFTP 流式上传/下载及 SHA-256 一致性通过；中断临时文件、显式重试已覆盖 |
 | 文件夹打包上传与下载 | 通过 | `src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 本机真实 OpenSSH 覆盖两层目录、中文文件名、上传/下载往返内容、覆盖时两阶段备份交换，以及本地/远端临时归档清理；后台任务支持取消，失败不先删除原目标 |
 | 下载临时文件与上传原子替换 | 通过 | `src-tauri/src/sftp.rs` | `.cnshell-part`、远端临时文件及原子 rename 已由协议/Rust 测试覆盖 |
 | 10 MB 文本编辑、修改冲突与原子保存 | 通过 | `src/features/files/TextEditor.tsx`、`src-tauri/src/sftp.rs` | UTF-8 字节边界测试；冲突比较、临时文件、fsync 与原子 rename 路径由代码审计及真实 SFTP 覆盖 |
-| CPU、内存、Swap、网络、进程、磁盘与 5 分钟历史 | 通过 | `src-tauri/src/monitor.rs`、`src/features/monitor/MonitorSidebar.tsx` | 采集解析、单项降级与 5 分钟窗口测试通过；腾讯云 30 次/60.77 秒同等采集命令累计远端 CPU 0.35 秒，折算单核 0.576%（低于 2%） |
+| CPU、内存、Swap、网络、进程、磁盘与 5 分钟历史 | 通过 | `src-tauri/src/monitor.rs`、`src/features/monitor/MonitorSidebar.tsx`、`src/features/monitor/MonitorHistoryChart.tsx` | CPU Sparkline 与 uPlot 网络上下行/延迟折线共享对齐的 5 分钟历史窗口并提供实时数值/ARIA 替代；采集解析、单项降级与窗口测试通过；腾讯云实测额外单核负载 0.576% |
 | 系统信息复制与导出 | 通过 | `src/features/monitor/SystemInfoPanel.tsx`、`src-tauri/src/monitor.rs` | 腾讯云真机验证完整内容；Rust 验证 JSON 临时文件原子导出与清理 |
 | 快捷命令、历史策略、帮助与首次引导 | 通过 | `src/features/terminal/TerminalWorkspace.tsx`、`src/features/help/HelpModal.tsx`、`src-tauri/src/db.rs` | Playwright 验证内置命令只读、用户命令删除和帮助弹窗可访问性；敏感历史检测与全量清空测试通过 |
 | 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/AdvancedSettings.tsx`、`src-tauri/src/backup.rs` | 连接库工具栏与设置均有导入入口；Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
@@ -33,16 +33,16 @@
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
-| `npm run test` | 通过，17 个文件、36 个测试；新增远端目录树嵌套懒加载、展开状态刷新与路径导航覆盖 |
+| `npm run test` | 通过，19 个文件、41 个测试；覆盖远端目录树嵌套/活动路径展开、连接文件夹、完整布局恢复和 CPU/网络/延迟对齐的 5 分钟历史窗口 |
 | `npm run build` | 通过，TypeScript 与 Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，75 个测试；新增真实 OpenSSH 文件夹上传/下载/覆盖往返与预取消边界，原有 RDP、Bookmark、Transport Pool、弱网、keepalive、迁移、IPC 和安全测试均通过 |
-| `npm run test:e2e` | 通过，13 个 Playwright 场景；新增远端目录树展开导航、文件行右键菜单/键盘关闭，以及左右拆分主副窗格状态覆盖 |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，78 个测试；覆盖嵌套文件夹数据库约束、应用路径验证、真实 OpenSSH 文件夹/排他新建文件，以及原有 RDP、Bookmark、Transport Pool、弱网、keepalive、迁移、IPC 和安全路径 |
+| `npm run test:e2e` | 通过，14 个 Playwright 场景；覆盖远端目录树、完整文件右键入口、嵌套连接文件夹/移动入口、布局恢复和左右拆分状态 |
 | `npm run test:pty-fixture` | 通过；本机 Paramiko 密码认证夹具提供真实 PTY Shell，验证中文/Emoji 双向 UTF-8、ANSI 清屏/光标控制和 True Color 输出 |
 | `CNSHELL_PROTOCOL_FILTER=live_ssh_directory_transfer_round_trip_and_cleanup npm run test:protocol` | 通过；本轮真实 OpenSSH 小目录覆盖嵌套中文文件、上传/下载、覆盖交换及本地/远端临时清理。此前 10 万文件、1 GB、代理、隧道等全量协议证据继续保留，本轮未重复消耗资源 |
 | `npm audit --audit-level=moderate` | 通过，0 vulnerabilities |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`a399dd6a7da11b9580e133da12338992ce322da4a67acd9b622ac01696607f44`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`4cb30a274c1d7b090a582286f84dee31bd35f3d030851be513cba3d736c660b4`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 

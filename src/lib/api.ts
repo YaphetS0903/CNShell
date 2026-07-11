@@ -45,6 +45,7 @@ const demoConnection: ConnectionProfile = {
 let browserConnections = [demoConnection];
 let browserDeletedConnections:ConnectionProfile[]=[];
 let browserSnippets:CommandSnippet[]=[];
+let browserFolders:Folder[]=[];
 const browserFiles:Record<string,RemoteFile[]>={
   "/":[{name:"home",path:"/home",kind:"directory",size:0,modifiedAt:null,permissions:"drwxr-xr-x",owner:0,group:0}],
   "/home":[{name:"developer",path:"/home/developer",kind:"directory",size:0,modifiedAt:null,permissions:"drwxr-xr-x",owner:501,group:20}],
@@ -58,11 +59,11 @@ export const api = {
   },
   async listDeletedConnections(): Promise<ConnectionProfile[]> { return isTauri() ? invoke("connection_deleted_list") : browserDeletedConnections; },
   async listFolders(): Promise<Folder[]> {
-    return isTauri() ? invoke("folder_list") : [];
+    return isTauri() ? invoke("folder_list") : browserFolders;
   },
-  async saveFolder(id: string, name: string, parentId: string | null = null): Promise<Folder> { return invoke("folder_save", { id, name, parentId }); },
-  async deleteFolder(id: string): Promise<void> { return invoke("folder_delete", { id }); },
-  async moveConnection(id: string, folderId: string | null): Promise<void> { return invoke("connection_move", { id, folderId }); },
+  async saveFolder(id: string, name: string, parentId: string | null = null): Promise<Folder> { if(isTauri())return invoke("folder_save", { id, name, parentId });const existing=browserFolders.find((folder)=>folder.id===id);const saved={id,name,parentId,sortOrder:existing?.sortOrder??browserFolders.length};browserFolders=[...browserFolders.filter((folder)=>folder.id!==id),saved];return saved; },
+  async deleteFolder(id: string): Promise<void> { if(isTauri())return invoke("folder_delete", { id });const removed=new Set([id]);let changed=true;while(changed){changed=false;for(const folder of browserFolders)if(folder.parentId&&removed.has(folder.parentId)&&!removed.has(folder.id)){removed.add(folder.id);changed=true;}}browserFolders=browserFolders.filter((folder)=>!removed.has(folder.id));browserConnections=browserConnections.map((connection)=>connection.folderId&&removed.has(connection.folderId)?{...connection,folderId:null}:connection); },
+  async moveConnection(id: string, folderId: string | null): Promise<void> { if(isTauri())return invoke("connection_move", { id, folderId });browserConnections=browserConnections.map((connection)=>connection.id===id?{...connection,folderId}:connection); },
   async saveConnection(input: SaveConnectionInput): Promise<ConnectionProfile> {
     if (isTauri()) return invoke("connection_save", { input });
     const now = new Date().toISOString();
@@ -136,8 +137,11 @@ export const api = {
   async saveText(sessionId: string, path: string, content: string, expectedModifiedAt: number | null) {
     return invoke("sftp_save_text", { sessionId, path, content, expectedModifiedAt });
   },
+  async createText(sessionId: string, path: string) {
+    return invoke("sftp_create_text", { sessionId, path });
+  },
   async startArchiveRemote(sessionId: string, path: string, extract: boolean): Promise<BackgroundTask> { return invoke("sftp_archive_start", { sessionId, path, extract }); },
-  async startOpenRemoteLocally(sessionId: string, path: string): Promise<BackgroundTask> { return invoke("sftp_open_local_start", { sessionId, path }); },
+  async startOpenRemoteLocally(sessionId: string, path: string, application?:string): Promise<BackgroundTask> { return invoke("sftp_open_local_start", { sessionId, path, application }); },
   async startDirectoryTransfer(sessionId:string,direction:"upload"|"download",source:string,destination:string,conflictPolicy:Exclude<import("../types").ConflictPolicy,"ask">):Promise<BackgroundTask>{return invoke("sftp_directory_transfer_start",{sessionId,direction,source,destination,conflictPolicy});},
   async getTask(id:string):Promise<BackgroundTask>{return invoke("task_get",{id});},
   async cancelTask(id:string):Promise<void>{if(isTauri())await invoke("task_cancel",{id});},

@@ -452,6 +452,15 @@ pub async fn sftp_save_text(
     )
     .await
 }
+
+#[tauri::command]
+pub async fn sftp_create_text(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> AppResult<()> {
+    crate::sftp::create_text(state.db.clone(), state.sessions.clone(), session_id, path).await
+}
 #[tauri::command]
 pub async fn sftp_archive_start(
     app: AppHandle,
@@ -473,11 +482,12 @@ pub async fn sftp_open_local_start(
     state: State<'_, AppState>,
     session_id: String,
     path: String,
+    application: Option<String>,
 ) -> AppResult<BackgroundTask> {
     let db = state.db.clone();
     let sessions = state.sessions.clone();
     Ok(state.tasks.spawn(app, "sftpPreview", move |_| async move {
-        let result = crate::sftp::open_local(db, sessions, session_id, path).await?;
+        let result = crate::sftp::open_local(db, sessions, session_id, path, application).await?;
         Ok(serde_json::Value::String(result))
     }))
 }

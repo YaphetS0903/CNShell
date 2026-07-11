@@ -14,6 +14,7 @@ describe("ConnectionEditor", () => {
     dialog.open.mockReset();
     vi.restoreAllMocks();
     useAppStore.setState({ connectionEditorOpen: true, editingConnection: null, connections: [], error: null });
+    vi.spyOn(api,"listFolders").mockResolvedValue([{id:"root",name:"生产",parentId:null,sortOrder:0},{id:"child",name:"华南",parentId:"root",sortOrder:0}]);
   });
   it("shows secure SSH defaults and switches RDP port", async () => {
     const user = userEvent.setup();
@@ -28,9 +29,9 @@ describe("ConnectionEditor", () => {
     expect(screen.getByPlaceholderText("例如：tmux attach || tmux")).toHaveValue("");
   });
 
-  it("fills a persisted connection without exposing its credential", () => {
+  it("fills a persisted connection without exposing its credential", async () => {
     const connection: ConnectionProfile = {
-      id: "persisted", folderId: null, protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
+      id: "persisted", folderId: "child", protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
       username: "ubuntu", authType: "password", privateKeyPath: null, hostKeyPolicy: "strict", note: "验收", tags: ["云主机"],
       encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, hasCredential: true, createdAt: "", updatedAt: "", lastConnectedAt: null
     };
@@ -43,6 +44,8 @@ describe("ConnectionEditor", () => {
     expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(2222);
     expect(screen.getByLabelText("密码")).toHaveValue("");
     expect(screen.getByPlaceholderText("留空以保留已保存凭据")).toBeInTheDocument();
+    expect(await screen.findByRole("option",{name:"生产 / 华南"})).toBeInTheDocument();
+    expect(screen.getByRole("combobox",{name:"文件夹"})).toHaveValue("child");
   });
 
   it("selects an extensionless private key with the native picker", async () => {

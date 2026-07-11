@@ -137,8 +137,8 @@ Tauri Rust Core
 
 - 一个连接配置可对应多个会话；每个终端标签拥有独立 PTY Channel。
 - 同一主机会话优先复用 SSH Transport，终端、SFTP、监控使用独立 Channel；服务端不允许复用时自动建立附加连接。
-- Rust Core 是所有网络、文件和密钥操作的唯一入口；WebView 不直接访问任意文件系统或网络。
-- 前后端协议使用共享 TypeScript/Rust 类型生成或 JSON Schema 校验，所有事件包含 `requestId`、`connectionId` 或 `sessionId`。
+- Rust Core 是所有网络、文件和密钥操作的唯一入口；WebView 仅通过用户触发的原生文件选择器取得路径，再交给 Rust Core 处理，不直接访问任意网络。
+- 前后端协议使用共享 TypeScript/Rust 类型生成或 JSON Schema 校验；终端、状态与传输事件包含 `sessionId`，通用后台任务的 `BackgroundTask.id` 作为 requestId 用于事件关联。
 
 ### 4.3 核心数据模型
 

@@ -649,35 +649,65 @@ fn verify_host_identity(
 
 pub async fn diagnose(db: &Database, profile: &ConnectionProfile) -> Vec<ConnectionDiagnostic> {
     let started = Instant::now();
+    let (diagnostic_host, diagnostic_port, proxy_label) =
+        match diagnostic_first_hop(db, profile).await {
+            Ok(value) => value,
+            Err(error) => return vec![diagnostic_failure("proxy", error)],
+        };
+    let dns_started = Instant::now();
+    let endpoint = format!("{diagnostic_host}:{diagnostic_port}");
+    let dns_result = tokio::task::spawn_blocking(move || {
+        endpoint
+            .to_socket_addrs()
+            .map(|mut addresses| addresses.next())
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))
+    .and_then(|result| result.map_err(|error| AppError::Remote(format!("DNS 解析失败：{error}"))))
+    .and_then(|address| address.ok_or_else(|| AppError::Remote("DNS 解析没有返回可用地址".into())));
+    let mut diagnostics = match dns_result {
+        Ok(address) => vec![ConnectionDiagnostic {
+            stage: "dns".into(),
+            ok: true,
+            message: format!("首跳 {diagnostic_host} 解析为 {}", address.ip()),
+            latency_ms: Some(dns_started.elapsed().as_millis()),
+            fingerprint: None,
+            algorithm: None,
+        }],
+        Err(error) => return vec![diagnostic_failure("dns", error)],
+    };
     let connected = match transport_connection(db, profile).await {
         Ok(value) => value,
         Err(error) => {
-            let message = error.to_string();
-            let stage = if message.contains("DNS") {
-                "dns"
-            } else if profile.proxy_id.is_some() {
-                "proxy"
-            } else {
-                "tcp"
-            };
-            return vec![ConnectionDiagnostic {
-                stage: stage.into(),
-                ok: false,
-                message,
-                latency_ms: None,
-                fingerprint: None,
-                algorithm: None,
-            }];
+            diagnostics.push(diagnostic_failure(
+                if proxy_label.is_some() {
+                    "proxy"
+                } else {
+                    "tcp"
+                },
+                error,
+            ));
+            return diagnostics;
         }
     };
-    let mut diagnostics = vec![ConnectionDiagnostic {
+    if let Some(label) = proxy_label {
+        diagnostics.push(ConnectionDiagnostic {
+            stage: "proxy".into(),
+            ok: true,
+            message: format!("{label} 代理链已建立"),
+            latency_ms: Some(started.elapsed().as_millis()),
+            fingerprint: None,
+            algorithm: None,
+        });
+    }
+    diagnostics.push(ConnectionDiagnostic {
         stage: "tcp".into(),
         ok: true,
-        message: "TCP 与 SSH 握手成功".into(),
+        message: "目标 TCP 与 SSH 握手成功".into(),
         latency_ms: Some(started.elapsed().as_millis()),
         fingerprint: None,
         algorithm: None,
-    }];
+    });
     match db.known_host(&profile.host, profile.port).await {
         Ok(Some((algorithm, expected)))
             if expected == connected.fingerprint && algorithm == connected.algorithm =>
@@ -813,6 +843,49 @@ pub async fn diagnose(db: &Database, profile: &ConnectionProfile) -> Vec<Connect
         }),
     };
     diagnostics
+}
+
+fn diagnostic_failure(stage: &str, error: AppError) -> ConnectionDiagnostic {
+    ConnectionDiagnostic {
+        stage: stage.into(),
+        ok: false,
+        message: error.to_string(),
+        latency_ms: None,
+        fingerprint: None,
+        algorithm: None,
+    }
+}
+
+async fn diagnostic_first_hop(
+    db: &Database,
+    profile: &ConnectionProfile,
+) -> AppResult<(String, i64, Option<String>)> {
+    let mut current = profile.clone();
+    let mut visited = std::collections::HashSet::new();
+    let mut labels = Vec::new();
+    loop {
+        if !visited.insert(current.id.clone()) {
+            return Err(AppError::Validation("SSH 跳板连接形成循环".into()));
+        }
+        let Some(proxy_id) = current.proxy_id.as_deref() else {
+            return Ok((
+                current.host,
+                current.port,
+                (!labels.is_empty()).then(|| labels.join(" → ")),
+            ));
+        };
+        let proxy = db.get_proxy(proxy_id).await?;
+        labels.push(proxy.name.clone());
+        if proxy.proxy_type == "sshJump" {
+            let jump_id = proxy
+                .jump_connection_id
+                .as_deref()
+                .ok_or_else(|| AppError::Validation("跳板机代理未选择连接".into()))?;
+            current = db.get_connection(jump_id).await?;
+        } else {
+            return Ok((proxy.host, proxy.port, Some(labels.join(" → "))));
+        }
+    }
 }
 
 pub async fn open_terminal(
@@ -1517,7 +1590,14 @@ mod tests {
                 .iter()
                 .map(|item| item.stage.as_str())
                 .collect::<Vec<_>>(),
-            vec!["tcp", "hostKey", "authentication", "shell", "complete"]
+            vec![
+                "dns",
+                "tcp",
+                "hostKey",
+                "authentication",
+                "shell",
+                "complete"
+            ]
         );
         let connected = verified_connection(&db, &profile, false).await.unwrap();
         let mut channel = connected.session.channel_session().unwrap();
@@ -2066,6 +2146,32 @@ mod tests {
         let handle = open_pty(transport, profile.clone(), 80, 24, false).unwrap();
         let session_id = "directory-transfer-session".to_string();
         manager.insert(session_id.clone(), handle);
+        let created_file = format!("/tmp/cnshell-created-{}.txt", Uuid::new_v4());
+        crate::sftp::create_text(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            created_file.clone(),
+        )
+        .await
+        .unwrap();
+        assert!(crate::sftp::create_text(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            created_file.clone(),
+        )
+        .await
+        .is_err());
+        crate::sftp::delete(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            created_file,
+            false,
+        )
+        .await
+        .unwrap();
         let remote = format!("/tmp/cnshell-directory-roundtrip-{}", Uuid::new_v4());
 
         crate::sftp::transfer_directory(
@@ -2140,6 +2246,75 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(directory_archives(), archives_before);
+    }
+    #[tokio::test]
+    async fn live_ssh_diagnostics_reports_dns_proxy_and_target_stages() {
+        let Ok(target_port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let key = std::env::var("CNSHELL_TEST_SSH_KEY").expect("CNSHELL_TEST_SSH_KEY");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("CNSHELL_TEST_SSH_USER");
+        let proxy_port = socks_proxy(target_port.parse().unwrap());
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("diagnostic-proxy.sqlite"))
+            .await
+            .unwrap();
+        db.save_proxy(
+            &crate::models::SaveProxyInput {
+                id: "diagnostic-socks".into(),
+                name: "SOCKS5 test".into(),
+                proxy_type: "socks5".into(),
+                host: "localhost".into(),
+                port: proxy_port.into(),
+                username: None,
+                jump_connection_id: None,
+                credential: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let profile = ConnectionProfile {
+            id: "diagnostic-proxy".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "diagnostic proxy".into(),
+            host: "127.0.0.1".into(),
+            port: target_port.parse().unwrap(),
+            username,
+            auth_type: "privateKey".into(),
+            private_key_path: Some(key),
+            host_key_policy: "acceptNew".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: Some("diagnostic-socks".into()),
+            environment: Default::default(),
+            has_credential: false,
+            created_at: "".into(),
+            updated_at: "diagnostic".into(),
+            last_connected_at: None,
+        };
+        let diagnostics = diagnose(&db, &profile).await;
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|item| item.stage.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "dns",
+                "proxy",
+                "tcp",
+                "hostKey",
+                "authentication",
+                "shell",
+                "complete"
+            ]
+        );
+        assert!(diagnostics.iter().all(|item| item.ok));
+        assert!(diagnostics[0].message.contains("localhost"));
+        assert!(diagnostics[1].message.contains("SOCKS5 test"));
     }
     #[tokio::test]
     async fn live_ssh_transport_pool_reuses_idle_and_expands_when_busy() {

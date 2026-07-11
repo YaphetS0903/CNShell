@@ -3,7 +3,7 @@ import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCh
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, ProxyProfile, SaveConnectionInput } from "../../types";
+import type { AuthType, Folder, ProxyProfile, SaveConnectionInput } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -17,7 +17,8 @@ export function ConnectionEditor() {
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [proxies, setProxies] = useState<ProxyProfile[]>([]);
-  useEffect(() => { void api.listProxies().then(setProxies); }, []);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
   useEffect(() => {
     if (!connectionEditorOpen) return;
     setForm(initial);
@@ -51,6 +52,7 @@ export function ConnectionEditor() {
         <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>
         <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>
         <label><span>标签</span><input value={form.tags.join(", ")} onChange={(event) => change("tags", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} placeholder="生产, 香港" /></label>
+        <label className="span-2"><span>文件夹</span><select value={form.folderId??""} onChange={(event)=>change("folderId",event.target.value||null)}><option value="">未分组</option>{folderOptions(folders).map((folder)=><option key={folder.id} value={folder.id}>{folder.label}</option>)}</select></label>
       </div>
       {form.protocol === "ssh" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>认证</span><small>密码与私钥口令写入 macOS Keychain</small></div>
@@ -77,3 +79,4 @@ export function ConnectionEditor() {
 }
 
 function parseEnvironment(value:string):Record<string,string>{const result:Record<string,string>={};for(const pair of value.split(";")){const[key,...rest]=pair.trim().split("=");if(key&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))result[key]=rest.join("=");}return result;}
+function folderOptions(folders:Folder[]){const byId=new Map(folders.map((folder)=>[folder.id,folder]));const label=(folder:Folder,seen=new Set<string>()):string=>{if(seen.has(folder.id))return folder.name;seen.add(folder.id);const parent=folder.parentId?byId.get(folder.parentId):undefined;return parent?`${label(parent,seen)} / ${folder.name}`:folder.name;};return folders.map((folder)=>({...folder,label:label(folder)})).sort((left,right)=>left.label.localeCompare(right.label,"zh-CN"));}

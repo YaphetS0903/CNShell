@@ -11,6 +11,7 @@ import type { CommandSnippet, ConnectionProfile, TerminalSession } from "../../t
 import { clampPanelSize, resizeFromKeyboard } from "../../lib/layout";
 import { RdpWorkspace } from "../rdp/RdpWorkspace";
 import "./TerminalWorkspace.css";
+import { workspaceRuntime } from "../../lib/workspace-runtime";
 
 export default function TerminalWorkspace({connect}:{connect:(profile:ConnectionProfile)=>Promise<void>}) {
   const { sessions, connections, activeSessionId, activePanel, setActiveSession, updateSession, removeSession, setPanel, settings, setError } = useAppStore();
@@ -35,6 +36,8 @@ export default function TerminalWorkspace({connect}:{connect:(profile:Connection
   }, [activeSessionId, close, refs, selectSession, sessions, settings.confirmCloseActiveSession]);
   useEffect(()=>{const handler=()=>{const session=useAppStore.getState().sessions.find((item)=>item.id===useAppStore.getState().activeSessionId);if(session&&(!useAppStore.getState().settings.confirmCloseActiveSession||confirm(`关闭“${session.title}”会话？`)))void close(session.id);};window.addEventListener("cnshell-close-session",handler);return()=>window.removeEventListener("cnshell-close-session",handler);},[close]);
   useEffect(()=>{localStorage.setItem("cnshell-bottom-height",String(bottomHeight));},[bottomHeight]);
+  useEffect(()=>{workspaceRuntime.splitSessionId=splitSessionId;workspaceRuntime.bottomOpen=bottomOpen;workspaceRuntime.bottomHeight=bottomHeight;},[splitSessionId,bottomOpen,bottomHeight]);
+  useEffect(()=>{const restore=(event:Event)=>{const detail=(event as CustomEvent<{splitSessionId:string|null;bottomOpen:boolean;bottomHeight:number}>).detail;setSplitSessionId(detail.splitSessionId);setBottomOpen(detail.bottomOpen);setBottomHeight(clampPanelSize(detail.bottomHeight,210,520));};window.addEventListener("cnshell-restore-layout",restore);return()=>window.removeEventListener("cnshell-restore-layout",restore);},[]);
   useEffect(()=>{const listener=api.onTerminalStatus((status)=>updateSession(status.sessionId,{status:status.status,lastError:status.lastError}));return()=>{void listener.then((unlisten)=>unlisten());};},[updateSession]);
   if (!sessions.length) return <main className="welcome-workspace"><div className="welcome-mark"><Command size={42}/></div><span className="eyebrow">欢迎使用 CNshell</span><h2>从左侧选择一台服务器</h2><p>双击连接即可打开安全的 SSH 终端。文件、传输与监控会自动绑定到当前会话。</p><div className="shortcut-row"><kbd>⌘N</kbd><span>新建连接</span><kbd>⌘T</kbd><span>打开终端</span><kbd>⌘?</kbd><span>查看帮助</span></div></main>;
   const active = sessions.find((item) => item.id === activeSessionId) ?? sessions[0];

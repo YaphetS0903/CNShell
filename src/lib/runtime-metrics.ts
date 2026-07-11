@@ -10,3 +10,6 @@ export const updateTransferMetric=(previous:TransferMetric|undefined,task:Transf
 export const virtualWindow=(total:number,scrollTop:number,viewportHeight:number,rowHeight=26,overscan=10)=>{const start=Math.max(0,Math.floor(scrollTop/rowHeight)-overscan);const end=Math.min(total,Math.ceil((scrollTop+viewportHeight)/rowHeight)+overscan);return{start,end,top:start*rowHeight,bottom:Math.max(0,(total-end)*rowHeight)};};
 
 export const appendMonitorSample=(history:number[],value:number,intervalMs:number)=>[...history.slice(-(Math.max(1,Math.floor(300_000/intervalMs))-1)),value];
+
+export interface MonitorHistorySample { timestamp:number; cpu:number; received:number; sent:number; latency:number|null }
+export const appendMonitorHistory=(history:MonitorHistorySample[],sample:MonitorHistorySample,intervalMs:number)=>[...history.slice(-(Math.max(1,Math.floor(300_000/intervalMs))-1)),sample];

@@ -220,6 +220,25 @@ impl Database {
         if id.is_empty() || id.len() > 128 || name.trim().is_empty() || name.len() > 256 {
             return Err(AppError::Validation("文件夹 ID 或名称无效".into()));
         }
+        if let Some(parent) = parent_id {
+            if parent == id {
+                return Err(AppError::Validation("文件夹不能作为自己的上级".into()));
+            }
+            let exists: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*) FROM folders WHERE id=? AND deleted_at IS NULL",
+            )
+            .bind(parent)
+            .fetch_one(&self.pool)
+            .await?;
+            if exists == 0 {
+                return Err(AppError::NotFound(format!("上级文件夹 {parent}")));
+            }
+            let creates_cycle: i64 = sqlx::query_scalar("WITH RECURSIVE descendants(id) AS (SELECT id FROM folders WHERE parent_id=? AND deleted_at IS NULL UNION ALL SELECT folders.id FROM folders JOIN descendants ON folders.parent_id=descendants.id WHERE folders.deleted_at IS NULL) SELECT COUNT(*) FROM descendants WHERE id=?")
+                .bind(id).bind(parent).fetch_one(&self.pool).await?;
+            if creates_cycle > 0 {
+                return Err(AppError::Validation("文件夹层级不能形成循环".into()));
+            }
+        }
         let sort_order: i64 = sqlx::query_scalar(
             "SELECT COALESCE(MAX(sort_order),-1)+1 FROM folders WHERE deleted_at IS NULL",
         )
@@ -233,15 +252,20 @@ impl Database {
             .map_err(AppError::from)
     }
     pub async fn delete_folder(&self, id: &str) -> AppResult<()> {
-        sqlx::query("UPDATE connections SET folder_id=NULL WHERE folder_id=?")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-        sqlx::query("UPDATE folders SET deleted_at=? WHERE id=?")
-            .bind(Utc::now().to_rfc3339())
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
+        let mut transaction = self.pool.begin().await?;
+        let exists: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE id=? AND deleted_at IS NULL")
+                .bind(id)
+                .fetch_one(&mut *transaction)
+                .await?;
+        if exists == 0 {
+            return Err(AppError::NotFound(format!("文件夹 {id}")));
+        }
+        sqlx::query("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=? AND deleted_at IS NULL UNION ALL SELECT folders.id FROM folders JOIN subtree ON folders.parent_id=subtree.id WHERE folders.deleted_at IS NULL) UPDATE connections SET folder_id=NULL WHERE folder_id IN (SELECT id FROM subtree)")
+            .bind(id).execute(&mut *transaction).await?;
+        sqlx::query("WITH RECURSIVE subtree(id) AS (SELECT id FROM folders WHERE id=? AND deleted_at IS NULL UNION ALL SELECT folders.id FROM folders JOIN subtree ON folders.parent_id=subtree.id WHERE folders.deleted_at IS NULL) UPDATE folders SET deleted_at=? WHERE id IN (SELECT id FROM subtree)")
+            .bind(id).bind(Utc::now().to_rfc3339()).execute(&mut *transaction).await?;
+        transaction.commit().await?;
         Ok(())
     }
     pub async fn move_connection(&self, id: &str, folder_id: Option<&str>) -> AppResult<()> {
@@ -1307,6 +1331,60 @@ mod tests {
         db.delete_connection("trash").await.unwrap();
         db.purge_connection("trash").await.unwrap();
         assert!(db.deleted_connections().await.unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn folder_hierarchy_rejects_cycles_and_deletes_subtrees_safely() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("folder-tree.sqlite"))
+            .await
+            .unwrap();
+        assert!(
+            db.save_folder("orphan", "Orphan", Some("missing"))
+                .await
+                .is_err()
+        );
+        db.save_folder("root", "Root", None).await.unwrap();
+        db.save_folder("child", "Child", Some("root"))
+            .await
+            .unwrap();
+        db.save_folder("grandchild", "Grandchild", Some("child"))
+            .await
+            .unwrap();
+        assert!(db.save_folder("root", "Root", Some("root")).await.is_err());
+        assert!(
+            db.save_folder("root", "Root", Some("grandchild"))
+                .await
+                .is_err()
+        );
+        let input = SaveConnectionInput {
+            id: "nested-connection".into(),
+            folder_id: Some("grandchild".into()),
+            protocol: "ssh".into(),
+            name: "Nested".into(),
+            host: "example.test".into(),
+            port: 22,
+            username: "root".into(),
+            auth_type: "sshAgent".into(),
+            private_key_path: None,
+            host_key_policy: "strict".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        db.save_connection(&input, None).await.unwrap();
+        db.delete_folder("root").await.unwrap();
+        assert!(db.folders().await.unwrap().is_empty());
+        assert_eq!(
+            db.get_connection("nested-connection")
+                .await
+                .unwrap()
+                .folder_id,
+            None
+        );
     }
     #[tokio::test]
     async fn every_historical_schema_upgrades_without_data_loss() {

@@ -6,6 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { api } from "../../lib/api";
 import type { TerminalSession } from "../../types";
 import { createTerminalInputQueue } from "../../lib/terminal-input";
+import { parseOsc7Cwd, workspaceRuntime } from "../../lib/workspace-runtime";
 
 export interface TerminalActions { findNext: (term: string) => boolean; clear: () => void; focus: () => void }
 
@@ -23,6 +24,7 @@ export const TerminalView = forwardRef<TerminalActions, { session: TerminalSessi
     });
     const fit = new FitAddon(); const search = new SearchAddon();
     terminal.loadAddon(fit); terminal.loadAddon(search); terminal.loadAddon(new WebLinksAddon()); searchRef.current = search;
+    const cwdHandler=terminal.parser.registerOscHandler(7,(value)=>{const cwd=parseOsc7Cwd(value);if(cwd)workspaceRuntime.cwdBySession.set(session.id,cwd);return Boolean(cwd);});
     terminal.open(container); fit.fit(); terminal.focus(); terminalRef.current = terminal;
     const enqueueInput=createTerminalInputQueue((data)=>api.terminalInput(session.id,data));
     const dataDisposable = terminal.onData((data) => {if(api.isDesktop())void enqueueInput(data).catch(()=>undefined);else terminal.write(data);});
@@ -36,7 +38,7 @@ export const TerminalView = forwardRef<TerminalActions, { session: TerminalSessi
     const pending:Uint8Array[]=[];let writing=false;let disposed=false;const flush=()=>{if(disposed||writing||!pending.length)return;writing=true;let length=0;const chunks:Uint8Array[]=[];while(pending.length&&length<64*1024){const chunk=pending.shift()!;chunks.push(chunk);length+=chunk.length;}const combined=new Uint8Array(length);let offset=0;for(const chunk of chunks){combined.set(chunk,offset);offset+=chunk.length;}terminal.write(combined,()=>{writing=false;flush();});};
     const unlistenPromise = api.onTerminalOutput((output) => { if (output.sessionId === session.id){const binary=atob(output.dataBase64);pending.push(Uint8Array.from(binary,(character)=>character.charCodeAt(0)));flush();} });
     if (!api.isDesktop()) terminal.writeln("\x1b[1;32mCNshell 浏览器预览\x1b[0m\r\n\r\n请运行 \x1b[36mnpm run tauri dev\x1b[0m 建立真实 SSH 会话。\r\n");
-    return () => { disposed=true;pending.length=0;void unlistenPromise.then((unlisten) => unlisten()); resize.disconnect(); dataDisposable.dispose(); terminal.dispose(); terminalRef.current = null; };
+    return () => { disposed=true;pending.length=0;void unlistenPromise.then((unlisten) => unlisten()); resize.disconnect(); dataDisposable.dispose();cwdHandler.dispose(); terminal.dispose(); terminalRef.current = null; };
   }, [session.id]);
   useEffect(() => { if (active) terminalRef.current?.focus(); }, [active]);
   return <div className={`terminal-instance ${active ? "active" : ""} pane-${pane}`} ref={containerRef} aria-label={`${session.title} 终端`} />;

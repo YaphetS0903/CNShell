@@ -135,6 +135,10 @@ test("opens file actions from the row context menu",async({page})=>{
   const menu=page.getByRole("menu",{name:"home 文件操作"});
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem",{name:"复制路径"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"下载"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"上传文件到此处"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"新建文件",exact:true})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"新建文件夹",exact:true})).toBeVisible();
   await expect(menu.getByRole("menuitem",{name:"压缩为 tar.gz"})).toBeVisible();
   await expect(menu.getByRole("menuitem",{name:"重命名"})).toBeVisible();
   await expect(menu.getByRole("menuitem",{name:"修改权限"})).toBeVisible();
@@ -142,6 +146,13 @@ test("opens file actions from the row context menu",async({page})=>{
   await expect(menu.getByRole("menuitem",{name:"编辑文本"})).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(menu).toBeHidden();
+  await page.getByRole("navigation",{name:"远端目录树"}).getByRole("button",{name:"展开 home"}).click();
+  await page.getByRole("navigation",{name:"远端目录树"}).getByRole("button",{name:"developer",exact:true}).click();
+  await page.getByRole("row",{name:/README\.txt/}).click({button:"right"});
+  const fileMenu=page.getByRole("menu",{name:"README.txt 文件操作"});
+  await expect(fileMenu.getByRole("menuitem",{name:"编辑文本"})).toBeEnabled();
+  await expect(fileMenu.getByRole("menuitem",{name:"使用默认应用打开"})).toBeVisible();
+  await expect(fileMenu.getByRole("menuitem",{name:"选择应用打开…"})).toBeVisible();
 });
 
 test("keeps both terminal panes visible and exits split when selecting the secondary tab",async({page})=>{
@@ -159,4 +170,22 @@ test("keeps both terminal panes visible and exits split when selecting the secon
   await expect(page.locator(".terminal-area")).not.toHaveClass(/split/);
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected","true");
   await expect(page.locator(".terminal-instance.active.pane-primary")).toHaveCount(1);
+});
+
+test("creates and expands nested connection folders",async({page})=>{
+  await page.goto("/");
+  page.once("dialog",(dialog)=>dialog.accept("生产"));
+  await page.getByRole("button",{name:"新建文件夹"}).click();
+  const tree=page.getByRole("tree",{name:"连接文件夹树"});
+  await tree.getByRole("button",{name:"生产 0",exact:true}).click();
+  page.once("dialog",(dialog)=>dialog.accept("华南"));
+  await page.getByRole("button",{name:"新建文件夹"}).click();
+  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeVisible();
+  await tree.getByRole("button",{name:"折叠 生产"}).click();
+  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeHidden();
+  await tree.getByRole("button",{name:"展开 生产"}).click();
+  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeVisible();
+  await page.getByRole("button",{name:/所有连接/}).click();
+  await page.getByRole("button",{name:"演示服务器操作"}).click();
+  await expect(page.getByRole("button",{name:"移动到文件夹"})).toBeVisible();
 });

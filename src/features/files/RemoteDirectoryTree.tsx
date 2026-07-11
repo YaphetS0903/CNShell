@@ -1,5 +1,5 @@
 import { ChevronRight, Folder, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type DirectoryNode = { name: string; path: string };
 
@@ -14,11 +14,16 @@ export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, o
   const [expanded, setExpanded] = useState(() => new Set(["/"]));
   const [children, setChildren] = useState<Record<string, DirectoryNode[]>>({});
   const [loading, setLoading] = useState(() => new Set<string>());
+  const loadedPaths = useRef(new Set<string>());
+  const loadingPaths = useRef(new Set<string>());
 
-  const loadChildren = useCallback(async (path: string) => {
+  const loadChildren = useCallback(async (path: string, force = false) => {
+    if (loadingPaths.current.has(path) || (!force && loadedPaths.current.has(path))) return;
+    loadingPaths.current.add(path);
     setLoading((current) => new Set(current).add(path));
     try {
       const result = await listDirectories(path);
+      loadedPaths.current.add(path);
       setChildren((current) => ({ ...current, [path]: result }));
     } catch (reason) {
       onError(reason);
@@ -28,6 +33,7 @@ export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, o
         return next;
       });
     } finally {
+      loadingPaths.current.delete(path);
       setLoading((current) => {
         const next = new Set(current);
         next.delete(path);
@@ -41,8 +47,15 @@ export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, o
   }, [loadChildren]);
 
   useEffect(() => {
+    const segments = activePath.split("/").filter(Boolean);
+    const ancestors = ["/", ...segments.slice(0, -1).map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)];
+    setExpanded((current) => new Set([...current, ...ancestors]));
+    for (const path of ancestors) void loadChildren(path);
+  }, [activePath, loadChildren]);
+
+  useEffect(() => {
     const refresh = () => {
-      for (const path of expanded) void loadChildren(path);
+      for (const path of expanded) void loadChildren(path, true);
     };
     window.addEventListener("cnshell-refresh-directory-tree", refresh);
     return () => window.removeEventListener("cnshell-refresh-directory-tree", refresh);
@@ -61,6 +74,11 @@ export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, o
     if (!children[path]) void loadChildren(path);
   };
 
+  const open = (path: string) => {
+    onNavigate(path);
+    if (!expanded.has(path)) toggle(path);
+  };
+
   const renderNode = (node: DirectoryNode, depth: number) => {
     const isExpanded = expanded.has(node.path);
     const isLoading = loading.has(node.path);
@@ -69,7 +87,7 @@ export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, o
         <button className="remote-tree-toggle" aria-label={`${isExpanded ? "折叠" : "展开"} ${node.name}`} onClick={() => toggle(node.path)}>
           {isLoading ? <LoaderCircle className="spin" size={12} /> : <ChevronRight className={isExpanded ? "expanded" : ""} size={13} />}
         </button>
-        <button className="remote-tree-name" onClick={() => onNavigate(node.path)} title={node.path}>
+        <button className="remote-tree-name" onClick={() => open(node.path)} title={node.path}>
           <Folder size={13} aria-hidden="true" />
           <span>{node.name}</span>
         </button>

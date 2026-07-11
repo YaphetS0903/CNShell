@@ -159,6 +159,7 @@ pub fn run() {
             commands::sftp_chmod,
             commands::sftp_open_text,
             commands::sftp_save_text,
+            commands::sftp_create_text,
             commands::sftp_archive_start,
             commands::sftp_open_local_start,
             commands::sftp_directory_transfer_start,

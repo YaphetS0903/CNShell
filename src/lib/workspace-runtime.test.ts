@@ -1,0 +1,2 @@
+import{describe,expect,it}from"vitest";import{parseOsc7Cwd,shellQuote}from"./workspace-runtime";
+describe("workspace runtime",()=>{it("parses safe OSC 7 paths",()=>{expect(parseOsc7Cwd("file://host/home/user/My%20Files")).toBe("/home/user/My Files");expect(parseOsc7Cwd("https://host/path")).toBeNull();});it("quotes restored directories without command injection",()=>{expect(shellQuote("/tmp/a'; touch /bad")).toBe("'/tmp/a'\\''; touch /bad'");});});
