@@ -15,7 +15,7 @@ use std::{
     process::Command,
     sync::{
         Arc,
-        atomic::{AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     time::Duration,
 };
@@ -522,6 +522,305 @@ pub async fn open_local(
     .map_err(|error| AppError::Internal(error.to_string()))?
 }
 
+fn check_directory_transfer_cancelled(cancelled: &AtomicBool) -> AppResult<()> {
+    if cancelled.load(Ordering::Acquire) {
+        Err(AppError::Remote("文件夹传输已取消".into()))
+    } else {
+        Ok(())
+    }
+}
+
+fn run_tar(arguments: &[&std::ffi::OsStr]) -> AppResult<()> {
+    let status = Command::new("tar").args(arguments).status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AppError::Remote(format!("本地 tar 失败：{status}")))
+    }
+}
+
+fn run_remote_command(session: &ssh2::Session, command: &str, failure: &str) -> AppResult<()> {
+    let mut channel = session.channel_session()?;
+    channel.exec(command)?;
+    let mut stdout = Vec::new();
+    channel.read_to_end(&mut stdout)?;
+    let mut stderr = String::new();
+    channel.stderr().read_to_string(&mut stderr)?;
+    channel.wait_close()?;
+    if channel.exit_status()? == 0 {
+        Ok(())
+    } else if stderr.trim().is_empty() {
+        Err(AppError::Remote(failure.into()))
+    } else {
+        Err(AppError::Remote(format!("{failure}：{}", stderr.trim())))
+    }
+}
+
+fn remove_local_path(path: &Path) -> std::io::Result<()> {
+    if path.is_dir() {
+        std::fs::remove_dir_all(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
+pub async fn transfer_directory(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    direction: String,
+    source: String,
+    destination: String,
+    conflict_policy: String,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<String> {
+    if !["upload", "download"].contains(&direction.as_str()) {
+        return Err(AppError::Validation("文件夹传输方向无效".into()));
+    }
+    if !["overwrite", "skip", "rename"].contains(&conflict_policy.as_str()) {
+        return Err(AppError::Validation("文件夹冲突策略无效".into()));
+    }
+    if direction == "upload" {
+        validate_local_path(&source)?;
+        validate_remote_path(&destination)?;
+        if !Path::new(&source).is_dir() {
+            return Err(AppError::Validation("上传源必须是本地文件夹".into()));
+        }
+    } else {
+        validate_remote_path(&source)?;
+        validate_local_path(&destination)?;
+    }
+    if source.starts_with(RAW_PATH_PREFIX) || destination.starts_with(RAW_PATH_PREFIX) {
+        return Err(AppError::Validation(
+            "文件夹打包传输暂不支持非 UTF-8 路径".into(),
+        ));
+    }
+    let profile = manager.profile(&session_id)?;
+    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    tokio::task::spawn_blocking(move || {
+        let identifier = Uuid::new_v4().to_string();
+        let local_archive =
+            std::env::temp_dir().join(format!("cnshell-directory-{identifier}.tar.gz"));
+        let result = (|| {
+            check_directory_transfer_cancelled(&cancelled)?;
+            let sftp = transport.connected().session.sftp()?;
+            if direction == "upload" {
+                let source_path = Path::new(&source);
+                run_tar(&[
+                    std::ffi::OsStr::new("-czf"),
+                    local_archive.as_os_str(),
+                    std::ffi::OsStr::new("-C"),
+                    source_path.as_os_str(),
+                    std::ffi::OsStr::new("."),
+                ])?;
+                check_directory_transfer_cancelled(&cancelled)?;
+                let mut final_destination = destination.clone();
+                let mut overwrite_existing = false;
+                if sftp.lstat(Path::new(&final_destination)).is_ok() {
+                    match conflict_policy.as_str() {
+                        "skip" => return Ok(final_destination),
+                        "rename" => {
+                            let original = final_destination.clone();
+                            let mut index = 1;
+                            while sftp.lstat(Path::new(&final_destination)).is_ok() {
+                                final_destination = renamed_path(&original, index);
+                                index += 1;
+                            }
+                        }
+                        "overwrite" => overwrite_existing = true,
+                        _ => unreachable!(),
+                    }
+                }
+                let parent = Path::new(&final_destination)
+                    .parent()
+                    .unwrap_or(Path::new("/"));
+                let remote_archive = parent.join(format!(".cnshell-directory-{identifier}.tar.gz"));
+                let remote_staging = parent.join(format!(".cnshell-directory-{identifier}"));
+                let remote_backup = parent.join(format!(".cnshell-directory-backup-{identifier}"));
+                let transfer_result = (|| {
+                    let mut local = std::fs::File::open(&local_archive)?;
+                    let mut remote = sftp.open_mode(
+                        &remote_archive,
+                        OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                        0o600,
+                        OpenType::File,
+                    )?;
+                    let mut buffer = vec![0_u8; 256 * 1024];
+                    loop {
+                        check_directory_transfer_cancelled(&cancelled)?;
+                        let read = local.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        remote.write_all(&buffer[..read])?;
+                    }
+                    remote.fsync()?;
+                    drop(remote);
+                    sftp.mkdir(&remote_staging, 0o755)?;
+                    drop(sftp);
+                    run_remote_command(
+                        &transport.connected().session,
+                        &format!(
+                            "tar -xzf {} -C {}",
+                            shell_quote(&remote_archive.to_string_lossy()),
+                            shell_quote(&remote_staging.to_string_lossy())
+                        ),
+                        "远端文件夹解包失败",
+                    )?;
+                    check_directory_transfer_cancelled(&cancelled)?;
+                    let sftp = transport.connected().session.sftp()?;
+                    if overwrite_existing {
+                        sftp.rename(
+                            Path::new(&final_destination),
+                            &remote_backup,
+                            Some(RenameFlags::ATOMIC),
+                        )?;
+                    }
+                    if let Err(error) = sftp.rename(
+                        &remote_staging,
+                        Path::new(&final_destination),
+                        Some(RenameFlags::ATOMIC),
+                    ) {
+                        if overwrite_existing {
+                            let _ = sftp.rename(
+                                &remote_backup,
+                                Path::new(&final_destination),
+                                Some(RenameFlags::ATOMIC),
+                            );
+                        }
+                        return Err(AppError::from(error));
+                    }
+                    if overwrite_existing {
+                        delete_recursive(&sftp, &remote_backup)?;
+                    }
+                    let _ = sftp.unlink(&remote_archive);
+                    Ok(final_destination.clone())
+                })();
+                if transfer_result.is_err() {
+                    let sftp = transport.connected().session.sftp()?;
+                    let _ = sftp.unlink(&remote_archive);
+                    if sftp.lstat(&remote_staging).is_ok() {
+                        let _ = delete_recursive(&sftp, &remote_staging);
+                    }
+                    if sftp.lstat(&remote_backup).is_ok()
+                        && sftp.lstat(Path::new(&final_destination)).is_err()
+                    {
+                        let _ = sftp.rename(
+                            &remote_backup,
+                            Path::new(&final_destination),
+                            Some(RenameFlags::ATOMIC),
+                        );
+                    }
+                }
+                transfer_result
+            } else {
+                let source_path = remote_path(&source)?;
+                if !sftp.lstat(&source_path)?.is_dir() {
+                    return Err(AppError::Validation("下载源必须是远端文件夹".into()));
+                }
+                let remote_parent = source_path.parent().unwrap_or(Path::new("/"));
+                let remote_archive =
+                    remote_parent.join(format!(".cnshell-directory-{identifier}.tar.gz"));
+                drop(sftp);
+                let archive_result = run_remote_command(
+                    &transport.connected().session,
+                    &format!(
+                        "tar -czf {} -C {} .",
+                        shell_quote(&remote_archive.to_string_lossy()),
+                        shell_quote(&source)
+                    ),
+                    "远端文件夹打包失败",
+                );
+                if let Err(error) = archive_result {
+                    if let Ok(sftp) = transport.connected().session.sftp() {
+                        let _ = sftp.unlink(&remote_archive);
+                    }
+                    return Err(error);
+                }
+                let sftp = transport.connected().session.sftp()?;
+                let download_result = (|| {
+                    check_directory_transfer_cancelled(&cancelled)?;
+                    let mut remote = sftp.open(&remote_archive)?;
+                    let mut local = std::fs::File::create(&local_archive)?;
+                    let mut buffer = vec![0_u8; 256 * 1024];
+                    loop {
+                        check_directory_transfer_cancelled(&cancelled)?;
+                        let read = remote.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        local.write_all(&buffer[..read])?;
+                    }
+                    local.sync_all()?;
+                    let mut final_destination = PathBuf::from(&destination);
+                    let mut overwrite_existing = false;
+                    if final_destination.exists() {
+                        match conflict_policy.as_str() {
+                            "skip" => return Ok(final_destination.to_string_lossy().into_owned()),
+                            "rename" => {
+                                let original = destination.clone();
+                                let mut index = 1;
+                                while final_destination.exists() {
+                                    final_destination =
+                                        PathBuf::from(renamed_path(&original, index));
+                                    index += 1;
+                                }
+                            }
+                            "overwrite" => overwrite_existing = true,
+                            _ => unreachable!(),
+                        }
+                    }
+                    let parent = final_destination
+                        .parent()
+                        .ok_or_else(|| AppError::Validation("本地目标目录无效".into()))?;
+                    let staging = parent.join(format!(".cnshell-directory-{identifier}"));
+                    let backup = parent.join(format!(".cnshell-directory-backup-{identifier}"));
+                    std::fs::create_dir(&staging)?;
+                    let extract_result = run_tar(&[
+                        std::ffi::OsStr::new("-xzf"),
+                        local_archive.as_os_str(),
+                        std::ffi::OsStr::new("-C"),
+                        staging.as_os_str(),
+                    ])
+                    .and_then(|_| {
+                        check_directory_transfer_cancelled(&cancelled)?;
+                        if overwrite_existing {
+                            std::fs::rename(&final_destination, &backup)?;
+                        }
+                        if let Err(error) = std::fs::rename(&staging, &final_destination) {
+                            if overwrite_existing {
+                                let _ = std::fs::rename(&backup, &final_destination);
+                            }
+                            return Err(AppError::from(error));
+                        }
+                        if overwrite_existing {
+                            remove_local_path(&backup)?;
+                        }
+                        Ok(())
+                    });
+                    if extract_result.is_err() {
+                        let _ = std::fs::remove_dir_all(&staging);
+                        if backup.exists() && !final_destination.exists() {
+                            let _ = std::fs::rename(&backup, &final_destination);
+                        }
+                    }
+                    extract_result?;
+                    Ok(final_destination.to_string_lossy().into_owned())
+                })();
+                let _ = sftp.unlink(&remote_archive);
+                download_result
+            }
+        })();
+        let _ = std::fs::remove_file(&local_archive);
+        if result.is_err() {
+            transport.discard();
+        }
+        result
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
 pub fn cleanup_preview_cache() -> AppResult<()> {
     let directory = std::env::temp_dir().join("CNshellPreview");
     if directory.exists() {
@@ -911,5 +1210,13 @@ mod tests {
         assert!(!manager.contains("task"));
         assert!(!manager.cancel("task"));
         assert!(manager.token("other", "download:/tmp/file").is_ok());
+    }
+    #[test]
+    fn pre_cancelled_directory_transfer_stops_before_work() {
+        let cancelled = AtomicBool::new(true);
+        assert!(matches!(
+            check_directory_transfer_cancelled(&cancelled),
+            Err(AppError::Remote(message)) if message.contains("已取消")
+        ));
     }
 }

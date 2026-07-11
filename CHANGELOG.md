@@ -9,6 +9,8 @@
 - SSH 密码、私钥、SSH Agent、严格主机指纹、SOCKS5、HTTP CONNECT 与 SSH 跳板连接。
 - 多标签 xterm 终端、会话拆分、搜索、历史、快捷命令、自动重连与 SSH/TCP keepalive。
 - SFTP 虚拟列表、文件操作、原子文本保存、后台上传下载、暂停、取消、重试和冲突策略。
+- SFTP 左侧远端目录树支持按需展开、折叠和逐级导航。
+- 文件夹可按需打包上传或下载，支持覆盖、自动重命名、取消及临时归档清理。
 - Linux CPU、内存、Swap、进程、网络、延迟、磁盘监控及系统信息导出。
 - 本地连接库、文件夹、软删除、加密备份、脱敏诊断、Transport Pool 和类型生成 IPC。
 - 外部 FreeRDP Helper 的检测、凭据隔离、受管生命周期和会话标签。
@@ -27,4 +29,3 @@
 - Developer ID、公证和正式 updater 仍需发行凭据与正式 HTTPS 服务。
 - RDP 当前打开独立 FreeRDP 窗口，尚未内嵌画面；真实 Windows 互操作仍待验收。
 - Debian、Rocky、Alpine，多版本/Intel Mac，完整弱网及 VoiceOver 真机矩阵尚未完成。
-- SSH 实现使用 `ssh2/libssh2`，与最初 `PLAN.md` 的 `russh` 选型存在已记录偏差。

@@ -45,6 +45,11 @@ const demoConnection: ConnectionProfile = {
 let browserConnections = [demoConnection];
 let browserDeletedConnections:ConnectionProfile[]=[];
 let browserSnippets:CommandSnippet[]=[];
+const browserFiles:Record<string,RemoteFile[]>={
+  "/":[{name:"home",path:"/home",kind:"directory",size:0,modifiedAt:null,permissions:"drwxr-xr-x",owner:0,group:0}],
+  "/home":[{name:"developer",path:"/home/developer",kind:"directory",size:0,modifiedAt:null,permissions:"drwxr-xr-x",owner:501,group:20}],
+  "/home/developer":[{name:"README.txt",path:"/home/developer/README.txt",kind:"file",size:128,modifiedAt:null,permissions:"-rw-r--r--",owner:501,group:20}]
+};
 
 export const api = {
   isDesktop: isTauri,
@@ -110,7 +115,7 @@ export const api = {
   },
   async listFiles(sessionId: string, path: string, showHidden: boolean): Promise<RemoteFile[]> {
     if (isTauri()) return invoke("sftp_list", { sessionId, path, showHidden });
-    return [];
+    return (browserFiles[path]??[]).filter((item)=>showHidden||!item.name.startsWith("."));
   },
   async joinRemotePath(parent:string,name:string):Promise<string>{return isTauri()?invoke("sftp_join_path",{parent,name}):`${parent.replace(/\/$/,"")}/${name}`;},
   async createDirectory(sessionId: string, path: string) {
@@ -133,6 +138,7 @@ export const api = {
   },
   async startArchiveRemote(sessionId: string, path: string, extract: boolean): Promise<BackgroundTask> { return invoke("sftp_archive_start", { sessionId, path, extract }); },
   async startOpenRemoteLocally(sessionId: string, path: string): Promise<BackgroundTask> { return invoke("sftp_open_local_start", { sessionId, path }); },
+  async startDirectoryTransfer(sessionId:string,direction:"upload"|"download",source:string,destination:string,conflictPolicy:Exclude<import("../types").ConflictPolicy,"ask">):Promise<BackgroundTask>{return invoke("sftp_directory_transfer_start",{sessionId,direction,source,destination,conflictPolicy});},
   async getTask(id:string):Promise<BackgroundTask>{return invoke("task_get",{id});},
   async cancelTask(id:string):Promise<void>{if(isTauri())await invoke("task_cancel",{id});},
   async onBackgroundTask(handler:(task:BackgroundTask)=>void):Promise<UnlistenFn>{return isTauri()?listen<BackgroundTask>("background-task",(event)=>handler(event.payload)):()=>undefined;},

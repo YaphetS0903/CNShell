@@ -483,6 +483,36 @@ pub async fn sftp_open_local_start(
 }
 
 #[tauri::command]
+pub async fn sftp_directory_transfer_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    direction: String,
+    source: String,
+    destination: String,
+    conflict_policy: String,
+) -> AppResult<BackgroundTask> {
+    let db = state.db.clone();
+    let sessions = state.sessions.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "sftpDirectoryTransfer", move |cancelled| async move {
+            let result = crate::sftp::transfer_directory(
+                db,
+                sessions,
+                session_id,
+                direction,
+                source,
+                destination,
+                conflict_policy,
+                cancelled,
+            )
+            .await?;
+            Ok(serde_json::Value::String(result))
+        }))
+}
+
+#[tauri::command]
 pub fn task_get(state: State<'_, AppState>, id: String) -> AppResult<BackgroundTask> {
     state.tasks.get(&id)
 }

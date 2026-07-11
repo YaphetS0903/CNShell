@@ -1,6 +1,6 @@
 # CNshell v0.1.0 验收矩阵
 
-> 最后核验：2026-07-11（macOS 本机）
+> 最后核验：2026-07-12（macOS 本机）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -12,10 +12,11 @@
 | 分阶段连接诊断 | 通过 | `src-tauri/src/ssh.rs`、`src/features/connections/ConnectionDiagnostics.tsx` | 协议测试验证 TCP、主机密钥、认证、Shell 阶段；认证与 Shell 阻塞均有 30 秒恢复超时，macOS Keychain 授权等待不会让界面永久停在连接中 |
 | SOCKS5、HTTP CONNECT、SSH Jump | 通过 | `src-tauri/src/ssh.rs`、`src/features/settings/AdvancedSettings.tsx` | 真实代理链协议测试全部通过 |
 | 本地、远程、动态端口转发 | 通过 | `src-tauri/src/tunnel.rs`、`src/features/connections/TunnelManager.tsx` | 三类真实转发协议测试通过 |
-| xterm.js、多标签、拆分、搜索、剪贴板、IME、True Color、PTY resize | 通过 | `src/features/terminal/TerminalView.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src-tauri/src/ssh.rs` | 单元/E2E、1 MB 输出及 PTY roundtrip 通过；浏览器端 IME 风格文本插入保留中文与 Emoji；本机密码 SSH 夹具验证交互 PTY、中文/Emoji 双向字节和 ANSI/True Color 全屏序列；最终 universal DMG 的只读挂载应用经真实 Canvas 截图确认中文宽字符、Emoji、线框、光标定位和 RGB 颜色无明显错位，会话/工具标签方向键切换通过；腾讯云 PTY 的 `vim`、`top`、`tmux` 验收亦通过。临时连接与 Keychain 条目已清理 |
+| xterm.js、多标签、拆分、搜索、剪贴板、IME、True Color、PTY resize | 通过 | `src/features/terminal/TerminalView.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src-tauri/src/ssh.rs` | E2E 直接验证拆分后主标签保持选中、左右各显示独立终端，选择副标签会安全收拢布局；单元/E2E、1 MB 输出及 PTY roundtrip 通过；浏览器端 IME 风格文本插入保留中文与 Emoji；本机密码 SSH 夹具验证交互 PTY、中文/Emoji 双向字节和 ANSI/True Color 全屏序列；最终 universal DMG 的只读挂载应用经真实 Canvas 截图确认中文宽字符、Emoji、线框、光标定位和 RGB 颜色无明显错位；腾讯云 PTY 的 `vim`、`top`、`tmux` 验收亦通过 |
 | 自动重连与安全错误停止重试 | 通过 | `src-tauri/src/ssh.rs` | Rust 测试验证 1/2/5/10/30 秒及认证/指纹错误停止策略 |
-| SFTP 导航、排序、隐藏文件、虚拟滚动与文件操作 | 通过 | `src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 真实 SFTP 覆盖空目录、10 万文件、UTF-8 特殊文件名、符号链接、无权限目录；非法 UTF-8 原始字节使用无损 Base64 路径令牌和 `\\xNN` 显示，单测覆盖不碰撞、目录拼接与解码 |
+| SFTP 目录树、导航、排序、隐藏文件、虚拟滚动与文件操作 | 通过 | `src/features/files/RemoteDirectoryTree.tsx`、`src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 左侧目录树根节点默认展开，子目录按需加载，可独立展开、折叠和导航；文件行支持右键上下文菜单并复用工具栏操作，Escape 可关闭；组件/E2E 覆盖嵌套加载、导航和右键入口。真实 SFTP 覆盖空目录、10 万文件、UTF-8 特殊文件名、符号链接、无权限目录；非法 UTF-8 原始字节使用无损 Base64 路径令牌和 `\\xNN` 显示，单测覆盖不碰撞、目录拼接与解码 |
 | 上传下载队列、速度/ETA、暂停/取消/重试、冲突策略 | 通过 | `src/features/files/TransferQueue.tsx`、`src-tauri/src/sftp.rs` | 1 GB 真实 SFTP 流式上传/下载及 SHA-256 一致性通过；中断临时文件、显式重试已覆盖 |
+| 文件夹打包上传与下载 | 通过 | `src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 本机真实 OpenSSH 覆盖两层目录、中文文件名、上传/下载往返内容、覆盖时两阶段备份交换，以及本地/远端临时归档清理；后台任务支持取消，失败不先删除原目标 |
 | 下载临时文件与上传原子替换 | 通过 | `src-tauri/src/sftp.rs` | `.cnshell-part`、远端临时文件及原子 rename 已由协议/Rust 测试覆盖 |
 | 10 MB 文本编辑、修改冲突与原子保存 | 通过 | `src/features/files/TextEditor.tsx`、`src-tauri/src/sftp.rs` | UTF-8 字节边界测试；冲突比较、临时文件、fsync 与原子 rename 路径由代码审计及真实 SFTP 覆盖 |
 | CPU、内存、Swap、网络、进程、磁盘与 5 分钟历史 | 通过 | `src-tauri/src/monitor.rs`、`src/features/monitor/MonitorSidebar.tsx` | 采集解析、单项降级与 5 分钟窗口测试通过；腾讯云 30 次/60.77 秒同等采集命令累计远端 CPU 0.35 秒，折算单核 0.576%（低于 2%） |
@@ -29,19 +30,19 @@
 
 ## 2. 自动化证据
 
-| 命令 | 结果（2026-07-11） |
+| 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
-| `npm run test` | 通过，16 个文件、35 个测试；含 RDP 受管工作区和关闭入口、后台任务事件/快照竞态、私钥原生选择、可调布局、系统主题、连接编辑回填、SSH Jump 表单契约、终端 IPC 输入顺序、更新入口权限/候选通道，以及 PLAN/CI 交付文档和发布门禁契约测试 |
+| `npm run test` | 通过，17 个文件、36 个测试；新增远端目录树嵌套懒加载、展开状态刷新与路径导航覆盖 |
 | `npm run build` | 通过，TypeScript 与 Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，73 个测试；含 RDP stdin 凭据隔离、Helper 参数/终止和 RDP 凭据保留，macOS Bookmark、真实私钥认证、Transport Pool、用户态弱网中断恢复、认证阻塞恢复超时、SSH/TCP keepalive 配置与调度、后台任务、IPC 契约、磁盘不足、原始字节路径、跨 Mac 导入、跳板环和监控缓存生命周期 |
-| `npm run test:e2e` | 通过，10 个 Playwright 场景；含可调布局与导入入口、系统浅色跟随、快捷命令只读/删除契约、IME 风格中文/Emoji 输入，以及会话/工具标签键盘操作与 SFTP 表格可访问语义 |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，75 个测试；新增真实 OpenSSH 文件夹上传/下载/覆盖往返与预取消边界，原有 RDP、Bookmark、Transport Pool、弱网、keepalive、迁移、IPC 和安全测试均通过 |
+| `npm run test:e2e` | 通过，13 个 Playwright 场景；新增远端目录树展开导航、文件行右键菜单/键盘关闭，以及左右拆分主副窗格状态覆盖 |
 | `npm run test:pty-fixture` | 通过；本机 Paramiko 密码认证夹具提供真实 PTY Shell，验证中文/Emoji 双向 UTF-8、ANSI 清屏/光标控制和 True Color 输出 |
-| `npm run test:protocol` | 通过，6 个真实协议场景；含安全 Bookmark 解析私钥后认证、Transport Pool 顺序复用/并发扩容/配置失效，以及 10 万文件、1 GB 文件往返校验、代理、隧道、acceptNew 与服务端主动关闭后恢复 |
+| `CNSHELL_PROTOCOL_FILTER=live_ssh_directory_transfer_round_trip_and_cleanup npm run test:protocol` | 通过；本轮真实 OpenSSH 小目录覆盖嵌套中文文件、上传/下载、覆盖交换及本地/远端临时清理。此前 10 万文件、1 GB、代理、隧道等全量协议证据继续保留，本轮未重复消耗资源 |
 | `npm audit --audit-level=moderate` | 通过，0 vulnerabilities |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，包含应用内更新入口的当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；Info.plist 实际可执行文件 `cnshell` 存在，严格 ad-hoc 签名和 DMG 校验通过；DMG SHA-256：`a68319d9d8a16c9b3a333d3980b6bbc24e1c225512f01c9809b839ae24a72e1b`；只读挂载后应用启动、设置/更新入口辅助功能树及真实 PTY Canvas 均已复验 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`a399dd6a7da11b9580e133da12338992ce322da4a67acd9b622ac01696607f44`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 
@@ -93,7 +94,7 @@ GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 P
 
 | PLAN 设计 | 当前状态 | 后续要求 |
 | --- | --- | --- |
-| `russh` 与兼容 SFTP 层 | 计划偏差 | 当前实现使用 `ssh2/libssh2`；已通过协议与真机测试，但若必须严格遵循技术选型需单独迁移并重新完成全套协议回归 |
+| SSH/SFTP 协议核心 | 已决策并同步 PLAN | 当前实现使用 `ssh2/libssh2` 并将同步协议工作隔离到 Tokio blocking task；真实 OpenSSH、代理、隧道、SFTP、Transport Pool、弱网和长连接证据均基于该实现。`PLAN.md` 已从未落地的 `russh` 假设更新为实际验证架构，避免把无用户收益的库替换误列为发布缺口 |
 | 同一主机优先复用 SSH Transport | 通过 | `SessionManager` 内置按连接配置版本分组的 `TransportPool`；SFTP、监控、传输、归档和预览优先复用已认证闲置 Transport，繁忙时自动附加连接，协议错误或 keepalive 失败时丢弃，连接/代理/指纹变化时失效。终端和隧道使用不可复用独占租约，避免 libssh2 的 Session 互斥锁阻塞其他 Channel |
 | 所有长任务立即返回任务 ID | 通过 | 文件传输使用持久化传输队列；连接诊断、远端压缩/解压和默认应用预览使用统一 `TaskManager`，command 立即返回任务 ID，通过 `background-task` 事件报告结果，并支持快照查询和取消。短小 SFTP 元数据及 10 MB 内文本操作保留普通 command，不属于长任务 |
 | 共享类型生成或 JSON Schema | 通过 | Rust `models.rs` 为 IPC 字段、可空性和嵌套结构的单一来源；`scripts/generate-ipc-types.mjs` 离线生成 `src/generated/ipc.ts`，`lint` 与 production build 均拒绝过期结果；前端仅用联合类型收窄业务枚举。本次生成迁移发现并修复了 `ProxyProfile.type` 曾被序列化为 `proxyType` 的真实漂移 |

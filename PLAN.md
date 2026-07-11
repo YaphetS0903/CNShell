@@ -1,6 +1,6 @@
 # CNshell 产品与开发计划
 
-> 文档状态：v1.0（立项规划）
+> 文档状态：v1.0（实现基线；架构选型已按验证结果更新）
 > 目标平台：macOS 13 Ventura 及以上，Apple Silicon 优先，兼容 Intel Mac
 > 产品定位：面向开发者、运维人员和中小团队的原生 macOS SSH / SFTP / 服务器监控工具
 > 参考范围：复刻所提供 7 张 FinalShell 截图中可识别的功能与工作流，不照搬其品牌、素材和 Windows 外观
@@ -86,7 +86,7 @@ CNshell 要把远程连接、命令行操作、文件传输和服务器状态监
 
 - xterm.js 渲染 VT100/xterm-256color/True Color；支持 ANSI、鼠标报告、Bracketed Paste、OSC 8 链接和 IME。
 - 快捷键：`⌘T` 新标签、`⌘W` 关闭、`⌘F` 搜索、`⌘K` 清屏、`⌘⇧C/V` 终端复制/粘贴、`⌘1…9` 切换标签。
-- 关闭活跃进程或正在传输文件的会话时提示确认；普通空闲会话可直接关闭。
+- 关闭在线会话时可配置统一确认；由于通用 SSH PTY 无法可靠、可移植地识别任意远端 shell 的前台进程，当前采用保守确认而不虚报空闲判断。关闭应用且存在传输任务时始终单独确认。
 - SFTP 列表使用虚拟滚动；列为名称、大小、类型、修改时间、权限、用户/用户组。
 - 内置编辑器仅默认打开可识别文本且小于 10 MB 的文件；保存时先写临时文件再原子替换，冲突时比较远端修改时间。
 
@@ -106,11 +106,11 @@ CNshell 要把远程连接、命令行操作、文件传输和服务器状态监
 | --- | --- | --- |
 | 桌面壳 | Tauri 2 | macOS 窗口、菜单、通知、自动更新、签名与轻量分发 |
 | 前端 | React + TypeScript + Vite | 主界面、状态管理和模块化工作区 |
-| UI | Radix Primitives + Tailwind CSS + Lucide | 可访问组件、主题令牌和一致图标体系 |
+| UI | 语义化 React 组件 + CSS 语义令牌 + Lucide | 可访问组件、主题令牌和一致图标体系；避免为紧凑桌面界面引入未使用的 UI 运行时 |
 | 终端 | xterm.js + fit/search/web-links addons | 终端渲染、尺寸同步、搜索和链接 |
 | Rust 异步运行时 | Tokio | SSH、SFTP、传输和监控任务调度 |
-| SSH | `russh` | 会话、PTY、Exec Channel、端口转发和跳板机 |
-| SFTP | 与 `russh` 兼容的 SFTP 客户端层 | 目录、文件、权限及流式传输；封装接口以便替换实现 |
+| SSH | `ssh2` / vendored `libssh2` + OpenSSL | 会话、PTY、Exec Channel、端口转发、代理和跳板机；同步协议工作隔离在 Tokio blocking task 中 |
+| SFTP | `libssh2` SFTP 客户端层 | 目录、文件、权限及流式传输；通过 Session/Transport Pool 封装并支持后续替换 |
 | 本地数据 | SQLite（WAL）+ SQLx migrations | 连接、文件夹、偏好、历史、任务元数据 |
 | 凭据 | macOS Keychain | 密码、私钥口令、代理凭据；数据库只保存 Keychain 引用 |
 | 图表 | uPlot | 高频、低开销的实时监控折线图 |
@@ -194,7 +194,7 @@ CommandSnippet
 - 下载先写入 `.cnshell-part` 临时文件，校验大小后原子改名；上传可选择覆盖、跳过、重命名或全部应用同一策略。
 - 应用崩溃后只恢复窗口、连接标签和工作目录，不自动提交未完成命令；传输任务标记为“待恢复”并由用户确认。
 - 断线采用 1、2、5、10、30 秒退避重连，最多自动尝试 5 次；认证失败和主机密钥变化禁止自动重试。
-- 发布包执行 Apple Developer ID 签名、公证和 Sparkle/Tauri 签名更新；更新失败保留当前可运行版本。
+- 发布包执行 Apple Developer ID 签名、公证和 Tauri 签名更新；更新失败保留当前可运行版本。
 - RDP Helper 在引入前完成 GPL 许可、打包与签名审查；若不能合规随包分发，则改为检测用户安装的 Helper，不降低 SSH 主线交付质量。
 
 ## 6. 分阶段实施计划

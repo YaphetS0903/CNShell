@@ -161,6 +161,7 @@ pub fn run() {
             commands::sftp_save_text,
             commands::sftp_archive_start,
             commands::sftp_open_local_start,
+            commands::sftp_directory_transfer_start,
             commands::task_get,
             commands::task_cancel,
             commands::transfer_enqueue,

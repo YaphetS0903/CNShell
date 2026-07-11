@@ -113,3 +113,50 @@ test("provides keyboard-operable session and tool tabs",async({page})=>{
   await expect(table).toHaveAttribute("aria-colcount","6");
   await expect(table.getByRole("columnheader",{name:/名称/})).toHaveAttribute("aria-sort","ascending");
 });
+
+test("expands and navigates the remote directory tree",async({page})=>{
+  await page.goto("/");
+  await page.getByRole("button",{name:/演示服务器 developer@127\.0\.0\.1:22/}).click();
+  const tree=page.getByRole("navigation",{name:"远端目录树"});
+  await expect(tree.getByRole("button",{name:"home",exact:true})).toBeVisible();
+  await tree.getByRole("button",{name:"展开 home"}).click();
+  await expect(tree.getByRole("button",{name:"developer",exact:true})).toBeVisible();
+  await tree.getByRole("button",{name:"developer",exact:true}).click();
+  await expect(page.getByLabel("远程路径")).toHaveValue("/home/developer");
+  await expect(page.getByRole("table",{name:"远程目录 /home/developer"})).toContainText("README.txt");
+  await tree.getByRole("button",{name:"折叠 home"}).click();
+  await expect(tree.getByRole("button",{name:"developer",exact:true})).toBeHidden();
+});
+
+test("opens file actions from the row context menu",async({page})=>{
+  await page.goto("/");
+  await page.getByRole("button",{name:/演示服务器 developer@127\.0\.0\.1:22/}).click();
+  await page.getByRole("row",{name:/home/}).click({button:"right"});
+  const menu=page.getByRole("menu",{name:"home 文件操作"});
+  await expect(menu).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"复制路径"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"压缩为 tar.gz"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"重命名"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"修改权限"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"删除"})).toBeVisible();
+  await expect(menu.getByRole("menuitem",{name:"编辑文本"})).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+});
+
+test("keeps both terminal panes visible and exits split when selecting the secondary tab",async({page})=>{
+  await page.goto("/");
+  await page.getByRole("button",{name:/演示服务器 developer@127\.0\.0\.1:22/}).click();
+  await page.getByRole("button",{name:/预览终端 会话操作/}).click();
+  await page.getByRole("menuitem",{name:"左右拆分"}).click();
+  const tabs=page.getByRole("tablist",{name:"打开的会话"}).getByRole("tab");
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.nth(0)).toHaveAttribute("aria-selected","true");
+  await expect(page.locator(".terminal-area")).toHaveClass(/split/);
+  await expect(page.locator(".terminal-instance.active.pane-primary")).toHaveCount(1);
+  await expect(page.locator(".terminal-instance.active.pane-secondary")).toHaveCount(1);
+  await tabs.nth(1).click();
+  await expect(page.locator(".terminal-area")).not.toHaveClass(/split/);
+  await expect(tabs.nth(1)).toHaveAttribute("aria-selected","true");
+  await expect(page.locator(".terminal-instance.active.pane-primary")).toHaveCount(1);
+});

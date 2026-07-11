@@ -2008,6 +2008,140 @@ mod tests {
         recovery_running.store(false, AtomicOrdering::Relaxed);
     }
     #[tokio::test]
+    async fn live_ssh_directory_transfer_round_trip_and_cleanup() {
+        use std::sync::atomic::AtomicBool;
+        fn directory_archives() -> std::collections::HashSet<std::ffi::OsString> {
+            std::env::temp_dir()
+                .read_dir()
+                .unwrap()
+                .filter_map(|entry| {
+                    let name = entry.ok()?.file_name();
+                    let text = name.to_string_lossy();
+                    (text.starts_with("cnshell-directory-") && text.ends_with(".tar.gz"))
+                        .then_some(name)
+                })
+                .collect()
+        }
+        let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let key = std::env::var("CNSHELL_TEST_SSH_KEY").expect("CNSHELL_TEST_SSH_KEY");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("CNSHELL_TEST_SSH_USER");
+        let profile = ConnectionProfile {
+            id: "directory-transfer".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "directory transfer".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username,
+            auth_type: "privateKey".into(),
+            private_key_path: Some(key),
+            host_key_policy: "acceptNew".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            has_credential: false,
+            created_at: "".into(),
+            updated_at: "directory-transfer".into(),
+            last_connected_at: None,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let archives_before = directory_archives();
+        let source = directory.path().join("source-folder");
+        std::fs::create_dir_all(source.join("nested")).unwrap();
+        std::fs::write(source.join("root.txt"), b"root-content").unwrap();
+        std::fs::write(source.join("nested/中文.txt"), "目录往返".as_bytes()).unwrap();
+        let db = Database::open(&directory.path().join("directory-transfer.sqlite"))
+            .await
+            .unwrap();
+        let manager = SessionManager::default();
+        let transport = manager
+            .acquire_transport(&db, &profile, false)
+            .await
+            .unwrap();
+        let handle = open_pty(transport, profile.clone(), 80, 24, false).unwrap();
+        let session_id = "directory-transfer-session".to_string();
+        manager.insert(session_id.clone(), handle);
+        let remote = format!("/tmp/cnshell-directory-roundtrip-{}", Uuid::new_v4());
+
+        crate::sftp::transfer_directory(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            "upload".into(),
+            source.to_string_lossy().into_owned(),
+            remote.clone(),
+            "overwrite".into(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+        std::fs::write(source.join("replacement.txt"), b"replacement").unwrap();
+        crate::sftp::transfer_directory(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            "upload".into(),
+            source.to_string_lossy().into_owned(),
+            remote.clone(),
+            "overwrite".into(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+        let downloaded = directory.path().join("downloaded-folder");
+        std::fs::create_dir(&downloaded).unwrap();
+        std::fs::write(downloaded.join("old.txt"), b"old").unwrap();
+        crate::sftp::transfer_directory(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            "download".into(),
+            remote.clone(),
+            downloaded.to_string_lossy().into_owned(),
+            "overwrite".into(),
+            Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            std::fs::read(downloaded.join("root.txt")).unwrap(),
+            b"root-content"
+        );
+        assert_eq!(
+            std::fs::read_to_string(downloaded.join("nested/中文.txt")).unwrap(),
+            "目录往返"
+        );
+        assert_eq!(
+            std::fs::read(downloaded.join("replacement.txt")).unwrap(),
+            b"replacement"
+        );
+        assert!(!downloaded.join("old.txt").exists());
+
+        let leftovers = crate::sftp::list(
+            db.clone(),
+            manager.clone(),
+            session_id.clone(),
+            "/tmp".into(),
+            true,
+        )
+        .await
+        .unwrap();
+        assert!(
+            !leftovers
+                .iter()
+                .any(|item| item.name.starts_with(".cnshell-directory-"))
+        );
+        crate::sftp::delete(db, manager, session_id, remote, true)
+            .await
+            .unwrap();
+        assert_eq!(directory_archives(), archives_before);
+    }
+    #[tokio::test]
     async fn live_ssh_transport_pool_reuses_idle_and_expands_when_busy() {
         let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
             return;
