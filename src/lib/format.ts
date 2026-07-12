@@ -4,6 +4,11 @@ export function errorMessage(error: unknown): string {
   return "操作失败，请查看诊断信息";
 }
 
+export function isUserCancelledError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return message.includes("user canceled the operation") || message.includes("user cancelled the operation") || message.includes("用户取消");
+}
+
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB", "TB"];

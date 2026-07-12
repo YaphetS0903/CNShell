@@ -33,7 +33,7 @@
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
-| `npm run test` | 通过，19 个文件、41 个测试；覆盖远端目录树嵌套/活动路径展开、连接文件夹、完整布局恢复和 CPU/网络/延迟对齐的 5 分钟历史窗口 |
+| `npm run test` | 通过，20 个文件、44 个测试；覆盖远端目录树、连接文件夹、布局恢复、5 分钟监控历史、磁盘容量明细、系统授权取消识别及通知 5 秒自动关闭 |
 | `npm run build` | 通过，TypeScript 与 Vite production build |
 | `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，78 个测试；覆盖嵌套文件夹数据库约束、应用路径验证、真实 OpenSSH 文件夹/排他新建文件，以及原有 RDP、Bookmark、Transport Pool、弱网、keepalive、迁移、IPC 和安全路径 |
 | `npm run test:e2e` | 通过，14 个 Playwright 场景；覆盖远端目录树、完整文件右键入口、嵌套连接文件夹/移动入口、布局恢复和左右拆分状态 |
@@ -42,7 +42,7 @@
 | `npm audit --audit-level=moderate` | 通过，0 vulnerabilities |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`dd1231d9f0a84d3cd57bc966e054d051e794120f4b619ec9ba574635676c04bf`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`6a3a99ff9614e4a1b6c750da5774c122bea95e1ab0ee50c2fd77273863e69461`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 

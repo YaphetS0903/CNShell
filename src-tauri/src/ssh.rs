@@ -19,7 +19,7 @@ use std::{
     net::{TcpListener, TcpStream, ToSocketAddrs},
     path::Path,
     sync::{
-        Arc,
+        Arc, OnceLock,
         atomic::{AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -35,6 +35,11 @@ const KEEPALIVE_INTERVAL_SECONDS: u32 = 30;
 const TCP_KEEPALIVE_IDLE: Duration = Duration::from_secs(45);
 const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const TCP_KEEPALIVE_RETRIES: u32 = 3;
+static KEYCHAIN_ACCESS: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn keychain_access() -> parking_lot::MutexGuard<'static, ()> {
+    KEYCHAIN_ACCESS.get_or_init(|| Mutex::new(())).lock()
+}
 
 async fn blocking_with_timeout<T, F>(
     operation: &'static str,
@@ -229,6 +234,7 @@ pub fn credential_ref(connection_id: &str) -> String {
 }
 
 pub fn save_credential(connection_id: &str, secret: &str) -> AppResult<String> {
+    let _access = keychain_access();
     let reference = credential_ref(connection_id);
     keyring::Entry::new(KEYCHAIN_SERVICE, &reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
@@ -238,6 +244,7 @@ pub fn save_credential(connection_id: &str, secret: &str) -> AppResult<String> {
 }
 
 pub fn delete_credential(connection_id: &str) -> AppResult<()> {
+    let _access = keychain_access();
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
         .map_err(|error| AppError::Storage(error.to_string()))?;
     match entry.delete_credential() {
@@ -250,6 +257,7 @@ pub fn delete_credential(connection_id: &str) -> AppResult<()> {
 }
 
 pub fn load_credential(connection_id: &str) -> AppResult<Option<String>> {
+    let _access = keychain_access();
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
         .map_err(|error| AppError::Storage(error.to_string()))?;
     match entry.get_password() {
