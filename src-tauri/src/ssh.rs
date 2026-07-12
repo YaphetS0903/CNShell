@@ -62,10 +62,16 @@ pub struct ConnectedSsh {
 }
 
 const MAX_IDLE_TRANSPORTS_PER_PROFILE: usize = 2;
+const MAX_IDLE_TRANSPORT_AGE: Duration = Duration::from_secs(20);
+
+struct IdleTransport {
+    connected: ConnectedSsh,
+    idle_since: Instant,
+}
 
 #[derive(Clone, Default)]
 pub struct TransportPool {
-    idle: Arc<Mutex<HashMap<String, Vec<ConnectedSsh>>>>,
+    idle: Arc<Mutex<HashMap<String, Vec<IdleTransport>>>>,
     created: Arc<AtomicUsize>,
 }
 
@@ -84,14 +90,18 @@ impl TransportPool {
         reusable: bool,
     ) -> AppResult<TransportLease> {
         let key = transport_pool_key(profile);
-        let connected = self
-            .idle
-            .lock()
-            .get_mut(&key)
-            .and_then(Vec::pop)
-            .filter(|connected| {
-                connected.session.authenticated() && connected.session.keepalive_send().is_ok()
-            });
+        let connected = if reusable {
+            let mut idle = self.idle.lock();
+            idle.get_mut(&key)
+                .and_then(|transports| {
+                    transports.retain(|transport| transport.idle_since.elapsed() <= MAX_IDLE_TRANSPORT_AGE);
+                    transports.pop()
+                })
+                .map(|idle| idle.connected)
+                .filter(|connected| connected.session.authenticated() && connected.session.keepalive_send().is_ok())
+        } else {
+            None
+        };
         let connected = match connected {
             Some(connected) => connected,
             None => {
@@ -144,7 +154,10 @@ impl Drop for TransportLease {
         let mut idle = self.pool.idle.lock();
         let transports = idle.entry(self.key.clone()).or_default();
         if transports.len() < MAX_IDLE_TRANSPORTS_PER_PROFILE {
-            transports.push(connected);
+            transports.push(IdleTransport {
+                connected,
+                idle_since: Instant::now(),
+            });
         }
     }
 }
@@ -2366,8 +2379,27 @@ mod tests {
         drop(first);
         drop(second);
         pool.invalidate(&profile.id);
-        let _third = pool.acquire(&db, &profile, true).await.unwrap();
+        let third = pool.acquire(&db, &profile, true).await.unwrap();
         assert_eq!(pool.created(), 3);
+        drop(third);
+        let key = transport_pool_key(&profile);
+        pool.idle.lock().get_mut(&key).unwrap()[0].idle_since =
+            Instant::now() - MAX_IDLE_TRANSPORT_AGE - Duration::from_secs(1);
+        let fourth = pool.acquire(&db, &profile, true).await.unwrap();
+        assert_eq!(pool.created(), 4);
+        drop(fourth);
+        let exclusive = pool.acquire(&db, &profile, false).await.unwrap();
+        assert_eq!(pool.created(), 5);
+        let mut first_terminal = open_pty(exclusive, profile.clone(), 80, 24, false).unwrap();
+        let _ = first_terminal.channel.send_eof();
+        let _ = first_terminal.channel.close();
+        drop(first_terminal);
+        let next_exclusive = pool.acquire(&db, &profile, false).await.unwrap();
+        assert_eq!(pool.created(), 6);
+        let mut next_terminal = open_pty(next_exclusive, profile.clone(), 80, 24, false).unwrap();
+        write_channel_input(&mut next_terminal.channel, b"exit\n").unwrap();
+        let _ = next_terminal.channel.send_eof();
+        let _ = next_terminal.channel.close();
     }
 
     #[tokio::test]

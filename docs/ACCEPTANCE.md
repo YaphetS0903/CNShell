@@ -42,7 +42,7 @@
 | `npm audit --audit-level=moderate` | 通过，0 vulnerabilities |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`4cb30a274c1d7b090a582286f84dee31bd35f3d030851be513cba3d736c660b4`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`dd1231d9f0a84d3cd57bc966e054d051e794120f4b619ec9ba574635676c04bf`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 
@@ -95,7 +95,7 @@ GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 P
 | PLAN 设计 | 当前状态 | 后续要求 |
 | --- | --- | --- |
 | SSH/SFTP 协议核心 | 已决策并同步 PLAN | 当前实现使用 `ssh2/libssh2` 并将同步协议工作隔离到 Tokio blocking task；真实 OpenSSH、代理、隧道、SFTP、Transport Pool、弱网和长连接证据均基于该实现。`PLAN.md` 已从未落地的 `russh` 假设更新为实际验证架构，避免把无用户收益的库替换误列为发布缺口 |
-| 同一主机优先复用 SSH Transport | 通过 | `SessionManager` 内置按连接配置版本分组的 `TransportPool`；SFTP、监控、传输、归档和预览优先复用已认证闲置 Transport，繁忙时自动附加连接，协议错误或 keepalive 失败时丢弃，连接/代理/指纹变化时失效。终端和隧道使用不可复用独占租约，避免 libssh2 的 Session 互斥锁阻塞其他 Channel |
+| 同一主机优先复用 SSH Transport | 通过 | `SessionManager` 内置按连接配置版本分组的 `TransportPool`；SFTP、监控、传输、归档和预览仅短时复用已认证 Transport，超过 20 秒闲置即淘汰，繁忙时自动附加连接，协议错误或 keepalive 失败时丢弃。终端和隧道始终建立不可复用的独占 Transport，真实 OpenSSH 回归覆盖“打开 PTY → 关闭 → 再打开 PTY”，避免服务器回收闲置连接后出现 `Session(-43)` |
 | 所有长任务立即返回任务 ID | 通过 | 文件传输使用持久化传输队列；连接诊断、远端压缩/解压和默认应用预览使用统一 `TaskManager`，command 立即返回任务 ID，通过 `background-task` 事件报告结果，并支持快照查询和取消。短小 SFTP 元数据及 10 MB 内文本操作保留普通 command，不属于长任务 |
 | 共享类型生成或 JSON Schema | 通过 | Rust `models.rs` 为 IPC 字段、可空性和嵌套结构的单一来源；`scripts/generate-ipc-types.mjs` 离线生成 `src/generated/ipc.ts`，`lint` 与 production build 均拒绝过期结果；前端仅用联合类型收窄业务枚举。本次生成迁移发现并修复了 `ProxyProfile.type` 曾被序列化为 `proxyType` 的真实漂移 |
 | 私钥安全作用域 Bookmark | 通过 | macOS 使用 NSURL 创建只读 security-scoped Bookmark，Base64 存入连接专属 Keychain 条目；认证时解析真实路径并以 RAII 启停访问，复制/永久删除/保存失败均同步处理，旧记录无 Bookmark 时兼容路径回退。真实 OpenSSH 测试将 profile 路径故意设为不存在文件后仍通过 Bookmark 完成认证。当前候选包尚未启用 App Sandbox，这是独立发布权限决策，不再是 Bookmark 实现缺口 |
