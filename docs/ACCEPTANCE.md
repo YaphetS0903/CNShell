@@ -30,19 +30,35 @@
 
 ## 2. 自动化证据
 
+### 2.1 竞品路线图增量验收
+
+| 能力 | 状态 | 证据 |
+| --- | --- | --- |
+| 智能命令、会话日志、高亮通知、批量执行 | 通过 | `smart-command.test.ts`、`SmartCommandEntry.test.tsx`、`SessionLogDialog.test.tsx`、`terminal-triggers.test.ts`、`BatchExecutionDialog.test.tsx`；Rust 覆盖 1 MB 日志、后端危险批量命令拒绝和任务隔离 |
+| CodeMirror 编辑、进程/网络诊断、嵌套拆分 | 通过 | `TextEditor.test.tsx`、`ProcessManager.test.tsx`、`NetworkDiagnostics.test.tsx`、`terminal-layout.test.ts`；UTF-8/mtime/原子保存、PID 身份校验及可取消诊断由 Rust 覆盖 |
+| OpenSSH 与终端安全 | 通过 | `OpenSshTools.test.tsx`、`terminal-safety.test.ts`；Rust 覆盖 `Include` 的 `*`/`?`、循环/越界、公钥权限部署；逐窗格时间戳 gutter、Copy Mode、跨标签搜索、最低对比度和增强光标通过 Lint/构建与单元测试 |
+| SCP 安全降级 | 通过（代码/编译） | SFTP 子系统失败后使用 `ssh2::Session::scp_send/scp_recv`，复用现有认证、代理和主机指纹；临时文件、取消和大小校验保留。未破坏用户服务器以人为制造 SFTP 故障，因此未声明真机故障注入通过 |
+| Agent 转发 | 通过（本机能力） | `ProtocolSettings.test.tsx` 验证逐连接选择和风险确认；Rust 连接及重连路径调用 `request_auth_agent_forwarding`。是否获远端 sshd 允许取决于目标主机配置 |
+| 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览；Rust 验证固定 Schema、步骤/超时/正则边界，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
+| 加密同步 | 通过 | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步且口令不保存 |
+| Zmodem/Mosh/X11 | 条件未满足 | 设置页报告本机 `rz/sz`、Mosh 和 XQuartz 状态并显示安全边界；当前本机依赖缺失，X11 亦缺少引擎支持，因此保持关闭，不计作协议互操作通过 |
+| AI、插件、团队协作 | 路线图延期 | 未增加任何数据上传或任意权限入口，符合 P3 必须等待签名、隐私和权限模型稳定的前置要求 |
+
+本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
+
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
-| `npm run test` | 通过，20 个文件、44 个测试；覆盖远端目录树、连接文件夹、布局恢复、5 分钟监控历史、磁盘容量明细、系统授权取消识别及通知 5 秒自动关闭 |
+| `npm run test` | 通过，34 个文件、79 个测试；覆盖竞品路线图新增智能命令、日志、高亮性能、批量执行、编辑器、诊断、OpenSSH、协议设置、自动化 UI，以及原有目录树、连接文件夹、布局恢复、监控和通知 |
 | `npm run build` | 通过，TypeScript 与 Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml` | 通过，78 个测试；覆盖嵌套文件夹数据库约束、应用路径验证、真实 OpenSSH 文件夹/排他新建文件，以及原有 RDP、Bookmark、Transport Pool、弱网、keepalive、迁移、IPC 和安全路径 |
+| `cargo test --manifest-path src-tauri/Cargo.toml -- --skip live_ssh_soak` | 通过，90 个测试、1 个 soak 明确跳过；覆盖自动化 Schema、加密同步密文/冲突、OpenSSH 通配、协议能力、日志完整性，以及原有数据库、RDP、Bookmark、Transport Pool、迁移、IPC 和安全路径；所有 live 环境变量均已清除 |
 | `npm run test:e2e` | 通过，14 个 Playwright 场景；覆盖远端目录树、完整文件右键入口、嵌套连接文件夹/移动入口、布局恢复和左右拆分状态 |
 | `npm run test:pty-fixture` | 通过；本机 Paramiko 密码认证夹具提供真实 PTY Shell，验证中文/Emoji 双向 UTF-8、ANSI 清屏/光标控制和 True Color 输出 |
 | `CNSHELL_PROTOCOL_FILTER=live_ssh_directory_transfer_round_trip_and_cleanup npm run test:protocol` | 通过；本轮真实 OpenSSH 小目录覆盖嵌套中文文件、上传/下载、覆盖交换及本地/远端临时清理。此前 10 万文件、1 GB、代理、隧道等全量协议证据继续保留，本轮未重复消耗资源 |
-| `npm audit --audit-level=moderate` | 通过，0 vulnerabilities |
+| `npm audit --audit-level=moderate` | 本轮两次请求均在连接 npm registry 前发生 TLS 中断，未取得审计结论；不把网络失败记作 0 漏洞。提交前其余本地门禁不受影响，待 registry 恢复后重跑 |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`6a3a99ff9614e4a1b6c750da5774c122bea95e1ab0ee50c2fd77273863e69461`；应用已覆盖安装并启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`21bee36998f6d03b7d69af8ab3ef915b78b8a087ce9783ccc65bcecc1b5ae14a`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 

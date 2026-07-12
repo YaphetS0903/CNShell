@@ -1,17 +1,35 @@
 import type {
   BackgroundTask as GeneratedBackgroundTask,
+  BatchExecution,
+  BatchTargetResult,
   AppSettings as GeneratedAppSettings,
   CommandSnippet as GeneratedCommandSnippet,
   ConnectionDiagnostic as GeneratedConnectionDiagnostic,
   ConnectionProfile as GeneratedConnectionProfile,
   DiskInfo,
+  ExternalEditSession,
+  ExternalEditSnapshot,
   Folder,
+  GeneratedSshKey,
   MonitorSnapshot,
   NetworkInfo,
+  NetworkDiagnosticResult,
+  NetworkSocket,
+  NetworkSocketReport,
+  OpenSshHost,
   PortForward as GeneratedPortForward,
   ProcessInfo,
+  ProtocolCapability,
+  ConnectionProtocolOptions,
+  AutomationPlan,
+  AutomationStep,
+  AutomationRun,
+  AutomationStepResult,
+  SyncOptions,
+  SyncResult,
   ProxyProfile as GeneratedProxyProfile,
   RdpPreflight,
+  SessionLogStatus,
   RemoteFile as GeneratedRemoteFile,
   SaveConnectionInput as GeneratedSaveConnectionInput,
   SaveProxyInput as GeneratedSaveProxyInput,
@@ -80,7 +98,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme"> & {
   theme: "system" | "dark" | "light" | "highContrast";
 };
 
-export type { DiskInfo, Folder, MonitorSnapshot, NetworkInfo, ProcessInfo, RdpPreflight, SystemInfo, TerminalOutput };
+export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpPreflight, SessionLogStatus, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

@@ -28,7 +28,7 @@ const SNAPSHOT_COMMAND: &str = r#"LC_ALL=C; \
 echo __HOST__; hostname 2>/dev/null; hostname -I 2>/dev/null | awk '{print $1}'; cat /proc/uptime 2>/dev/null; cat /proc/loadavg 2>/dev/null; \
 echo __CPU__; head -n1 /proc/stat 2>/dev/null; \
 echo __MEM__; cat /proc/meminfo 2>/dev/null; \
-echo __PROC__; ps -eo pid=,user=,pcpu=,pmem=,comm= --sort=-pcpu 2>/dev/null | head -n 500; \
+echo __PROC__; LC_ALL=C ps -eo pid=,lstart=,user=,pcpu=,pmem=,args= --sort=-pcpu 2>/dev/null | head -n 500; \
 echo __NET__; cat /proc/net/dev 2>/dev/null; \
 echo __DISK__; df -Pk 2>/dev/null; \
 echo __END__"#;
@@ -235,15 +235,16 @@ pub async fn snapshot(
         .lines()
         .filter_map(|line| {
             let c = line.split_whitespace().collect::<Vec<_>>();
-            if c.len() < 5 {
+            if c.len() < 10 {
                 return None;
             }
             Some(ProcessInfo {
                 pid: c[0].parse().ok()?,
-                user: c[1].into(),
-                cpu_percent: c[2].parse().ok()?,
-                memory_percent: c[3].parse().ok()?,
-                command: c[4..].join(" "),
+                started_at: c[1..6].join(" "),
+                user: c[6].into(),
+                cpu_percent: c[7].parse().ok()?,
+                memory_percent: c[8].parse().ok()?,
+                command: c[9..].join(" "),
             })
         })
         .collect();
@@ -307,6 +308,181 @@ pub async fn snapshot(
         networks,
         warnings,
     })
+}
+
+pub async fn signal_process(
+    db: &Database,
+    manager: &SessionManager,
+    session_id: &str,
+    pid: u32,
+    started_at: &str,
+    expected_command: &str,
+    signal: &str,
+) -> AppResult<()> {
+    if pid < 2 {
+        return Err(AppError::Validation("禁止向 PID 0 或 1 发送信号".into()));
+    }
+    if !matches!(signal, "TERM" | "HUP" | "KILL") {
+        return Err(AppError::Validation(
+            "进程信号仅支持 TERM、HUP 或 KILL".into(),
+        ));
+    }
+    if started_at.len() > 64 || expected_command.is_empty() || expected_command.len() > 64 * 1024 {
+        return Err(AppError::Validation("进程身份参数无效".into()));
+    }
+    let command = format!(
+        "current=$(LC_ALL=C ps -p {pid} -o lstart= -o args= 2>/dev/null); [ -n \"$current\" ] || exit 74; start=$(printf '%s\\n' \"$current\" | awk '{{print $1\" \"$2\" \"$3\" \"$4\" \"$5}}'); args=$(printf '%s\\n' \"$current\" | awk '{{for(i=6;i<=NF;i++) printf \"%s%s\",$i,(i<NF?\" \":\"\")}}'); [ \"$start\" = {} ] && [ \"$args\" = {} ] || exit 75; kill -{signal} -- {pid}",
+        shell_quote(started_at),
+        shell_quote(expected_command)
+    );
+    let profile = manager.profile(session_id)?;
+    let result = crate::ssh::execute_profile_command(
+        db,
+        &profile,
+        &command,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        std::time::Duration::from_secs(30),
+    )
+    .await?;
+    match result.exit_code {
+        0 => Ok(()),
+        74 => Err(AppError::Remote("进程已退出，未发送信号".into())),
+        75 => Err(AppError::Remote(
+            "PID 对应的进程身份已变化，已拒绝操作".into(),
+        )),
+        _ => Err(AppError::Remote(format!(
+            "发送信号失败：{}",
+            if result.stderr.is_empty() {
+                result.stdout
+            } else {
+                result.stderr
+            }
+        ))),
+    }
+}
+
+pub async fn network_sockets(
+    db: &Database,
+    manager: &SessionManager,
+    session_id: &str,
+) -> AppResult<NetworkSocketReport> {
+    let profile = manager.profile(session_id)?;
+    let command = "if command -v ss >/dev/null 2>&1; then ss -H -tunlp 2>&1; elif command -v netstat >/dev/null 2>&1; then netstat -tunlp 2>&1 | tail -n +3; else printf __CNSHELL_MISSING__; fi";
+    let result = crate::ssh::execute_profile_command(
+        db,
+        &profile,
+        command,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        std::time::Duration::from_secs(30),
+    )
+    .await?;
+    if result.stdout.contains("__CNSHELL_MISSING__") {
+        return Ok(NetworkSocketReport {
+            items: vec![],
+            warning: Some("远端缺少 ss 和 netstat，端口与连接列表不可用".into()),
+        });
+    }
+    let items = result
+        .stdout
+        .lines()
+        .filter_map(parse_socket_line)
+        .take(5000)
+        .collect();
+    Ok(NetworkSocketReport {
+        items,
+        warning: (!result.stderr.trim().is_empty()).then(|| result.stderr.trim().to_string()),
+    })
+}
+
+pub async fn network_diagnostic(
+    profile: ConnectionProfile,
+    db: Database,
+    kind: String,
+    target: String,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> AppResult<NetworkDiagnosticResult> {
+    validate_target(&target)?;
+    let command = match kind.as_str() {
+        "ping" => format!(
+            "if command -v ping >/dev/null 2>&1; then ping -c 5 -W 3 -- {}; else printf __CNSHELL_MISSING__; exit 127; fi",
+            shell_quote(&target)
+        ),
+        "traceroute" => format!(
+            "if command -v traceroute >/dev/null 2>&1; then traceroute -m 20 -w 2 -- {}; else printf __CNSHELL_MISSING__; exit 127; fi",
+            shell_quote(&target)
+        ),
+        _ => return Err(AppError::Validation("网络诊断类型无效".into())),
+    };
+    let started = Instant::now();
+    let result = crate::ssh::execute_profile_command(
+        &db,
+        &profile,
+        &command,
+        cancelled,
+        std::time::Duration::from_secs(45),
+    )
+    .await?;
+    let output = format!("{}{}", result.stdout, result.stderr);
+    if result.exit_code != 0 {
+        return Err(if output.contains("__CNSHELL_MISSING__") {
+            AppError::Unavailable(format!("远端缺少 {kind} 工具"))
+        } else {
+            AppError::Remote(format!("{kind} 执行失败：{output}"))
+        });
+    }
+    Ok(NetworkDiagnosticResult {
+        kind,
+        target,
+        output,
+        duration_ms: started.elapsed().as_millis().min(u64::MAX as u128) as u64,
+    })
+}
+
+fn parse_socket_line(line: &str) -> Option<NetworkSocket> {
+    let columns = line.split_whitespace().collect::<Vec<_>>();
+    if columns.len() < 5 {
+        return None;
+    }
+    let modern = matches!(
+        columns[0].to_ascii_lowercase().as_str(),
+        "tcp" | "udp" | "tcp6" | "udp6"
+    ) && columns
+        .get(1)
+        .is_some_and(|value| !["0", "1"].contains(value));
+    if modern {
+        Some(NetworkSocket {
+            protocol: columns[0].into(),
+            state: columns[1].into(),
+            local_address: columns.get(4)?.to_string(),
+            peer_address: columns.get(5).unwrap_or(&"").to_string(),
+            process: columns.get(6..).unwrap_or(&[]).join(" "),
+        })
+    } else {
+        Some(NetworkSocket {
+            protocol: columns[0].into(),
+            state: columns.get(5).unwrap_or(&"").to_string(),
+            local_address: columns.get(3)?.to_string(),
+            peer_address: columns.get(4).unwrap_or(&"").to_string(),
+            process: columns.get(6..).unwrap_or(&[]).join(" "),
+        })
+    }
+}
+fn validate_target(target: &str) -> AppResult<()> {
+    if target.is_empty()
+        || target.len() > 253
+        || target.starts_with('-')
+        || !target.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '-' | ':' | '_')
+        })
+    {
+        return Err(AppError::Validation(
+            "诊断目标必须是有效主机名或 IP 地址".into(),
+        ));
+    }
+    Ok(())
+}
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 pub async fn system_info(
@@ -387,6 +563,30 @@ mod tests {
             "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 1000 400 600 40% /",
         );
         assert_eq!(disks[0].used_percent, 40.0);
+    }
+    #[test]
+    fn parses_ss_and_netstat_without_mixing_columns() {
+        let ss = parse_socket_line(
+            "tcp LISTEN 0 4096 0.0.0.0:22 0.0.0.0:* users:((\"sshd\",pid=12,fd=3))",
+        )
+        .unwrap();
+        assert_eq!(ss.state, "LISTEN");
+        assert_eq!(ss.local_address, "0.0.0.0:22");
+        assert!(ss.process.contains("sshd"));
+        let netstat = parse_socket_line("tcp 0 0 127.0.0.1:25 0.0.0.0:* LISTEN 99/master").unwrap();
+        assert_eq!(netstat.state, "LISTEN");
+        assert_eq!(netstat.process, "99/master");
+    }
+    #[test]
+    fn diagnostic_targets_reject_shell_syntax() {
+        assert!(validate_target("example.com").is_ok());
+        assert!(validate_target("2001:db8::1").is_ok());
+        for value in ["-Ievil", "example.com;id", "$(id)", "host name"] {
+            assert!(
+                validate_target(value).is_err(),
+                "accepted unsafe target {value}"
+            );
+        }
     }
     #[test]
     fn reports_each_missing_monitor_capability() {

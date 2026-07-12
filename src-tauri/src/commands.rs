@@ -293,6 +293,112 @@ pub async fn connection_trust_host(
 }
 
 #[tauri::command]
+pub async fn openssh_import(path: String) -> AppResult<Vec<OpenSshHost>> {
+    crate::openssh::import_config(std::path::Path::new(&path))
+}
+
+#[tauri::command]
+pub async fn openssh_generate_key(path: String, comment: String) -> AppResult<GeneratedSshKey> {
+    crate::openssh::generate_key(std::path::Path::new(&path), &comment)
+}
+
+#[tauri::command]
+pub async fn openssh_deploy_key(
+    state: State<'_, AppState>,
+    connection_id: String,
+    public_key: String,
+) -> AppResult<()> {
+    let profile = state.db.get_connection(&connection_id).await?;
+    if profile.protocol != "ssh" {
+        return Err(AppError::Validation("只能向 SSH 连接部署公钥".into()));
+    }
+    crate::openssh::deploy_public_key(&state.db, &profile, &public_key).await
+}
+
+#[tauri::command]
+pub fn protocol_capabilities() -> Vec<ProtocolCapability> {
+    crate::protocols::capabilities()
+}
+
+#[tauri::command]
+pub async fn protocol_options_get(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<ConnectionProtocolOptions> {
+    state.db.get_connection(&connection_id).await?;
+    Ok(state
+        .db
+        .load_named_state(&format!("cnshell.protocol.{connection_id}"))
+        .await?
+        .unwrap_or(ConnectionProtocolOptions {
+            connection_id,
+            agent_forwarding: false,
+        }))
+}
+
+#[tauri::command]
+pub async fn protocol_options_save(
+    state: State<'_, AppState>,
+    options: ConnectionProtocolOptions,
+) -> AppResult<ConnectionProtocolOptions> {
+    let profile = state.db.get_connection(&options.connection_id).await?;
+    if profile.protocol != "ssh" {
+        return Err(AppError::Validation("协议选项仅支持 SSH 连接".into()));
+    }
+    crate::protocols::validate_options(options.agent_forwarding)?;
+    state
+        .db
+        .save_named_state(
+            &format!("cnshell.protocol.{}", options.connection_id),
+            &serde_json::to_value(&options)
+                .map_err(|error| AppError::Internal(error.to_string()))?,
+        )
+        .await?;
+    Ok(options)
+}
+
+#[tauri::command]
+pub fn automation_validate(plan: AutomationPlan) -> AppResult<AutomationPlan> {
+    crate::automation::validate(&plan)?;
+    Ok(plan)
+}
+
+#[tauri::command]
+pub async fn automation_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    plan: AutomationPlan,
+) -> AppResult<BackgroundTask> {
+    crate::automation::validate(&plan)?;
+    let db = state.db.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "automation", move |cancelled| async move {
+            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
+                .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
+pub async fn sync_write(
+    state: State<'_, AppState>,
+    folder: String,
+    passphrase: String,
+    options: SyncOptions,
+) -> AppResult<SyncResult> {
+    crate::backup::sync_write(&state.db, &folder, &passphrase, &options).await
+}
+
+#[tauri::command]
+pub async fn sync_read(
+    state: State<'_, AppState>,
+    folder: String,
+    passphrase: String,
+) -> AppResult<SyncResult> {
+    crate::backup::sync_read(&state.db, &folder, &passphrase).await
+}
+
+#[tauri::command]
 pub async fn terminal_open(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -304,6 +410,14 @@ pub async fn terminal_open(
     if profile.protocol != "ssh" {
         return Err(AppError::Validation("RDP 连接请使用远程桌面入口".into()));
     }
+    let options = state
+        .db
+        .load_named_state::<ConnectionProtocolOptions>(&format!("cnshell.protocol.{connection_id}"))
+        .await?
+        .unwrap_or(ConnectionProtocolOptions {
+            connection_id: connection_id.clone(),
+            agent_forwarding: false,
+        });
     let session = crate::ssh::open_terminal(
         app,
         state.db.clone(),
@@ -311,6 +425,8 @@ pub async fn terminal_open(
         profile,
         cols,
         rows,
+        state.logs.clone(),
+        options.agent_forwarding,
     )
     .await?;
     let _ = state.db.mark_connected(&connection_id).await;
@@ -339,8 +455,127 @@ pub async fn terminal_resize(
 #[tauri::command]
 pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
     let result = crate::ssh::terminal_close(state.sessions.clone(), session_id.clone()).await;
+    let _ = state.logs.stop(&session_id);
     state.monitor.remove(&session_id);
     result
+}
+
+#[tauri::command]
+pub async fn terminal_log_start(
+    state: State<'_, AppState>,
+    session_id: String,
+    format: String,
+    line_timestamps: bool,
+    retention_days: u64,
+    max_total_bytes: u64,
+) -> AppResult<SessionLogStatus> {
+    let profile = state.sessions.profile(&session_id)?;
+    state.logs.start(
+        &session_id,
+        &profile.name,
+        &format,
+        line_timestamps,
+        retention_days,
+        max_total_bytes,
+    )
+}
+
+#[tauri::command]
+pub async fn terminal_log_stop(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> AppResult<SessionLogStatus> {
+    state.logs.stop(&session_id)
+}
+
+#[tauri::command]
+pub async fn terminal_log_status(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> AppResult<SessionLogStatus> {
+    Ok(state.logs.status(&session_id))
+}
+
+#[tauri::command]
+pub async fn terminal_log_export(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+) -> AppResult<()> {
+    state.logs.export(&session_id, std::path::Path::new(&path))
+}
+
+#[tauri::command]
+pub async fn batch_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    connection_ids: Vec<String>,
+    command: String,
+    concurrency: usize,
+) -> AppResult<BatchExecution> {
+    let mut unique = std::collections::HashSet::new();
+    let mut profiles = Vec::new();
+    for id in connection_ids {
+        if unique.insert(id.clone()) {
+            let profile = state.db.get_connection(&id).await?;
+            if profile.protocol != "ssh" {
+                return Err(AppError::Validation(format!(
+                    "{} 不是 SSH 连接",
+                    profile.name
+                )));
+            }
+            profiles.push(profile);
+        }
+    }
+    state
+        .batches
+        .start(app, state.db.clone(), profiles, command, concurrency)
+}
+
+#[tauri::command]
+pub async fn batch_get(state: State<'_, AppState>, id: String) -> AppResult<BatchExecution> {
+    state.batches.get(&id)
+}
+
+#[tauri::command]
+pub async fn batch_cancel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<BatchExecution> {
+    state.batches.cancel(&app, &id)
+}
+
+#[tauri::command]
+pub async fn external_edit_start(
+    state: State<'_, AppState>,
+    session_id: String,
+    path: String,
+    application: Option<String>,
+) -> AppResult<ExternalEditSession> {
+    state
+        .external_edits
+        .start(
+            state.db.clone(),
+            state.sessions.clone(),
+            session_id,
+            path,
+            application,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn external_edit_read(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<ExternalEditSnapshot> {
+    state.external_edits.read(&id)
+}
+
+#[tauri::command]
+pub async fn external_edit_discard(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.external_edits.discard(&id)
 }
 
 #[tauri::command]
@@ -794,6 +1029,55 @@ pub async fn monitor_snapshot(
         session_id,
     )
     .await
+}
+
+#[tauri::command]
+pub async fn monitor_process_signal(
+    state: State<'_, AppState>,
+    session_id: String,
+    pid: u32,
+    started_at: String,
+    expected_command: String,
+    signal: String,
+) -> AppResult<()> {
+    crate::monitor::signal_process(
+        &state.db,
+        &state.sessions,
+        &session_id,
+        pid,
+        &started_at,
+        &expected_command,
+        &signal,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn monitor_network_sockets(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> AppResult<NetworkSocketReport> {
+    crate::monitor::network_sockets(&state.db, &state.sessions, &session_id).await
+}
+
+#[tauri::command]
+pub async fn monitor_network_diagnostic_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    kind: String,
+    target: String,
+) -> AppResult<BackgroundTask> {
+    let profile = state.sessions.profile(&session_id)?;
+    let db = state.db.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "networkDiagnostic", move |cancelled| async move {
+            serde_json::to_value(
+                crate::monitor::network_diagnostic(profile, db, kind, target, cancelled).await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
+        }))
 }
 
 #[tauri::command]

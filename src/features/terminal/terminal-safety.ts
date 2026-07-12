@@ -1,0 +1,4 @@
+export type GlobalSearchMatch={sessionId:string;line:number;preview:string};
+export type TerminalLineTimestamp={line:number;timestamp:number};
+export function pasteRisk(text:string):{multiline:boolean;highRisk:boolean;lines:number}{const lines=text.split(/\r?\n/).length;const highRisk=/(^|[;&|]\s*)(sudo\s+)?(rm\s+[^\n]*(?:-[^\n]*r[^\n]*f|-[^\n]*f[^\n]*r)|mkfs(?:\.|\s)|dd\s+[^\n]*of=\/dev\/|shutdown(?:\s|$)|reboot(?:\s|$)|poweroff(?:\s|$))/im.test(text);return{multiline:lines>1,highRisk,lines};}
+export function searchBuffer(lines:string[],query:string,sessionId:string,limit=200):GlobalSearchMatch[]{const needle=query.toLocaleLowerCase("zh-CN");if(!needle)return[];const matches:GlobalSearchMatch[]=[];for(let line=0;line<lines.length&&matches.length<limit;line+=1){if(lines[line].toLocaleLowerCase("zh-CN").includes(needle))matches.push({sessionId,line,preview:lines[line].trim().slice(0,300)});}return matches;}

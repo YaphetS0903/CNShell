@@ -1,12 +1,13 @@
 use crate::{
     db::Database,
     error::{AppError, AppResult},
-    models::{ConnectionProfile, SaveConnectionInput},
+    models::{ConnectionProfile, SaveConnectionInput, SyncOptions, SyncResult},
     ssh::{delete_credential, load_credential, save_credential},
 };
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 use argon2::Argon2;
 use base64::{Engine, engine::general_purpose::STANDARD};
+use chrono::Utc;
 use rand::{RngCore, rngs::OsRng};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -122,6 +123,81 @@ pub async fn export_one(db: &Database, id: &str, path: &str) -> AppResult<()> {
     export_profiles(db, path, false, None, Some(id)).await
 }
 
+pub async fn sync_write(
+    db: &Database,
+    folder: &str,
+    passphrase: &str,
+    options: &SyncOptions,
+) -> AppResult<SyncResult> {
+    if passphrase.len() < 8 {
+        return Err(AppError::Validation("同步口令至少需要 8 位".into()));
+    }
+    let folder = Path::new(folder);
+    if !folder.is_dir() {
+        return Err(AppError::Validation(
+            "同步位置必须是已存在的文件夹（可选择 iCloud Drive、WebDAV 或 Git 的本地挂载目录）"
+                .into(),
+        ));
+    }
+    let mut connections = Vec::new();
+    if options.include_hosts {
+        for profile in db.list_connections().await? {
+            let mut exported =
+                ExportConnection::from_profile(profile, options.include_credentials)?;
+            if !options.include_private_key_paths {
+                exported.private_key_path = None;
+            }
+            connections.push(exported);
+        }
+    }
+    let clear =
+        serde_json::to_vec(&connections).map_err(|error| AppError::Internal(error.to_string()))?;
+    let mut salt = [0_u8; 16];
+    let mut nonce = [0_u8; 12];
+    OsRng.fill_bytes(&mut salt);
+    OsRng.fill_bytes(&mut nonce);
+    let key = derive_key(passphrase, &salt)?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|error| AppError::Internal(error.to_string()))?;
+    let ciphertext = cipher
+        .encrypt(Nonce::from_slice(&nonce), clear.as_ref())
+        .map_err(|_| AppError::Internal("同步加密失败".into()))?;
+    let envelope = BackupEnvelope::Encrypted {
+        version: 1,
+        kdf: "argon2id+aes-256-gcm".into(),
+        salt: STANDARD.encode(salt),
+        nonce: STANDARD.encode(nonce),
+        ciphertext: STANDARD.encode(ciphertext),
+    };
+    let bytes = serde_json::to_vec_pretty(&envelope)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    let target = folder.join("CNshell-sync.cnshell.json");
+    let conflict_copy = if target.exists() && std::fs::read(&target)? != bytes {
+        let conflict = folder.join(format!(
+            "CNshell-sync.conflict-{}.cnshell.json",
+            Utc::now().format("%Y%m%d-%H%M%S")
+        ));
+        std::fs::copy(&target, &conflict)?;
+        Some(conflict.to_string_lossy().into_owned())
+    } else {
+        None
+    };
+    let temporary = folder.join(format!(".CNshell-sync-{}.tmp", uuid::Uuid::new_v4()));
+    {
+        use std::io::Write;
+        let mut file = std::fs::File::create(&temporary)?;
+        file.write_all(&bytes)?;
+        file.sync_all()?;
+    }
+    std::fs::rename(&temporary, &target)?;
+    Ok(SyncResult {
+        path: target.to_string_lossy().into_owned(),
+        conflict_copy,
+        connection_count: connections.len(),
+        encrypted: true,
+    })
+}
+
 async fn export_profiles(
     db: &Database,
     path: &str,
@@ -182,6 +258,41 @@ async fn export_profiles(
 }
 
 pub async fn import(db: &Database, path: &str, passphrase: Option<&str>) -> AppResult<usize> {
+    import_file(db, path, passphrase, false).await
+}
+
+pub async fn sync_read(db: &Database, folder: &str, passphrase: &str) -> AppResult<SyncResult> {
+    if passphrase.len() < 8 {
+        return Err(AppError::Validation("同步口令至少需要 8 位".into()));
+    }
+    let path = Path::new(folder).join("CNshell-sync.cnshell.json");
+    if !path.is_file() {
+        return Err(AppError::NotFound(
+            "同步目录中没有 CNshell-sync.cnshell.json".into(),
+        ));
+    }
+    let count = import_file(
+        db,
+        path.to_str()
+            .ok_or_else(|| AppError::Validation("同步路径编码无效".into()))?,
+        Some(passphrase),
+        true,
+    )
+    .await?;
+    Ok(SyncResult {
+        path: path.to_string_lossy().into_owned(),
+        conflict_copy: None,
+        connection_count: count,
+        encrypted: true,
+    })
+}
+
+async fn import_file(
+    db: &Database,
+    path: &str,
+    passphrase: Option<&str>,
+    preserve_conflicts: bool,
+) -> AppResult<usize> {
     let metadata = std::fs::metadata(path)?;
     if !metadata.is_file() {
         return Err(AppError::Validation("备份路径必须是普通文件".into()));
@@ -243,7 +354,24 @@ pub async fn import(db: &Database, path: &str, passphrase: Option<&str>) -> AppR
         ));
     }
     let mut inputs = Vec::with_capacity(connections.len());
-    for connection in connections {
+    let existing_ids = if preserve_conflicts {
+        db.list_connections()
+            .await?
+            .into_iter()
+            .map(|item| item.id)
+            .collect::<std::collections::HashSet<_>>()
+    } else {
+        Default::default()
+    };
+    for mut connection in connections {
+        if existing_ids.contains(&connection.id) {
+            connection.id = uuid::Uuid::new_v4().to_string();
+            connection.name = format!(
+                "{}（同步冲突副本 {}）",
+                connection.name,
+                Utc::now().format("%Y-%m-%d %H:%M")
+            );
+        }
         let mut input = ExportConnection {
             id: connection.id.clone(),
             folder_id: connection.folder_id.clone(),
@@ -385,6 +513,73 @@ mod tests {
         let restored = target.get_connection("backup-roundtrip").await.unwrap();
         assert_eq!(restored.host, "backup.example");
         assert_eq!(restored.tags, vec!["production"]);
+    }
+    #[tokio::test]
+    async fn encrypted_sync_hides_hosts_preserves_versions_and_import_conflicts() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("sync.sqlite"))
+            .await
+            .unwrap();
+        let input = SaveConnectionInput {
+            id: "same-id".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "Local".into(),
+            host: "secret-host.example".into(),
+            port: 22,
+            username: "root".into(),
+            auth_type: "sshAgent".into(),
+            private_key_path: Some("/secret/key".into()),
+            host_key_policy: "strict".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        db.save_connection(&input, None).await.unwrap();
+        let options = SyncOptions {
+            include_hosts: true,
+            include_private_key_paths: false,
+            include_credentials: false,
+        };
+        let first = sync_write(
+            &db,
+            directory.path().to_str().unwrap(),
+            "sync-password",
+            &options,
+        )
+        .await
+        .unwrap();
+        let serialized = std::fs::read_to_string(&first.path).unwrap();
+        assert!(!serialized.contains("secret-host.example"));
+        assert!(!serialized.contains("/secret/key"));
+        let second = sync_write(
+            &db,
+            directory.path().to_str().unwrap(),
+            "sync-password",
+            &options,
+        )
+        .await
+        .unwrap();
+        assert!(second.conflict_copy.is_some());
+        assert!(Path::new(second.conflict_copy.as_ref().unwrap()).is_file());
+        assert_eq!(
+            sync_read(&db, directory.path().to_str().unwrap(), "sync-password")
+                .await
+                .unwrap()
+                .connection_count,
+            1
+        );
+        let all = db.list_connections().await.unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(
+            all.iter().find(|item| item.id == "same-id").unwrap().name,
+            "Local"
+        );
+        assert!(all.iter().any(|item| item.name.contains("同步冲突副本")));
     }
     #[tokio::test]
     async fn single_connection_export_uses_importable_secret_free_envelope() {

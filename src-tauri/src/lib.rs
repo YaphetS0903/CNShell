@@ -1,20 +1,29 @@
+mod automation;
 mod backup;
+mod batch;
 mod bookmark;
 mod commands;
 mod db;
 mod diagnostics;
 mod error;
+mod external_edit;
 mod models;
 mod monitor;
+mod openssh;
+mod protocols;
 mod rdp;
+mod session_log;
 mod sftp;
 mod ssh;
 mod task;
 mod tunnel;
 
+use batch::BatchManager;
 use db::Database;
+use external_edit::ExternalEditManager;
 use monitor::MonitorState;
 use rdp::RdpManager;
+use session_log::SessionLogManager;
 use sftp::TransferManager;
 use ssh::SessionManager;
 use task::TaskManager;
@@ -32,6 +41,9 @@ pub struct AppState {
     tunnels: TunnelManager,
     tasks: TaskManager,
     rdp: RdpManager,
+    logs: SessionLogManager,
+    batches: BatchManager,
+    external_edits: ExternalEditManager,
 }
 
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
@@ -104,9 +116,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let _ = sftp::cleanup_preview_cache();
+            let _ = external_edit::cleanup_cache();
             let data_dir = handle.path().app_data_dir()?;
             let db =
                 tauri::async_runtime::block_on(Database::open(&data_dir.join("cnshell.sqlite")))
@@ -119,6 +133,10 @@ pub fn run() {
                 tunnels: TunnelManager::default(),
                 tasks: TaskManager::default(),
                 rdp: RdpManager::default(),
+                logs: SessionLogManager::new(data_dir.join("session-logs"))
+                    .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?,
+                batches: BatchManager::default(),
+                external_edits: ExternalEditManager::default(),
             });
             app.set_menu(build_menu(app)?)?;
             Ok(())
@@ -147,10 +165,30 @@ pub fn run() {
             commands::connection_purge,
             commands::connection_test_start,
             commands::connection_trust_host,
+            commands::openssh_import,
+            commands::openssh_generate_key,
+            commands::openssh_deploy_key,
+            commands::protocol_capabilities,
+            commands::protocol_options_get,
+            commands::protocol_options_save,
+            commands::automation_validate,
+            commands::automation_start,
+            commands::sync_write,
+            commands::sync_read,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,
             commands::terminal_close,
+            commands::terminal_log_start,
+            commands::terminal_log_stop,
+            commands::terminal_log_status,
+            commands::terminal_log_export,
+            commands::batch_start,
+            commands::batch_get,
+            commands::batch_cancel,
+            commands::external_edit_start,
+            commands::external_edit_read,
+            commands::external_edit_discard,
             commands::sftp_list,
             commands::sftp_join_path,
             commands::sftp_mkdir,
@@ -191,6 +229,9 @@ pub fn run() {
             commands::connection_export_one,
             commands::connection_import,
             commands::monitor_snapshot,
+            commands::monitor_process_signal,
+            commands::monitor_network_sockets,
+            commands::monitor_network_diagnostic_start,
             commands::monitor_system_info,
             commands::monitor_export_system_info,
             commands::rdp_preflight,

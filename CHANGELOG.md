@@ -6,6 +6,15 @@
 
 ### 新增
 
+- 智能命令栏：历史/快捷命令/远端路径模糊补全、安全参数模板和执行预览。
+- 会话日志、逐行时间戳、正则高亮/触发器、系统通知、最低对比度和增强光标。
+- 多主机批量命令与同步输入、任意嵌套终端拆分、Copy Mode、跨标签搜索和粘贴安全预览。
+- CodeMirror 6 远端编辑器、三方冲突 Diff、外部应用编辑回传、进程管理和 Ping/Traceroute/Socket 诊断。
+- OpenSSH config 导入、Ed25519 密钥生成/部署，以及逐连接 SSH Agent 转发。
+- SFTP 不可用时复用已验证 SSH 会话的 SCP 降级；协议依赖探测会明确显示 Zmodem、Mosh 和 X11 的可用边界。
+- 受限自动化任务编排：命令、匹配、条件和文件传输，支持预览、逐步日志、取消、超时及失败重试。
+- 用户自有 iCloud Drive/WebDAV/Git 本地目录的 AES-256-GCM 加密同步，分别控制主机、私钥路径和 Keychain 凭据，并保留冲突副本。
+
 - SSH 密码、私钥、SSH Agent、严格主机指纹、SOCKS5、HTTP CONNECT 与 SSH 跳板连接。
 - 多标签 xterm 终端、会话拆分、搜索、历史、快捷命令、自动重连与 SSH/TCP keepalive。
 - SFTP 虚拟列表、文件操作、原子文本保存、后台上传下载、暂停、取消、重试和冲突策略。
@@ -34,3 +43,5 @@
 - Developer ID、公证和正式 updater 仍需发行凭据与正式 HTTPS 服务。
 - RDP 当前打开独立 FreeRDP 窗口，尚未内嵌画面；真实 Windows 互操作仍待验收。
 - Debian、Rocky、Alpine，多版本/Intel Mac，完整弱网及 VoiceOver 真机矩阵尚未完成。
+- 本机未安装 `rz/sz`、Mosh 或 XQuartz；Zmodem/Mosh/X11 当前只显示真实依赖状态，不声明协议互操作完成。
+- AI、通用插件和团队协作仍按安全路线图延期。

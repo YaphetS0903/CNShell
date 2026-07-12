@@ -555,7 +555,9 @@ fn validate_application_path(application: &str) -> AppResult<()> {
     validate_local_path(application)?;
     let path = Path::new(application);
     if !application.ends_with(".app") || !path.is_dir() {
-        return Err(AppError::Validation("打开方式必须选择已安装的 macOS 应用".into()));
+        return Err(AppError::Validation(
+            "打开方式必须选择已安装的 macOS 应用".into(),
+        ));
     }
     Ok(())
 }
@@ -995,6 +997,105 @@ impl TransferManager {
     }
 }
 
+fn transfer_with_scp(
+    transport: &crate::ssh::TransportLease,
+    task: &mut TransferTask,
+    token: &AtomicU8,
+    app: &AppHandle,
+) -> AppResult<()> {
+    let remote = remote_path(if task.direction == "upload" {
+        &task.destination
+    } else {
+        &task.source
+    })?;
+    let mut buffer = vec![0_u8; 256 * 1024];
+    if task.direction == "upload" {
+        if task.conflict_policy != "overwrite" {
+            return Err(AppError::Unavailable(
+                "SFTP 不可用时，SCP 无法安全探测远端同名文件；请选择覆盖策略后重试".into(),
+            ));
+        }
+        let mut local = std::fs::File::open(&task.source)?;
+        task.total_bytes = local.metadata()?.len() as i64;
+        let mut channel = transport.connected().session.scp_send(
+            &remote,
+            0o600,
+            task.total_bytes as u64,
+            None,
+        )?;
+        loop {
+            if token.load(Ordering::Relaxed) == 2 {
+                return Err(AppError::Remote("传输已取消".into()));
+            }
+            let read = local.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            channel.write_all(&buffer[..read])?;
+            task.transferred_bytes += read as i64;
+            let _ = app.emit("transfer-progress", task.clone());
+        }
+        channel.send_eof()?;
+        channel.wait_eof()?;
+        channel.close()?;
+        channel.wait_close()?;
+    } else {
+        let destination_exists = Path::new(&task.destination).exists();
+        if destination_exists {
+            match task.conflict_policy.as_str() {
+                "skip" => return Ok(()),
+                "rename" => {
+                    let original = task.destination.clone();
+                    let mut index = 1;
+                    while Path::new(&task.destination).exists() {
+                        task.destination = renamed_path(&original, index);
+                        index += 1;
+                    }
+                }
+                "overwrite" => {}
+                _ => {
+                    return Err(AppError::Validation(
+                        "本地目标已存在，请选择覆盖、跳过或重命名".into(),
+                    ));
+                }
+            }
+        }
+        let (mut channel, stat) = transport.connected().session.scp_recv(&remote)?;
+        task.total_bytes = stat.size() as i64;
+        let temporary = format!("{}.cnshell-part-{}", task.destination, task.id);
+        let mut local = std::fs::File::create(&temporary)?;
+        let result = (|| -> AppResult<()> {
+            loop {
+                if token.load(Ordering::Relaxed) == 2 {
+                    return Err(AppError::Remote("传输已取消".into()));
+                }
+                let read = channel.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                local.write_all(&buffer[..read])?;
+                task.transferred_bytes += read as i64;
+                let _ = app.emit("transfer-progress", task.clone());
+            }
+            local.sync_all()?;
+            drop(local);
+            std::fs::rename(&temporary, &task.destination)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result?;
+    }
+    if task.transferred_bytes != task.total_bytes {
+        return Err(AppError::Remote(format!(
+            "SCP 大小校验失败：预期 {} 字节，实际 {} 字节",
+            task.total_bytes, task.transferred_bytes
+        )));
+    }
+    Ok(())
+}
+
 pub async fn enqueue(
     app: AppHandle,
     db: Database,
@@ -1066,7 +1167,7 @@ pub async fn enqueue(
         let db_clone = db.clone();
         let token_clone = token.clone();
         let result = tokio::task::spawn_blocking(move || -> AppResult<TransferTask> {
-            let mut transport=transport; let result=(|| -> AppResult<TransferTask> { let sftp=transport.connected().session.sftp()?; let mut buffer=vec![0_u8;256*1024];
+            let mut transport=transport; let result=(|| -> AppResult<TransferTask> { let sftp=match transport.connected().session.sftp(){Ok(sftp)=>sftp,Err(_)=>{transfer_with_scp(&transport,&mut work_task,&token_clone,&app_clone)?;work_task.status="completed".into();return Ok(work_task);}}; let mut buffer=vec![0_u8;256*1024];
             if work_task.direction=="download" {
                 let destination_exists=Path::new(&work_task.destination).exists();if destination_exists{match work_task.conflict_policy.as_str(){"skip"=>{work_task.status="completed".into();return Ok(work_task);},"rename"=>{let original=work_task.destination.clone();let mut index=1;while Path::new(&work_task.destination).exists(){work_task.destination=renamed_path(&original,index);index+=1;}},"overwrite"=>{},_=>return Err(AppError::Validation("本地目标已存在，请选择覆盖、跳过或重命名".into()))}}
                 let source=remote_path(&work_task.source)?;let stat=sftp.stat(&source)?; work_task.total_bytes=stat.size.unwrap_or(0) as i64;

@@ -174,6 +174,169 @@ pub struct TerminalStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SessionLogStatus {
+    pub session_id: String,
+    pub active: bool,
+    pub path: Option<String>,
+    pub format: Option<String>,
+    pub line_timestamps: bool,
+    pub started_at: Option<String>,
+    pub bytes_written: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchTargetResult {
+    pub connection_id: String,
+    pub name: String,
+    pub status: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
+    pub duration_ms: Option<u64>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchExecution {
+    pub id: String,
+    pub command: String,
+    pub status: String,
+    pub created_at: String,
+    pub targets: Vec<BatchTargetResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalEditSession {
+    pub id: String,
+    pub remote_path: String,
+    pub local_path: String,
+    pub expected_modified_at: Option<u64>,
+    pub started_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalEditSnapshot {
+    pub id: String,
+    pub content: String,
+    pub expected_modified_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OpenSshHost {
+    pub alias: String,
+    pub hostname: String,
+    pub user: Option<String>,
+    pub port: u16,
+    pub identity_file: Option<String>,
+    pub proxy_jump: Option<String>,
+    pub source: String,
+    pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedSshKey {
+    pub private_key_path: String,
+    pub public_key_path: String,
+    pub public_key: String,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtocolCapability {
+    pub id: String,
+    pub label: String,
+    pub available: bool,
+    pub executable: Option<String>,
+    pub message: String,
+    pub security_warning: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionProtocolOptions {
+    pub connection_id: String,
+    pub agent_forwarding: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationPlan {
+    pub id: String,
+    pub name: String,
+    pub connection_id: String,
+    pub steps: Vec<AutomationStep>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationStep {
+    pub id: String,
+    pub kind: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub pattern: Option<String>,
+    #[serde(default)]
+    pub timeout_seconds: Option<u64>,
+    #[serde(default)]
+    pub action: Option<String>,
+    #[serde(default)]
+    pub direction: Option<String>,
+    #[serde(default)]
+    pub local_path: Option<String>,
+    #[serde(default)]
+    pub remote_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationStepResult {
+    pub step_id: String,
+    pub kind: String,
+    pub status: String,
+    pub started_at: String,
+    pub duration_ms: u64,
+    pub output: String,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRun {
+    pub run_id: String,
+    pub plan_id: String,
+    pub status: String,
+    pub current_step: Option<String>,
+    pub results: Vec<AutomationStepResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOptions {
+    pub include_hosts: bool,
+    pub include_private_key_paths: bool,
+    pub include_credentials: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncResult {
+    pub path: String,
+    pub conflict_copy: Option<String>,
+    pub connection_count: usize,
+    pub encrypted: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteFile {
     pub name: String,
     pub path: String,
@@ -215,10 +378,37 @@ pub struct TransferInput {
 #[serde(rename_all = "camelCase")]
 pub struct ProcessInfo {
     pub pid: u32,
+    pub started_at: String,
     pub user: String,
     pub cpu_percent: f64,
     pub memory_percent: f64,
     pub command: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkSocket {
+    pub protocol: String,
+    pub state: String,
+    pub local_address: String,
+    pub peer_address: String,
+    pub process: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkSocketReport {
+    pub items: Vec<NetworkSocket>,
+    pub warning: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkDiagnosticResult {
+    pub kind: String,
+    pub target: String,
+    pub output: String,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

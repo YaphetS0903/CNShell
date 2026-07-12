@@ -524,6 +524,36 @@ impl Database {
                 .await?;
         Ok(value.and_then(|v| serde_json::from_str(&v).ok()))
     }
+    pub async fn save_named_state(&self, key: &str, value: &serde_json::Value) -> AppResult<()> {
+        if !key.starts_with("cnshell.") {
+            return Err(AppError::Validation("状态键无效".into()));
+        }
+        let serialized = value.to_string();
+        if serialized.len() > 1024 * 1024 {
+            return Err(AppError::Validation("状态内容不能超过 1 MB".into()));
+        }
+        sqlx::query("INSERT INTO workspace_state(key,value,updated_at)VALUES(?,?,?)ON CONFLICT(key)DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at")
+            .bind(key).bind(serialized).bind(Utc::now().to_rfc3339()).execute(&self.pool).await?;
+        Ok(())
+    }
+    pub async fn load_named_state<T: serde::de::DeserializeOwned>(
+        &self,
+        key: &str,
+    ) -> AppResult<Option<T>> {
+        if !key.starts_with("cnshell.") {
+            return Err(AppError::Validation("状态键无效".into()));
+        }
+        let value =
+            sqlx::query_scalar::<_, String>("SELECT value FROM workspace_state WHERE key=?")
+                .bind(key)
+                .fetch_optional(&self.pool)
+                .await?;
+        value
+            .map(|json| {
+                serde_json::from_str(&json).map_err(|error| AppError::Storage(error.to_string()))
+            })
+            .transpose()
+    }
 }
 
 fn backup_database_files(path: &Path) -> AppResult<()> {

@@ -1,0 +1,12 @@
+import { Search,Send,TriangleAlert } from "lucide-react";
+import { useMemo,useState } from "react";
+import { api } from "../../lib/api";
+import { errorMessage } from "../../lib/format";
+import type { ProcessInfo } from "../../types";
+import "./MonitorTools.css";
+
+export function ProcessManager({sessionId,processes,onRefresh,onError}:{sessionId:string;processes:ProcessInfo[];onRefresh:()=>Promise<void>;onError:(message:string)=>void}){
+  const[query,setQuery]=useState("");const[sort,setSort]=useState<"cpu"|"memory">("cpu");const[busy,setBusy]=useState<number|null>(null);const filtered=useMemo(()=>processes.filter((process)=>`${process.pid} ${process.user} ${process.command}`.toLocaleLowerCase("zh-CN").includes(query.toLocaleLowerCase("zh-CN"))).sort((a,b)=>sort==="cpu"?b.cpuPercent-a.cpuPercent:b.memoryPercent-a.memoryPercent),[processes,query,sort]);
+  const send=async(process:ProcessInfo,signal:"TERM"|"HUP"|"KILL")=>{if(!confirm(`向以下进程发送 ${signal}？\n\nPID ${process.pid}\n${process.command}`))return;setBusy(process.pid);try{await api.signalProcess(sessionId,process,signal);await onRefresh();}catch(reason){onError(errorMessage(reason));}finally{setBusy(null);}};
+  return <div className="process-manager"><label className="process-search"><Search size={14}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="按 PID、用户或完整命令搜索" aria-label="搜索进程"/><span>{filtered.length}/{processes.length}</span></label><div className="process-table"><header><span>PID</span><span>用户</span><span>完整命令</span><button className={sort==="memory"?"active":""} onClick={()=>setSort("memory")}>内存 %</button><button className={sort==="cpu"?"active":""} onClick={()=>setSort("cpu")}>CPU %</button><span>操作</span></header>{filtered.map((process)=><div key={`${process.pid}-${process.startedAt}`}><code>{process.pid}</code><span>{process.user}</span><span title={`${process.startedAt}\n${process.command}`}>{process.command}</span><code>{process.memoryPercent.toFixed(1)}</code><code>{process.cpuPercent.toFixed(1)}</code><span className="process-actions"><button disabled={busy===process.pid} onClick={()=>void send(process,"TERM")} title="请求正常终止"><Send size={11}/>TERM</button><button disabled={busy===process.pid} onClick={()=>void send(process,"HUP")} title="请求重新加载">HUP</button><button className="danger" disabled={busy===process.pid} onClick={()=>void send(process,"KILL")} title="强制终止"><TriangleAlert size={11}/>KILL</button></span></div>)}</div></div>;
+}

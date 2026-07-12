@@ -1,8 +1,13 @@
 export const workspaceRuntime={
   cwdBySession:new Map<string,string>(),
-  splitSessionId:null as string|null,
+  terminalLayout:null as import("../features/terminal/terminal-layout").TerminalLayout|null,
   bottomOpen:true,
-  bottomHeight:260
+  bottomHeight:260,
+  triggerEventsBySession:new Map<string,import("../features/terminal/terminal-triggers").TriggerEvent[]>(),
+  pasteHistory:[] as string[],
+  terminalSearchBySession:new Map<string,(query:string)=>import("../features/terminal/terminal-safety").GlobalSearchMatch[]>(),
+  terminalTimestampsBySession:new Map<string,import("../features/terminal/terminal-safety").TerminalLineTimestamp[]>(),
+  terminalActivity:new Set<string>()
 };
 
 export function parseOsc7Cwd(value:string):string|null{

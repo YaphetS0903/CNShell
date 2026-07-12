@@ -4,6 +4,7 @@ use crate::{
     models::{
         ConnectionDiagnostic, ConnectionProfile, TerminalOutput, TerminalSession, TerminalStatus,
     },
+    session_log::SessionLogManager,
 };
 use base64::{
     Engine,
@@ -99,11 +100,15 @@ impl TransportPool {
             let mut idle = self.idle.lock();
             idle.get_mut(&key)
                 .and_then(|transports| {
-                    transports.retain(|transport| transport.idle_since.elapsed() <= MAX_IDLE_TRANSPORT_AGE);
+                    transports.retain(|transport| {
+                        transport.idle_since.elapsed() <= MAX_IDLE_TRANSPORT_AGE
+                    });
                     transports.pop()
                 })
                 .map(|idle| idle.connected)
-                .filter(|connected| connected.session.authenticated() && connected.session.keepalive_send().is_ok())
+                .filter(|connected| {
+                    connected.session.authenticated() && connected.session.keepalive_send().is_ok()
+                })
         } else {
             None
         };
@@ -179,6 +184,7 @@ pub struct TerminalHandle {
     pub closed: bool,
     pub cols: u32,
     pub rows: u32,
+    pub agent_forwarding: bool,
     transport: Option<TransportLease>,
 }
 
@@ -916,17 +922,20 @@ pub async fn open_terminal(
     profile: ConnectionProfile,
     cols: u32,
     rows: u32,
+    logs: SessionLogManager,
+    agent_forwarding: bool,
 ) -> AppResult<TerminalSession> {
     validate_terminal_size(cols, rows)?;
     let transport = manager.acquire_transport(&db, &profile, false).await?;
     let profile_clone = profile.clone();
-    let handle =
-        tokio::task::spawn_blocking(move || open_pty(transport, profile_clone, cols, rows, true))
-            .await
-            .map_err(|error| AppError::Internal(error.to_string()))??;
+    let handle = tokio::task::spawn_blocking(move || {
+        open_pty(transport, profile_clone, cols, rows, true, agent_forwarding)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))??;
     let id = Uuid::new_v4().to_string();
     let shared = manager.insert(id.clone(), handle);
-    spawn_reader(app, db, manager, id.clone(), shared);
+    spawn_reader(app, db, manager, id.clone(), shared, logs);
     Ok(TerminalSession {
         id,
         connection_id: profile.id,
@@ -944,9 +953,15 @@ fn open_pty(
     cols: u32,
     rows: u32,
     run_startup: bool,
+    agent_forwarding: bool,
 ) -> AppResult<TerminalHandle> {
     let connected = transport.connected();
     let mut channel = connected.session.channel_session()?;
+    if agent_forwarding {
+        channel
+            .request_auth_agent_forwarding()
+            .map_err(|error| AppError::Remote(format!("Agent 转发请求被拒绝：{error}")))?;
+    }
     channel.request_pty("xterm-256color", None, Some((cols, rows, 0, 0)))?;
     for (key, value) in &profile.environment {
         channel.setenv(key, value)?;
@@ -970,6 +985,7 @@ fn open_pty(
         closed: false,
         cols,
         rows,
+        agent_forwarding,
         transport: Some(transport),
     })
 }
@@ -995,6 +1011,7 @@ fn spawn_reader(
     manager: SessionManager,
     session_id: String,
     handle: Arc<Mutex<TerminalHandle>>,
+    logs: SessionLogManager,
 ) {
     tauri::async_runtime::spawn(async move {
         let mut buffer = vec![0_u8; 32 * 1024];
@@ -1044,6 +1061,7 @@ fn spawn_reader(
                 )
             };
             if read > 0 {
+                logs.write_output(&session_id, &buffer[..read]);
                 let data_base64 = STANDARD.encode(&buffer[..read]);
                 let _ = app.emit(
                     "terminal-output",
@@ -1057,9 +1075,14 @@ fn spawn_reader(
                 if manager.get(&session_id).is_err() {
                     break;
                 }
-                let (profile, cols, rows) = {
+                let (profile, cols, rows, agent_forwarding) = {
                     let terminal = handle.lock();
-                    (terminal.profile.clone(), terminal.cols, terminal.rows)
+                    (
+                        terminal.profile.clone(),
+                        terminal.cols,
+                        terminal.rows,
+                        terminal.agent_forwarding,
+                    )
                 };
                 let mut recovered = false;
                 let mut last_error = read_error.unwrap_or_else(|| "SSH 服务端已关闭会话".into());
@@ -1085,7 +1108,14 @@ fn spawn_reader(
                         Ok(transport) => {
                             let profile_clone = profile.clone();
                             match tokio::task::spawn_blocking(move || {
-                                open_pty(transport, profile_clone, cols, rows, false)
+                                open_pty(
+                                    transport,
+                                    profile_clone,
+                                    cols,
+                                    rows,
+                                    false,
+                                    agent_forwarding,
+                                )
                             })
                             .await
                             {
@@ -1130,6 +1160,7 @@ fn spawn_reader(
                     continue;
                 }
                 manager.remove(&session_id);
+                let _ = logs.stop(&session_id);
                 let _ = app.emit(
                     "terminal-status",
                     TerminalStatus {
@@ -1161,6 +1192,94 @@ pub async fn terminal_input(
     })
     .await
     .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+pub struct RemoteCommandResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub truncated: bool,
+}
+
+pub async fn execute_profile_command(
+    db: &Database,
+    profile: &ConnectionProfile,
+    command: &str,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    timeout: Duration,
+) -> AppResult<RemoteCommandResult> {
+    let connected = verified_connection(db, profile, false).await?;
+    let command = command.to_owned();
+    tokio::task::spawn_blocking(move || {
+        let mut channel = connected.session.channel_session()?;
+        channel.exec(&command)?;
+        connected.transport.set_nonblocking(true)?;
+        connected.session.set_blocking(false);
+        let mut stdout = Vec::new();
+        let mut stderr_bytes = Vec::new();
+        let mut truncated = false;
+        let started = Instant::now();
+        let mut buffer = [0_u8; 32 * 1024];
+        loop {
+            if cancelled.load(std::sync::atomic::Ordering::Acquire) {
+                let _ = channel.close();
+                return Err(AppError::Unavailable("批量命令已取消".into()));
+            }
+            if started.elapsed() > timeout {
+                let _ = channel.close();
+                return Err(AppError::Unavailable("批量命令执行超时".into()));
+            }
+            let mut progress = false;
+            match channel.read(&mut buffer) {
+                Ok(size) if size > 0 => {
+                    append_limited(&mut stdout, &buffer[..size], &mut truncated);
+                    progress = true;
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                Err(error) => return Err(error.into()),
+            }
+            let mut stderr = channel.stderr();
+            match stderr.read(&mut buffer) {
+                Ok(size) if size > 0 => {
+                    append_limited(&mut stderr_bytes, &buffer[..size], &mut truncated);
+                    progress = true;
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                Err(error) => return Err(error.into()),
+            }
+            if channel.eof() {
+                break;
+            }
+            if !progress {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        connected.transport.set_nonblocking(false)?;
+        connected.session.set_blocking(true);
+        channel.wait_close()?;
+        let exit_code = channel.exit_status()?;
+        Ok(RemoteCommandResult {
+            stdout: String::from_utf8_lossy(&stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+            exit_code,
+            truncated,
+        })
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+fn append_limited(target: &mut Vec<u8>, data: &[u8], truncated: &mut bool) {
+    const LIMIT: usize = 5 * 1024 * 1024;
+    let remaining = LIMIT.saturating_sub(target.len());
+    if remaining > 0 {
+        target.extend_from_slice(&data[..data.len().min(remaining)]);
+    }
+    if data.len() > remaining {
+        *truncated = true;
+    }
 }
 
 fn write_channel_input(channel: &mut Channel, data: &[u8]) -> AppResult<()> {
@@ -1631,7 +1750,7 @@ mod tests {
         assert_eq!(output.len(), 1048586);
         let terminal_pool = TransportPool::default();
         let transport = terminal_pool.acquire(&db, &profile, false).await.unwrap();
-        let mut pty = open_pty(transport, profile.clone(), 120, 36, false).unwrap();
+        let mut pty = open_pty(transport, profile.clone(), 120, 36, false, false).unwrap();
         write_channel_input(&mut pty.channel, b"printf 'CNSHELL_PTY_INPUT_OK\\n'\n").unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut pty_output = Vec::new();
@@ -2164,7 +2283,7 @@ mod tests {
             .acquire_transport(&db, &profile, false)
             .await
             .unwrap();
-        let handle = open_pty(transport, profile.clone(), 80, 24, false).unwrap();
+        let handle = open_pty(transport, profile.clone(), 80, 24, false, false).unwrap();
         let session_id = "directory-transfer-session".to_string();
         manager.insert(session_id.clone(), handle);
         let created_file = format!("/tmp/cnshell-created-{}.txt", Uuid::new_v4());
@@ -2176,14 +2295,16 @@ mod tests {
         )
         .await
         .unwrap();
-        assert!(crate::sftp::create_text(
-            db.clone(),
-            manager.clone(),
-            session_id.clone(),
-            created_file.clone(),
-        )
-        .await
-        .is_err());
+        assert!(
+            crate::sftp::create_text(
+                db.clone(),
+                manager.clone(),
+                session_id.clone(),
+                created_file.clone(),
+            )
+            .await
+            .is_err()
+        );
         crate::sftp::delete(
             db.clone(),
             manager.clone(),
@@ -2398,13 +2519,15 @@ mod tests {
         drop(fourth);
         let exclusive = pool.acquire(&db, &profile, false).await.unwrap();
         assert_eq!(pool.created(), 5);
-        let mut first_terminal = open_pty(exclusive, profile.clone(), 80, 24, false).unwrap();
+        let mut first_terminal =
+            open_pty(exclusive, profile.clone(), 80, 24, false, false).unwrap();
         let _ = first_terminal.channel.send_eof();
         let _ = first_terminal.channel.close();
         drop(first_terminal);
         let next_exclusive = pool.acquire(&db, &profile, false).await.unwrap();
         assert_eq!(pool.created(), 6);
-        let mut next_terminal = open_pty(next_exclusive, profile.clone(), 80, 24, false).unwrap();
+        let mut next_terminal =
+            open_pty(next_exclusive, profile.clone(), 80, 24, false, false).unwrap();
         write_channel_input(&mut next_terminal.channel, b"exit\n").unwrap();
         let _ = next_terminal.channel.send_eof();
         let _ = next_terminal.channel.close();

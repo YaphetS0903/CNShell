@@ -1,0 +1,4 @@
+import { describe,expect,it } from "vitest";
+import { pasteRisk,searchBuffer } from "./terminal-safety";
+
+describe("terminal safety",()=>{it("requires preview for multiline and destructive paste",()=>{expect(pasteRisk("echo one\necho two")).toMatchObject({multiline:true,lines:2});expect(pasteRisk("sudo rm -rf /").highRisk).toBe(true);expect(pasteRisk("echo safe")).toEqual({multiline:false,highRisk:false,lines:1});});it("searches terminal lines case-insensitively with bounded results",()=>{const lines=["service started","ERROR failure","another error"];expect(searchBuffer(lines,"error","session")).toEqual([{sessionId:"session",line:1,preview:"ERROR failure"},{sessionId:"session",line:2,preview:"another error"}]);expect(searchBuffer(Array.from({length:1000},()=>"hit"),"hit","session",20)).toHaveLength(20);});});

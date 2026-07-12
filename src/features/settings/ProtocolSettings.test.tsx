@@ -1,0 +1,9 @@
+import { render,screen,waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach,describe,expect,it,vi } from "vitest";
+import { api } from "../../lib/api";
+import type { ConnectionProfile } from "../../types";
+import { ProtocolSettings } from "./ProtocolSettings";
+
+const connection:ConnectionProfile={id:"server",folderId:null,protocol:"ssh",name:"可信服务器",host:"example",port:22,username:"root",authType:"sshAgent",privateKeyPath:null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:false,createdAt:"",updatedAt:"",lastConnectedAt:null};
+describe("ProtocolSettings",()=>{beforeEach(()=>{vi.spyOn(api,"protocolCapabilities").mockResolvedValue([{id:"agentForwarding",label:"SSH Agent 转发",available:true,executable:"/tmp/agent.sock",message:"可用",securityWarning:"风险"}]);vi.spyOn(api,"getProtocolOptions").mockResolvedValue({connectionId:"server",agentForwarding:false});vi.spyOn(api,"saveProtocolOptions").mockImplementation(async(value)=>value);vi.spyOn(window,"confirm").mockReturnValue(true);});it("requires explicit host selection and confirmation for agent forwarding",async()=>{const user=userEvent.setup();render(<ProtocolSettings connections={[connection]} onError={()=>undefined}/>);await user.selectOptions(screen.getByRole("combobox",{name:"按连接配置 Agent 转发"}),"server");const toggle=await screen.findByRole("checkbox",{name:/启用 SSH Agent 转发/});await waitFor(()=>expect(toggle).toBeEnabled());await user.click(toggle);expect(window.confirm).toHaveBeenCalled();expect(api.saveProtocolOptions).toHaveBeenCalledWith({connectionId:"server",agentForwarding:true});});});

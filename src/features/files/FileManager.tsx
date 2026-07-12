@@ -1,5 +1,5 @@
 import { Archive, ArrowDownToLine, ArrowLeft, ArrowUpToLine, ChevronDown, Clipboard, File, FileCode2, FilePlus, Folder, FolderPlus, LoaderCircle, MoreHorizontal, PackageOpen, RefreshCw, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
@@ -7,9 +7,10 @@ import type { ConflictPolicy, RemoteFile, TerminalSession } from "../../types";
 import { IconButton } from "../../components/IconButton";
 import { errorMessage, formatBytes } from "../../lib/format";
 import { waitForTask } from "../../lib/background-task";
-import { TextEditor } from "./TextEditor";
 import { virtualWindow } from "../../lib/runtime-metrics";
 import { RemoteDirectoryTree } from "./RemoteDirectoryTree";
+
+const TextEditor=lazy(()=>import("./TextEditor").then((module)=>({default:module.TextEditor})));
 
 type SortKey = "name"|"size"|"modifiedAt";
 
@@ -58,7 +59,7 @@ export function FileManager({ session }: { session: TerminalSession }) {
       {dragging&&<div className="drop-overlay"><ArrowUpToLine size={28}/><strong>拖放上传到 {path}</strong><span>同名文件自动重命名</span></div>}</div>
     {contextMenu&&selected&&<div className="file-context-menu" role="menu" aria-label={`${selected.name} 文件操作`} style={{left:contextMenu.x,top:contextMenu.y}} onPointerDown={(event)=>event.stopPropagation()}><button role="menuitem" onClick={()=>selected.kind==="file"&&setEditor(selected.path)} disabled={selected.kind!=="file"}><FileCode2 size={14}/>编辑文本</button>{selected.kind==="file"&&<><button role="menuitem" onClick={()=>void openLocally()}><File size={14}/>使用默认应用打开</button><button role="menuitem" onClick={()=>void openWith()}><FileCode2 size={14}/>选择应用打开…</button></>}<button role="menuitem" onClick={()=>selected.kind==="directory"?void transferFolder("download"):void download()} disabled={!['file','directory'].includes(selected.kind)}><ArrowDownToLine size={14}/>下载</button><button role="menuitem" onClick={()=>void upload(selected.kind==="directory"?selected.path:path)}><ArrowUpToLine size={14}/>上传文件到此处</button><button role="menuitem" onClick={()=>void createFile(selected.kind==="directory"?selected.path:path)}><FilePlus size={14}/>新建文件</button><button role="menuitem" onClick={()=>void createFolder(selected.kind==="directory"?selected.path:path)}><FolderPlus size={14}/>新建文件夹</button><button role="menuitem" onClick={()=>void navigator.clipboard.writeText(selected.path)}><Clipboard size={14}/>复制路径</button><button role="menuitem" onClick={()=>void archive(false)}><Archive size={14}/>压缩为 tar.gz</button>{selected.name.endsWith(".tar.gz")&&<button role="menuitem" onClick={()=>void archive(true)}><PackageOpen size={14}/>解压到当前目录</button>}<button role="menuitem" onClick={()=>void rename()}>重命名</button><button role="menuitem" onClick={()=>void chmod()}>修改权限</button><button role="menuitem" className="danger" onClick={()=>void remove()}><Trash2 size={14}/>删除</button></div>}
     <footer className="file-status"><span>{background?<><LoaderCircle className="spin" size={12}/>{background.label}<button onClick={()=>void api.cancelTask(background.id)}>取消</button></>:`${files.length} 个项目`}</span><span>{selected?selected.path:(api.isDesktop()?"SFTP 已就绪":"等待桌面连接")}</span></footer>
-    {editor&&<TextEditor sessionId={session.id} path={editor} onClose={()=>setEditor(null)}/>}
+    {editor&&<Suspense fallback={<div className="connection-overlay"><LoaderCircle className="spin"/><span>加载远端编辑器…</span></div>}><TextEditor sessionId={session.id} path={editor} onClose={()=>setEditor(null)}/></Suspense>}
   </div>;
 }
 

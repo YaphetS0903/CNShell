@@ -2,14 +2,27 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   AppSettings,
+  AutomationPlan,
+  BatchExecution,
   BackgroundTask,
   ConnectionProfile,
+  ExternalEditSession,
+  ExternalEditSnapshot,
   Folder,
+  GeneratedSshKey,
   MonitorSnapshot,
+  OpenSshHost,
+  NetworkSocketReport,
+  ProcessInfo,
+  ProtocolCapability,
+  ConnectionProtocolOptions,
   RdpPreflight,
   RemoteFile,
+  SessionLogStatus,
   SaveConnectionInput,
   SystemInfo,
+  SyncOptions,
+  SyncResult,
   TerminalOutput,
   TerminalStatus,
   TerminalSession,
@@ -85,6 +98,16 @@ export const api = {
   async trustHost(id: string, fingerprint: string, algorithm: string): Promise<void> {
     if (isTauri()) await invoke("connection_trust_host", { id, fingerprint, algorithm });
   },
+  async importOpenSshConfig(path:string):Promise<OpenSshHost[]>{return invoke("openssh_import",{path});},
+  async generateSshKey(path:string,comment:string):Promise<GeneratedSshKey>{return invoke("openssh_generate_key",{path,comment});},
+  async deploySshKey(connectionId:string,publicKey:string):Promise<void>{return invoke("openssh_deploy_key",{connectionId,publicKey});},
+  async protocolCapabilities():Promise<ProtocolCapability[]>{return isTauri()?invoke("protocol_capabilities"):[];},
+  async getProtocolOptions(connectionId:string):Promise<ConnectionProtocolOptions>{return isTauri()?invoke("protocol_options_get",{connectionId}):{connectionId,agentForwarding:false};},
+  async saveProtocolOptions(options:ConnectionProtocolOptions):Promise<ConnectionProtocolOptions>{return invoke("protocol_options_save",{options});},
+  async validateAutomation(plan:AutomationPlan):Promise<AutomationPlan>{return invoke("automation_validate",{plan});},
+  async startAutomation(plan:AutomationPlan):Promise<BackgroundTask>{return invoke("automation_start",{plan});},
+  async writeEncryptedSync(folder:string,passphrase:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write",{folder,passphrase,options});},
+  async readEncryptedSync(folder:string,passphrase:string):Promise<SyncResult>{return invoke("sync_read",{folder,passphrase});},
   async listProxies(): Promise<ProxyProfile[]> { return isTauri() ? invoke("proxy_list") : []; },
   async saveProxy(input: SaveProxyInput): Promise<ProxyProfile> { return invoke("proxy_save", { input }); },
   async deleteProxy(id: string): Promise<void> { return invoke("proxy_delete", { id }); },
@@ -106,6 +129,20 @@ export const api = {
   async closeTerminal(sessionId: string) {
     if (isTauri()) await invoke("terminal_close", { sessionId });
   },
+  async startSessionLog(sessionId:string,format:"text"|"jsonl",lineTimestamps:boolean,retentionDays:number,maxTotalBytes:number):Promise<SessionLogStatus>{
+    if(!isTauri())throw new Error("会话日志需要运行 CNshell 桌面版");
+    return invoke("terminal_log_start",{sessionId,format,lineTimestamps,retentionDays,maxTotalBytes});
+  },
+  async stopSessionLog(sessionId:string):Promise<SessionLogStatus>{return invoke("terminal_log_stop",{sessionId});},
+  async sessionLogStatus(sessionId:string):Promise<SessionLogStatus>{return isTauri()?invoke("terminal_log_status",{sessionId}):{sessionId,active:false,path:null,format:null,lineTimestamps:false,startedAt:null,bytesWritten:0,error:null};},
+  async exportSessionLog(sessionId:string,path:string):Promise<void>{return invoke("terminal_log_export",{sessionId,path});},
+  async startBatch(connectionIds:string[],command:string,concurrency:number):Promise<BatchExecution>{return invoke("batch_start",{connectionIds,command,concurrency});},
+  async getBatch(id:string):Promise<BatchExecution>{return invoke("batch_get",{id});},
+  async cancelBatch(id:string):Promise<BatchExecution>{return invoke("batch_cancel",{id});},
+  async onBatchExecution(handler:(execution:BatchExecution)=>void):Promise<UnlistenFn>{return isTauri()?listen<BatchExecution>("batch-execution",(event)=>handler(event.payload)):()=>undefined;},
+  async startExternalEdit(sessionId:string,path:string,application?:string):Promise<ExternalEditSession>{return invoke("external_edit_start",{sessionId,path,application});},
+  async readExternalEdit(id:string):Promise<ExternalEditSnapshot>{return invoke("external_edit_read",{id});},
+  async discardExternalEdit(id:string):Promise<void>{return invoke("external_edit_discard",{id});},
   async onTerminalOutput(handler: (output: TerminalOutput) => void): Promise<UnlistenFn> {
     if (isTauri()) return listen<TerminalOutput>("terminal-output", (event) => handler(event.payload));
     return () => undefined;
@@ -167,6 +204,9 @@ export const api = {
   async monitorSnapshot(sessionId: string): Promise<MonitorSnapshot> {
     return invoke("monitor_snapshot", { sessionId });
   },
+  async signalProcess(sessionId:string,process:ProcessInfo,signal:"TERM"|"HUP"|"KILL"):Promise<void>{return invoke("monitor_process_signal",{sessionId,pid:process.pid,startedAt:process.startedAt,expectedCommand:process.command,signal});},
+  async networkSockets(sessionId:string):Promise<NetworkSocketReport>{return invoke("monitor_network_sockets",{sessionId});},
+  async startNetworkDiagnostic(sessionId:string,kind:"ping"|"traceroute",target:string):Promise<BackgroundTask>{return invoke("monitor_network_diagnostic_start",{sessionId,kind,target});},
   async systemInfo(sessionId: string): Promise<SystemInfo> {
     return invoke("monitor_system_info", { sessionId });
   },

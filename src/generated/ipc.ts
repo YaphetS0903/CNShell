@@ -135,6 +135,132 @@ export interface TerminalStatus {
   attempt: number | null;
 }
 
+export interface SessionLogStatus {
+  sessionId: string;
+  active: boolean;
+  path: string | null;
+  format: string | null;
+  lineTimestamps: boolean;
+  startedAt: string | null;
+  bytesWritten: number;
+  error: string | null;
+}
+
+export interface BatchTargetResult {
+  connectionId: string;
+  name: string;
+  status: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  durationMs: number | null;
+  error: string | null;
+}
+
+export interface BatchExecution {
+  id: string;
+  command: string;
+  status: string;
+  createdAt: string;
+  targets: BatchTargetResult[];
+}
+
+export interface ExternalEditSession {
+  id: string;
+  remotePath: string;
+  localPath: string;
+  expectedModifiedAt: number | null;
+  startedAt: string;
+}
+
+export interface ExternalEditSnapshot {
+  id: string;
+  content: string;
+  expectedModifiedAt: number | null;
+}
+
+export interface OpenSshHost {
+  alias: string;
+  hostname: string;
+  user: string | null;
+  port: number;
+  identityFile: string | null;
+  proxyJump: string | null;
+  source: string;
+  warnings: string[];
+}
+
+export interface GeneratedSshKey {
+  privateKeyPath: string;
+  publicKeyPath: string;
+  publicKey: string;
+  fingerprint: string;
+}
+
+export interface ProtocolCapability {
+  id: string;
+  label: string;
+  available: boolean;
+  executable: string | null;
+  message: string;
+  securityWarning: string | null;
+}
+
+export interface ConnectionProtocolOptions {
+  connectionId: string;
+  agentForwarding: boolean;
+}
+
+export interface AutomationPlan {
+  id: string;
+  name: string;
+  connectionId: string;
+  steps: AutomationStep[];
+}
+
+export interface AutomationStep {
+  id: string;
+  kind: string;
+  command: string | null;
+  pattern: string | null;
+  timeoutSeconds: number | null;
+  action: string | null;
+  direction: string | null;
+  localPath: string | null;
+  remotePath: string | null;
+}
+
+export interface AutomationStepResult {
+  stepId: string;
+  kind: string;
+  status: string;
+  startedAt: string;
+  durationMs: number;
+  output: string;
+  error: string | null;
+}
+
+export interface AutomationRun {
+  runId: string;
+  planId: string;
+  status: string;
+  currentStep: string | null;
+  results: AutomationStepResult[];
+}
+
+export interface SyncOptions {
+  includeHosts: boolean;
+  includePrivateKeyPaths: boolean;
+  includeCredentials: boolean;
+}
+
+export interface SyncResult {
+  path: string;
+  conflictCopy: string | null;
+  connectionCount: number;
+  encrypted: boolean;
+}
+
 export interface RemoteFile {
   name: string;
   path: string;
@@ -170,10 +296,31 @@ export interface TransferInput {
 
 export interface ProcessInfo {
   pid: number;
+  startedAt: string;
   user: string;
   cpuPercent: number;
   memoryPercent: number;
   command: string;
+}
+
+export interface NetworkSocket {
+  protocol: string;
+  state: string;
+  localAddress: string;
+  peerAddress: string;
+  process: string;
+}
+
+export interface NetworkSocketReport {
+  items: NetworkSocket[];
+  warning: string | null;
+}
+
+export interface NetworkDiagnosticResult {
+  kind: string;
+  target: string;
+  output: string;
+  durationMs: number;
 }
 
 export interface DiskInfo {

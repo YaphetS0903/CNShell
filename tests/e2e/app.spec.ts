@@ -87,7 +87,7 @@ test("preserves IME-style UTF-8 input and emoji",async({page})=>{
 test("keeps built-in commands read-only and allows deleting user commands",async({page})=>{
   await page.goto("/");await page.getByRole("button",{name:/演示服务器 developer@127\.0\.0\.1:22/}).click();await page.getByRole("tab",{name:"快捷命令",exact:true}).click();
   await expect(page.getByRole("button",{name:"系统概览 uname -a && uptime"})).toBeVisible();await expect(page.getByRole("button",{name:"删除快捷命令 系统概览"})).toHaveCount(0);
-  await page.getByPlaceholder("输入命令，Return 执行").fill("echo user-command");page.once("dialog",(dialog)=>dialog.accept("我的命令"));await page.getByRole("button",{name:"保存为快捷命令"}).click();
+  await page.getByRole("combobox",{name:"智能命令输入"}).fill("echo user-command");page.once("dialog",(dialog)=>dialog.accept("我的命令"));await page.getByRole("button",{name:"保存"}).click();
   const remove=page.getByRole("button",{name:"删除快捷命令 我的命令"});await expect(remove).toBeVisible();page.once("dialog",(dialog)=>dialog.accept());await remove.click();await expect(remove).toHaveCount(0);
 });
 
@@ -155,7 +155,7 @@ test("opens file actions from the row context menu",async({page})=>{
   await expect(fileMenu.getByRole("menuitem",{name:"选择应用打开…"})).toBeVisible();
 });
 
-test("keeps both terminal panes visible and exits split when selecting the secondary tab",async({page})=>{
+test("keeps the split tree while selecting its secondary tab",async({page})=>{
   await page.goto("/");
   await page.getByRole("button",{name:/演示服务器 developer@127\.0\.0\.1:22/}).click();
   await page.getByRole("button",{name:/预览终端 会话操作/}).click();
@@ -163,13 +163,12 @@ test("keeps both terminal panes visible and exits split when selecting the secon
   const tabs=page.getByRole("tablist",{name:"打开的会话"}).getByRole("tab");
   await expect(tabs).toHaveCount(2);
   await expect(tabs.nth(0)).toHaveAttribute("aria-selected","true");
-  await expect(page.locator(".terminal-area")).toHaveClass(/split/);
-  await expect(page.locator(".terminal-instance.active.pane-primary")).toHaveCount(1);
-  await expect(page.locator(".terminal-instance.active.pane-secondary")).toHaveCount(1);
+  await expect(page.locator(".terminal-instance.active")).toHaveCount(2);
+  await expect(page.getByRole("separator",{name:"调整左右终端窗格"})).toBeVisible();
   await tabs.nth(1).click();
-  await expect(page.locator(".terminal-area")).not.toHaveClass(/split/);
+  await expect(page.getByRole("separator",{name:"调整左右终端窗格"})).toBeVisible();
   await expect(tabs.nth(1)).toHaveAttribute("aria-selected","true");
-  await expect(page.locator(".terminal-instance.active.pane-primary")).toHaveCount(1);
+  await expect(page.locator(".terminal-instance.active")).toHaveCount(2);
 });
 
 test("creates and expands nested connection folders",async({page})=>{
