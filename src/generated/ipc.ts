@@ -382,6 +382,16 @@ export interface RdpPreflight {
   message: string;
 }
 
+export interface TerminalPreferences {
+  fontFamily: string;
+  fontSize: number;
+  lineHeight: number;
+  scrollback: number;
+  cursorStyle: string;
+  cursorBlink: boolean;
+  colorScheme: string;
+}
+
 export interface AppSettings {
   theme: string;
   monitorIntervalMs: number;
@@ -389,4 +399,6 @@ export interface AppSettings {
   confirmCloseActiveSession: boolean;
   showHiddenFiles: boolean;
   showWelcomeHelp: boolean;
+  terminal: TerminalPreferences;
+  terminalOverrides: Record<string, TerminalPreferences>;
 }

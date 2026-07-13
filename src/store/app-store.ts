@@ -36,7 +36,7 @@ interface AppState {
   setError: (error: string | null) => void;
 }
 
-export const useAppStore = create<AppState>((set) => ({
+export const useAppStore = create<AppState>((set, get) => ({
   connections: [], sessions: [], activeSessionId: null, activePanel: "files", monitor: null,
   transfers: [], settings: defaultSettings, connectionEditorOpen: false, editingConnection: null,
   settingsOpen: false, helpOpen: false, loading: true, error: null,
@@ -63,6 +63,6 @@ export const useAppStore = create<AppState>((set) => ({
   closeConnectionEditor: () => set({ connectionEditorOpen: false, editingConnection: null }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setHelpOpen: (helpOpen) => set({ helpOpen }),
-  saveSettings: async (settings) => { await api.saveSettings(settings); set({ settings }); },
+  saveSettings: async (settings) => { const previous=get().settings;set({settings});try{await api.saveSettings(settings);}catch(error){set({settings:previous});throw error;} },
   setError: (error) => set({ error })
 }));

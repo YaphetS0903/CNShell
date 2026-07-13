@@ -49,6 +49,8 @@ import {
 import { GlobalTerminalSearch } from "./GlobalTerminalSearch";
 import { PasteHistoryDialog, PasteSafetyDialog } from "./PasteSafetyDialog";
 import { pasteRisk } from "./terminal-safety";
+import { errorMessage } from "../../lib/format";
+import { resolveTerminalPreferences, withTerminalFontSize } from "./terminal-preferences";
 
 export default function TerminalWorkspace({
   connect,
@@ -65,6 +67,7 @@ export default function TerminalWorkspace({
     removeSession,
     setPanel,
     settings,
+    saveSettings,
     setError,
   } = useAppStore();
   const [findOpen, setFindOpen] = useState(false);
@@ -230,6 +233,7 @@ export default function TerminalWorkspace({
         event.preventDefault();
         refs.get(activeSessionId)?.current?.clear();
       }
+      if(event.metaKey&&activeSessionId&&["=","+","-","0"].includes(event.key)){const session=sessions.find((item)=>item.id===activeSessionId);if(session?.sessionType==="terminal"){event.preventDefault();const current=resolveTerminalPreferences(settings,session.connectionId).fontSize;const next=event.key==="0"?13:current+(event.key==="-"?-1:1);void saveSettings(withTerminalFontSize(settings,session.connectionId,next)).catch((reason)=>setError(errorMessage(reason)));}}
       if (event.metaKey && event.key.toLowerCase() === "w" && activeSessionId) {
         const session = sessions.find((item) => item.id === activeSessionId);
         if (
@@ -259,6 +263,9 @@ export default function TerminalWorkspace({
     selectSession,
     sessions,
     settings.confirmCloseActiveSession,
+    settings,
+    saveSettings,
+    setError,
   ]);
   useEffect(() => {
     const paste = (event: Event) => {

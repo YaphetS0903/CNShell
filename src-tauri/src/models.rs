@@ -484,6 +484,32 @@ pub struct RdpPreflight {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct TerminalPreferences {
+    pub font_family: String,
+    pub font_size: u16,
+    pub line_height: f64,
+    pub scrollback: u32,
+    pub cursor_style: String,
+    pub cursor_blink: bool,
+    pub color_scheme: String,
+}
+
+impl Default for TerminalPreferences {
+    fn default() -> Self {
+        Self {
+            font_family: "system".into(),
+            font_size: 13,
+            line_height: 1.25,
+            scrollback: 10_000,
+            cursor_style: "bar".into(),
+            cursor_blink: true,
+            color_scheme: "cnshell".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub theme: String,
     pub monitor_interval_ms: u64,
@@ -492,6 +518,10 @@ pub struct AppSettings {
     pub show_hidden_files: bool,
     #[serde(default = "default_true")]
     pub show_welcome_help: bool,
+    #[serde(default)]
+    pub terminal: TerminalPreferences,
+    #[serde(default)]
+    pub terminal_overrides: std::collections::BTreeMap<String, TerminalPreferences>,
 }
 
 impl Default for AppSettings {
@@ -503,6 +533,8 @@ impl Default for AppSettings {
             confirm_close_active_session: true,
             show_hidden_files: false,
             show_welcome_help: true,
+            terminal: TerminalPreferences::default(),
+            terminal_overrides: Default::default(),
         }
     }
 }

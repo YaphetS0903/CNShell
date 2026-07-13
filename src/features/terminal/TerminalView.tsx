@@ -23,6 +23,8 @@ import {
   type TriggerEvent,
 } from "./terminal-triggers";
 import { searchBuffer } from "./terminal-safety";
+import { useAppStore } from "../../store/app-store";
+import { resolveTerminalPreferences, terminalFontFamilies, terminalThemes } from "./terminal-preferences";
 
 export interface TerminalActions {
   findNext: (term: string) => boolean;
@@ -49,8 +51,14 @@ export const TerminalView = forwardRef<
     { line: number; timestamp: number | null }[]
   >([]);
   const terminalRef = useRef<Terminal | null>(null);
+  const fitRef = useRef<FitAddon | null>(null);
+  const triggerConfigRef = useRef<TriggerConfig | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const activeRef = useRef(focused);
+  const settings = useAppStore((state)=>state.settings);
+  const preferences = resolveTerminalPreferences(settings,session.connectionId);
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
   activeRef.current = focused;
   const copyLineRef = useRef<number | null>(null);
   useImperativeHandle(
@@ -99,33 +107,20 @@ export const TerminalView = forwardRef<
   useEffect(() => {
     const container = hostRef.current;
     if (!container) return;
+    const initialPreferences=preferencesRef.current;
     const terminal = new Terminal({
       allowProposedApi: false,
-      cursorBlink: true,
-      cursorStyle: "bar",
+      cursorBlink: initialPreferences.cursorBlink,
+      cursorStyle: initialPreferences.cursorStyle,
       convertEol: false,
-      scrollback: 10000,
-      fontFamily: "SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-      fontSize: 13,
-      lineHeight: 1.25,
-      theme: {
-        background: "#07101d",
-        foreground: "#dce6f4",
-        cursor: "#4ade80",
-        cursorAccent: "#07101d",
-        selectionBackground: "#315b8e88",
-        black: "#111827",
-        red: "#fb7185",
-        green: "#4ade80",
-        yellow: "#facc15",
-        blue: "#60a5fa",
-        magenta: "#c084fc",
-        cyan: "#22d3ee",
-        white: "#e5e7eb",
-        brightBlack: "#64748b",
-      },
+      scrollback: initialPreferences.scrollback,
+      fontFamily: terminalFontFamilies[initialPreferences.fontFamily],
+      fontSize: initialPreferences.fontSize,
+      lineHeight: initialPreferences.lineHeight,
+      theme: terminalThemes[initialPreferences.colorScheme],
     });
     const fit = new FitAddon();
+    fitRef.current=fit;
     const search = new SearchAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(search);
@@ -137,14 +132,16 @@ export const TerminalView = forwardRef<
       return Boolean(cwd);
     });
     let triggerConfig = loadTriggerConfig();
+    triggerConfigRef.current=triggerConfig;
     const applyCursor = () => {
       terminal.options.cursorStyle = triggerConfig.enhancedCursor
         ? "block"
-        : "bar";
-      terminal.options.cursorBlink = true;
+        : preferencesRef.current.cursorStyle;
+      terminal.options.cursorBlink = preferencesRef.current.cursorBlink;
     };
     const configHandler = (event: Event) => {
       triggerConfig = (event as CustomEvent<TriggerConfig>).detail;
+      triggerConfigRef.current=triggerConfig;
       applyCursor();
     };
     window.addEventListener("cnshell-trigger-config", configHandler);
@@ -320,7 +317,7 @@ export const TerminalView = forwardRef<
         return false;
       }
       return !(
-        event.metaKey && ["f", "k", "w", "t"].includes(event.key.toLowerCase())
+        event.metaKey && ["f", "k", "w", "t", "=", "+", "-", "0"].includes(event.key.toLowerCase())
       );
     });
     const scrollDisposable = terminal.onScroll(updateTimestampRows);
@@ -432,8 +429,32 @@ export const TerminalView = forwardRef<
       promptHandler.dispose();
       terminal.dispose();
       terminalRef.current = null;
+      fitRef.current = null;
+      triggerConfigRef.current = null;
     };
   }, [session.id, session.title]);
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    terminal.options.fontFamily = terminalFontFamilies[preferences.fontFamily];
+    terminal.options.fontSize = preferences.fontSize;
+    terminal.options.lineHeight = preferences.lineHeight;
+    terminal.options.scrollback = preferences.scrollback;
+    terminal.options.theme = terminalThemes[preferences.colorScheme];
+    terminal.options.cursorStyle = triggerConfigRef.current?.enhancedCursor
+      ? "block"
+      : preferences.cursorStyle;
+    terminal.options.cursorBlink = preferences.cursorBlink;
+    if (containerRef.current) {
+      containerRef.current.style.backgroundColor =
+        terminalThemes[preferences.colorScheme].background ?? "";
+    }
+    requestAnimationFrame(() => {
+      if (terminalRef.current !== terminal) return;
+      fitRef.current?.fit();
+      void api.terminalResize(session.id, terminal.cols, terminal.rows);
+    });
+  }, [preferences, session.id]);
   useEffect(() => {
     if (focused) terminalRef.current?.focus();
   }, [focused]);

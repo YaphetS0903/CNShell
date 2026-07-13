@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() =>
+    localStorage.setItem("cnshell-welcome-seen", "1"),
+  );
+});
+
 test("creates a connection and opens browser preview terminal", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "连接" })).toBeVisible();
@@ -30,6 +36,37 @@ test("opens settings and help with accessible dialogs", async ({ page }) => {
   await navigation.getByRole("button", { name: "使用帮助" }).click();
   await expect(page.getByRole("dialog", { name: "CNshell 使用帮助" })).toContainText("密码不写入数据库和日志");
   await expect(page.getByRole("dialog")).toHaveCount(1);
+});
+
+test("applies terminal preferences to an open session without reconnecting", async ({ page }) => {
+  await page.goto("/");
+  await page
+    .getByRole("button", { name: /演示服务器 developer@127\.0\.0\.1:22/ })
+    .click();
+  await expect(page.getByRole("tab", { name: "预览终端" })).toBeVisible();
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "设置" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "设置" });
+  await dialog.getByLabel("字体").selectOption("menlo");
+  await dialog.getByLabel("字号").fill("18");
+  await dialog.getByRole("radio", { name: "Solarized" }).click();
+  await dialog.getByRole("button", { name: "保存设置" }).click();
+  await expect(page.locator(".terminal-instance.active")).toHaveCSS(
+    "background-color",
+    "rgb(0, 43, 54)",
+  );
+  await expect(page.getByRole("tab", { name: "预览终端" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Terminal input" }).click();
+  await page.keyboard.press("Meta+=");
+  await page
+    .getByRole("navigation")
+    .getByRole("button", { name: "设置" })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "设置" }).getByLabel("字号"),
+  ).toHaveValue("19");
 });
 
 test("follows the macOS light appearance without overriding explicit themes", async ({ page }) => {

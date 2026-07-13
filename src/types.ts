@@ -94,8 +94,18 @@ export type TransferInput = Omit<GeneratedTransferInput, "direction" | "conflict
   direction: TransferDirection;
   conflictPolicy: ConflictPolicy;
 };
-export type AppSettings = Omit<GeneratedAppSettings, "theme"> & {
+export type TerminalFontFamily = "system" | "menlo" | "monaco" | "courier";
+export type TerminalCursorStyle = "block" | "underline" | "bar";
+export type TerminalColorScheme = "cnshell" | "classic" | "solarizedDark" | "light";
+export type TerminalPreferences = Omit<import("./generated/ipc").TerminalPreferences, "fontFamily" | "cursorStyle" | "colorScheme"> & {
+  fontFamily: TerminalFontFamily;
+  cursorStyle: TerminalCursorStyle;
+  colorScheme: TerminalColorScheme;
+};
+export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "terminalOverrides"> & {
   theme: "system" | "dark" | "light" | "highContrast";
+  terminal: TerminalPreferences;
+  terminalOverrides: Record<string, TerminalPreferences>;
 };
 
 export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpPreflight, SessionLogStatus, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
@@ -107,4 +117,23 @@ export const defaultSettings: AppSettings = {
   confirmCloseActiveSession: true,
   showHiddenFiles: false,
   showWelcomeHelp: true,
+  terminal: {
+    fontFamily: "system",
+    fontSize: 13,
+    lineHeight: 1.25,
+    scrollback: 10000,
+    cursorStyle: "bar",
+    cursorBlink: true,
+    colorScheme: "cnshell",
+  },
+  terminalOverrides: {},
 };
+
+export function normalizeAppSettings(value: Partial<AppSettings> | null | undefined): AppSettings {
+  return {
+    ...defaultSettings,
+    ...(value ?? {}),
+    terminal: { ...defaultSettings.terminal, ...(value?.terminal ?? {}) },
+    terminalOverrides: value?.terminalOverrides ?? {},
+  };
+}

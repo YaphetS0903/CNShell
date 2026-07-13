@@ -766,6 +766,28 @@ pub fn validate_settings(settings: &AppSettings) -> AppResult<()> {
     if ![1000, 2000, 5000].contains(&settings.monitor_interval_ms) {
         return Err(AppError::Validation("监控刷新间隔无效".into()));
     }
+    validate_terminal_preferences(&settings.terminal)?;
+    if settings.terminal_overrides.len() > 10_000
+        || settings.terminal_overrides.iter().any(|(id, preferences)| {
+            id.is_empty() || id.len() > 128 || validate_terminal_preferences(preferences).is_err()
+        })
+    {
+        return Err(AppError::Validation("连接终端偏好无效".into()));
+    }
+    Ok(())
+}
+
+fn validate_terminal_preferences(preferences: &TerminalPreferences) -> AppResult<()> {
+    if !["system", "menlo", "monaco", "courier"].contains(&preferences.font_family.as_str())
+        || !(10..=24).contains(&preferences.font_size)
+        || !(1.0..=2.0).contains(&preferences.line_height)
+        || ![1_000, 10_000, 50_000, 100_000].contains(&preferences.scrollback)
+        || !["block", "underline", "bar"].contains(&preferences.cursor_style.as_str())
+        || !["cnshell", "classic", "solarizedDark", "light"]
+            .contains(&preferences.color_scheme.as_str())
+    {
+        return Err(AppError::Validation("终端偏好无效".into()));
+    }
     Ok(())
 }
 
@@ -799,6 +821,9 @@ mod tests {
     fn rejects_invalid_settings_and_environment() {
         let mut settings = AppSettings::default();
         settings.theme = "invented".into();
+        assert!(validate_settings(&settings).is_err());
+        settings.theme = "system".into();
+        settings.terminal.font_size = 40;
         assert!(validate_settings(&settings).is_err());
         let mut input = SaveConnectionInput {
             id: "1".into(),

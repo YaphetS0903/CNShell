@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCheck, TerminalSquare } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
@@ -7,9 +7,10 @@ import type { AuthType, Folder, ProxyProfile, SaveConnectionInput } from "../../
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
+import { TerminalPreferencesFields } from "../settings/TerminalPreferencesFields";
 
 export function ConnectionEditor() {
-  const { connectionEditorOpen, editingConnection, closeConnectionEditor, refreshConnections, setError } = useAppStore();
+  const { connectionEditorOpen, editingConnection, closeConnectionEditor, refreshConnections, setError, settings, saveSettings } = useAppStore();
   const initial = useMemo<SaveConnectionInput>(() => editingConnection ? { ...editingConnection, credential: "" } : {
     id: crypto.randomUUID(), folderId: null, protocol: "ssh", name: "", host: "", port: 22, username: "root", authType: "password", privateKeyPath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, credential: ""
   }, [editingConnection]);
@@ -18,17 +19,22 @@ export function ConnectionEditor() {
   const [saving, setSaving] = useState(false);
   const [proxies, setProxies] = useState<ProxyProfile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [overrideEnabled,setOverrideEnabled]=useState(false);
+  const [terminalOverride,setTerminalOverride]=useState(settings.terminal);
   useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
   useEffect(() => {
     if (!connectionEditorOpen) return;
     setForm(initial);
     setShowSecret(false);
-  }, [connectionEditorOpen, initial]);
+    const override=settings.terminalOverrides[initial.id];
+    setOverrideEnabled(Boolean(override));
+    setTerminalOverride(override??settings.terminal);
+  }, [connectionEditorOpen, initial, settings]);
   if (!connectionEditorOpen) return null;
   const change = <K extends keyof SaveConnectionInput>(key: K, value: SaveConnectionInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true);
-    try { await api.saveConnection(form); await refreshConnections(); closeConnectionEditor(); }
+    try { await api.saveConnection(form);const terminalOverrides={...settings.terminalOverrides};if(form.protocol==="ssh"&&overrideEnabled)terminalOverrides[form.id]=terminalOverride;else delete terminalOverrides[form.id];await saveSettings({...settings,terminalOverrides});await refreshConnections(); closeConnectionEditor(); }
     catch (error) { setError(errorMessage(error)); } finally { setSaving(false); }
   };
   const choosePrivateKey = async () => {
@@ -71,6 +77,7 @@ export function ConnectionEditor() {
         <div className="form-section-title"><span><KeyRound size={17}/>远程桌面认证</span><small>密码通过 stdin 安全传递给 FreeRDP</small></div>
         <div className="form-grid"><label className="span-2"><span>Windows 密码</span><div className="password-field"><input required={!editingConnection?.hasCredential} type={showSecret?"text":"password"} value={form.credential??""} onChange={(event)=>change("credential",event.target.value)} placeholder={editingConnection?.hasCredential?"留空以保留已保存凭据":""} autoComplete="new-password"/><button type="button" onClick={()=>setShowSecret(!showSecret)} aria-label={showSecret?"隐藏密码":"显示密码"}>{showSecret?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></label></div>
       </>}
+      {form.protocol === "ssh" && <><div className="form-section-title"><span><TerminalSquare size={17}/>终端偏好</span><small>默认跟随全局设置</small></div><label className="check-row"><input type="checkbox" checked={overrideEnabled} onChange={(event)=>setOverrideEnabled(event.target.checked)}/><span>为此连接覆盖全局终端偏好</span></label>{overrideEnabled&&<TerminalPreferencesFields idPrefix={`connection-terminal-${form.id}`} value={terminalOverride} onChange={setTerminalOverride}/>}</>}
       <div className="form-section-title"><span><CheckCircle2 size={17}/>备注</span></div>
       <label><textarea rows={3} value={form.note} onChange={(event) => change("note", event.target.value)} placeholder="用途、负责人或环境说明" /></label>
       <footer className="form-actions"><button type="button" className="button secondary" onClick={closeConnectionEditor}>取消</button><button className="button primary" disabled={saving}>{saving && <LoaderCircle className="spin" size={16}/>}保存连接</button></footer>

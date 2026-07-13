@@ -58,7 +58,7 @@
 | `npm audit --audit-level=moderate` | 本轮两次请求均在连接 npm registry 前发生 TLS 中断，未取得审计结论；不把网络失败记作 0 漏洞。提交前其余本地门禁不受影响，待 registry 恢复后重跑 |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`21bee36998f6d03b7d69af8ab3ef915b78b8a087ce9783ccc65bcecc1b5ae14a`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；DMG SHA-256：`4346301043787375748412164adfbed080e1dfd50c1314356fcc27b5dd769a85`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 

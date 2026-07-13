@@ -1,10 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAppStore } from "../../store/app-store";
 import { ConnectionEditor } from "./ConnectionEditor";
 import type { ConnectionProfile } from "../../types";
 import { api } from "../../lib/api";
+import { defaultSettings } from "../../types";
 
 const dialog = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
@@ -60,4 +61,6 @@ describe("ConnectionEditor", () => {
     expect(dialog.open).toHaveBeenCalledWith({ multiple: false, directory: false });
     expect(screen.getByRole("textbox", { name: "私钥路径" })).toHaveValue("/Users/test/.ssh/id_ed25519");
   });
+
+  it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
 });

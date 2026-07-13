@@ -29,6 +29,7 @@ import type {
   TransferTask
 } from "../types";
 import type { CommandSnippet, PortForward, ProxyProfile, SaveProxyInput } from "../types";
+import { normalizeAppSettings } from "../types";
 
 const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -219,7 +220,7 @@ export const api = {
   },
   async rdpClose(sessionId:string):Promise<void>{if(isTauri())await invoke("rdp_close",{sessionId});},
   async getSettings(): Promise<AppSettings> {
-    if (!isTauri()) return JSON.parse(localStorage.getItem("cnshell-settings") ?? "null") ?? { theme: "system", monitorIntervalMs: 2000, rememberCommandHistory: true, confirmCloseActiveSession: true, showHiddenFiles: false };
+    if (!isTauri()) return normalizeAppSettings(JSON.parse(localStorage.getItem("cnshell-settings") ?? "null"));
     return invoke("settings_get");
   },
   async saveSettings(settings: AppSettings): Promise<AppSettings> {
