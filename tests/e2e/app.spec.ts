@@ -124,6 +124,11 @@ test("expands and navigates the remote directory tree",async({page})=>{
   await tree.getByRole("button",{name:"developer",exact:true}).click();
   await expect(page.getByLabel("远程路径")).toHaveValue("/home/developer");
   await expect(page.getByRole("table",{name:"远程目录 /home/developer"})).toContainText("README.txt");
+  await page.getByRole("tab",{name:"快捷命令",exact:true}).click();
+  await page.getByRole("tab",{name:"文件",exact:true}).click();
+  await expect(page.getByLabel("远程路径")).toHaveValue("/home/developer");
+  await expect(tree.getByRole("button",{name:"折叠 home"})).toBeVisible();
+  await expect(tree.getByRole("button",{name:"developer",exact:true})).toBeVisible();
   await tree.getByRole("button",{name:"折叠 home"}).click();
   await expect(tree.getByRole("button",{name:"developer",exact:true})).toBeHidden();
 });

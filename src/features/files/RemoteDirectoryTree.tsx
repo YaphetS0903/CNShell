@@ -5,17 +5,23 @@ type DirectoryNode = { name: string; path: string };
 
 type RemoteDirectoryTreeProps = {
   activePath: string;
+  initialExpanded?: string[];
   listDirectories: (path: string) => Promise<DirectoryNode[]>;
   onNavigate: (path: string) => void;
   onError: (reason: unknown) => void;
+  onExpandedChange?: (paths: string[]) => void;
 };
 
-export function RemoteDirectoryTree({ activePath, listDirectories, onNavigate, onError }: RemoteDirectoryTreeProps) {
-  const [expanded, setExpanded] = useState(() => new Set(["/"]));
+export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectories, onNavigate, onError, onExpandedChange }: RemoteDirectoryTreeProps) {
+  const [expanded, setExpanded] = useState(() => new Set(["/", ...(initialExpanded ?? [])]));
   const [children, setChildren] = useState<Record<string, DirectoryNode[]>>({});
   const [loading, setLoading] = useState(() => new Set<string>());
   const loadedPaths = useRef(new Set<string>());
   const loadingPaths = useRef(new Set<string>());
+
+  useEffect(() => {
+    onExpandedChange?.([...expanded]);
+  }, [expanded, onExpandedChange]);
 
   const loadChildren = useCallback(async (path: string, force = false) => {
     if (loadingPaths.current.has(path) || (!force && loadedPaths.current.has(path))) return;

@@ -117,6 +117,7 @@ export default function TerminalWorkspace({
       }
       removeSession(id);
       refs.delete(id);
+      workspaceRuntime.remoteFileBrowserBySession.delete(id);
     },
     [refs, removeSession],
   );
@@ -749,7 +750,7 @@ export default function TerminalWorkspace({
                     className="panel-content"
                   >
                     {activePanel === "files" && (
-                      <FileManager session={active} />
+                      <FileManager key={active.id} session={active} />
                     )}{" "}
                     {activePanel === "commands" && (
                       <CommandPanel session={active} onError={setError} />

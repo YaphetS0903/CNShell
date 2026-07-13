@@ -7,7 +7,8 @@ export const workspaceRuntime={
   pasteHistory:[] as string[],
   terminalSearchBySession:new Map<string,(query:string)=>import("../features/terminal/terminal-safety").GlobalSearchMatch[]>(),
   terminalTimestampsBySession:new Map<string,import("../features/terminal/terminal-safety").TerminalLineTimestamp[]>(),
-  terminalActivity:new Set<string>()
+  terminalActivity:new Set<string>(),
+  remoteFileBrowserBySession:new Map<string,{path:string;expandedPaths:string[]}>()
 };
 
 export function parseOsc7Cwd(value:string):string|null{
