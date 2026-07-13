@@ -67,10 +67,37 @@ async fn exec(
 }
 
 fn section<'a>(text: &'a str, name: &str, next: &str) -> &'a str {
-    text.split_once(name)
-        .and_then(|(_, rest)| rest.split_once(next).map(|(body, _)| body))
-        .unwrap_or("")
-        .trim()
+    let Some((_, body_start)) = marker_line_bounds(text, name, 0) else {
+        return "";
+    };
+    let Some((body_end, _)) = marker_line_bounds(text, next, body_start) else {
+        return "";
+    };
+    text[body_start..body_end].trim()
+}
+
+fn marker_line_bounds(text: &str, marker: &str, from: usize) -> Option<(usize, usize)> {
+    let bytes = text.as_bytes();
+    let mut start = from;
+    while start <= text.len() {
+        let end = text[start..]
+            .find('\n')
+            .map(|offset| start + offset)
+            .unwrap_or(text.len());
+        let content_end = if end > start && bytes[end - 1] == b'\r' {
+            end - 1
+        } else {
+            end
+        };
+        if &text[start..content_end] == marker {
+            return Some((start, if end < text.len() { end + 1 } else { end }));
+        }
+        if end == text.len() {
+            break;
+        }
+        start = end + 1;
+    }
+    None
 }
 
 fn parse_cpu(line: &str) -> Option<(u64, u64)> {
@@ -563,6 +590,12 @@ mod tests {
             "Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 1000 400 600 40% /",
         );
         assert_eq!(disks[0].used_percent, 40.0);
+    }
+    #[test]
+    fn section_ignores_monitor_markers_inside_process_commands() {
+        let output = "__PROC__\n100 sh -c echo __NET__; echo __DISK__; echo __END__\n__NET__\nInter-| Receive\n eth0: 1 0 0 0 0 0 0 0 2\n__DISK__\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 1000 400 600 40% /\n__END__\n";
+        assert!(section(output, "__NET__", "__DISK__").contains("eth0:"));
+        assert!(section(output, "__DISK__", "__END__").contains("/dev/vda"));
     }
     #[test]
     fn parses_ss_and_netstat_without_mixing_columns() {
