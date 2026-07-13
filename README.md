@@ -1,37 +1,111 @@
 # CNshell
 
-CNshell 是面向 macOS 的 SSH、SFTP、Linux 监控与 RDP 启动工作区。它使用 Tauri 2、React、Rust、libssh2、SQLite 与 macOS Keychain 构建。
+<p align="center">
+  <img src="src-tauri/icons/128x128@2x.png" width="128" height="128" alt="CNshell 应用图标">
+</p>
+
+CNshell 是面向 macOS 的 SSH、SFTP、Linux 监控和 RDP 工作区。它将远程终端、文件管理、服务器状态与连接资料集中在一个原生桌面应用中。
+
+> [!WARNING]
+> `v0.1.0` 是供早期测试的 Beta 版本，采用 ad-hoc 签名，尚未完成 Apple Developer ID 签名和公证。请只在可信测试设备上使用，并在安装前核对下载来源与 SHA-256。
+
+## 下载
+
+- [打开 CNshell v0.1.0 Beta 发布页](https://github.com/YaphetS0903/CNShell/releases/tag/v0.1.0)
+- [直接下载 universal DMG](https://github.com/YaphetS0903/CNShell/releases/download/v0.1.0/CNshell_0.1.0_universal.dmg)
+- 系统要求：macOS 13 Ventura 或更高版本
+- 处理器：Apple Silicon 与 Intel Mac
+- SHA-256：`1837594f3bacaae218dd3a99138cf510ebb734b6ddf3e8ba09fbae061af2f3d3`
+
+DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要求用户安装 Homebrew、XQuartz 或开发环境。
+
+## 安装
+
+1. 下载并打开 `CNshell_0.1.0_universal.dmg`。
+2. 将 `CNshell.app` 拖入“应用程序”。
+3. 在 Finder 中打开“应用程序”，首次启动时选择 CNshell 并使用右键菜单中的“打开”。
+4. 仔细阅读 macOS 的来源提示；只有确认 DMG 来自本仓库发布页时才继续。
+5. 创建 SSH 连接后，通过云控制台或管理员提供的可信渠道核对首次显示的 SHA-256 主机指纹。
+
+不要使用 `xattr -cr`、关闭 Gatekeeper 或其他全局绕过安全检查的命令。升级、数据保留和完整卸载步骤见 [安装文档](docs/INSTALLATION.md)。
+
+## 主要功能
+
+### 终端与连接
+
+- SSH 密码、私钥、SSH Agent、严格主机指纹校验、代理、跳板机与端口转发
+- 多标签终端、任意嵌套拆分、搜索、Copy Mode、快捷命令、自动重连与会话日志
+- OpenSSH config 导入、Ed25519 密钥生成与公钥部署
+- 多主机批量执行、危险命令确认与受限自动化任务
+
+### 文件与服务器
+
+- SFTP 目录树、后台上传下载、暂停、重试、冲突策略与文件夹传输
+- CodeMirror 远端文本编辑、原子保存、外部修改检测与三方冲突处理
+- Linux CPU、内存、Swap、网络、进程、磁盘、延迟与系统信息
+- 进程管理、Socket 列表、Ping 和 Traceroute 诊断
+
+### 桌面与数据
+
+- 内置 Apple Silicon + Intel universal FreeRDP，RDP 凭据不进入命令参数或环境变量
+- 连接文件夹、软删除、macOS Keychain 凭据、加密备份与加密同步
+- 浅色、深色和高对比主题，终端字体、字号、光标与配色偏好
+- 脱敏诊断导出；默认不上传遥测、终端内容、连接资料或崩溃信息
+
+## 安全与隐私
+
+- 密码、私钥口令和代理密码保存在 macOS Keychain，不写入 SQLite 或诊断文件。
+- 首次连接必须确认服务器指纹；已记录的指纹发生变化时会阻止连接。
+- 普通安全导出不包含凭据；包含凭据的备份使用 Argon2id 与 AES-256-GCM 加密。
+- 当前版本没有遥测 SDK，不会自动上传命令历史、终端内容或崩溃信息。
+
+详细边界见 [安全说明](docs/SECURITY.md) 和 [隐私说明](docs/PRIVACY.md)。
+
+## 已知限制
+
+- 当前 Beta 未完成 Developer ID 签名、公证和正式自动更新通道。
+- RDP 使用独立 FreeRDP 窗口，尚未内嵌到 CNshell 主窗口。
+- Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver 真机矩阵仍待扩大。
+- Zmodem、Mosh 和 X11 仅显示真实依赖状态，尚未声明完整互操作支持。
+
+完整验收范围与未覆盖环境见 [验收记录](docs/ACCEPTANCE.md)。
+
+## 反馈问题
+
+- [提交错误报告](https://github.com/YaphetS0903/CNShell/issues/new?template=bug_report.yml)
+- [提出功能建议](https://github.com/YaphetS0903/CNShell/issues/new?template=feature_request.yml)
+
+报告错误前，可在 CNshell 中打开“设置 → 故障诊断 → 导出脱敏诊断”。请仍然自行检查文件，不要公开密码、私钥、令牌、完整主机地址或其他敏感信息。安全漏洞请使用仓库的 [私密安全报告](https://github.com/YaphetS0903/CNShell/security/advisories/new)，不要创建公开 Issue。
+
+## 文档
+
+| 文档 | 内容 |
+| --- | --- |
+| [用户手册](docs/USER_GUIDE.md) | 首次连接、终端、文件、监控、RDP、备份与高级功能 |
+| [快捷键](docs/SHORTCUTS.md) | 全局、终端和文件操作快捷键 |
+| [故障排查](docs/TROUBLESHOOTING.md) | 连接、认证、SFTP、监控和 RDP 常见问题 |
+| [安装说明](docs/INSTALLATION.md) | 安装、手动升级、数据保留和完整卸载 |
+| [版本记录](CHANGELOG.md) | 当前功能、修复与已知限制 |
 
 ## 开发
 
-要求 macOS 13+、Xcode Command Line Tools、Node.js 20+、Rust stable。
+需要 macOS 13+、Xcode Command Line Tools、Node.js 20+ 和 Rust stable。
 
 ```bash
 npm install
 npm run tauri dev
 ```
 
-质量检查：
+运行完整短时质量检查：
 
 ```bash
 npm run check
 ```
 
-本地打包：
+本地构建 App 与 DMG：
 
 ```bash
 npm run tauri build -- --bundles app,dmg
 ```
 
-## 功能
-
-- SSH 密码、私钥、SSH Agent 与严格 SHA-256 主机指纹确认；私钥通过 macOS security-scoped Bookmark 持久授权
-- 多标签 xterm 终端、搜索、True Color、IME、快捷命令和脱敏历史
-- SFTP 文件管理、原子文本保存、上传下载、暂停/恢复/重试；后台任务可查询、取消并报告进度
-- CPU、内存、Swap、网络、进程、磁盘与 Linux 系统信息
-- SOCKS5、HTTP CONNECT、SSH 跳板机、本地/远程/动态端口转发
-- 本地连接库、Keychain 凭据、加密备份与脱敏诊断
-- SFTP、监控和文件任务复用受控 SSH Transport Pool，终端与隧道使用独占连接
-- 随 DMG 内置受管 FreeRDP SDL sidecar；密码仅经标准输入传递，不进入参数或环境变量
-
-安装、升级和卸载见 [docs/INSTALLATION.md](docs/INSTALLATION.md)，用户说明见 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。架构、安全、快捷键和故障排查文档位于 `docs/`。
+正式签名、公证和 updater 发布流程见 [发布文档](docs/RELEASE.md)。

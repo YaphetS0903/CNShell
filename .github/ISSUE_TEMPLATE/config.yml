@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 私密安全报告
+    url: https://github.com/YaphetS0903/CNShell/security/advisories/new
+    about: 安全漏洞或可能包含敏感信息的问题请使用私密安全报告，不要创建公开 Issue。
+  - name: CNshell v0.1.0 Beta 下载与说明
+    url: https://github.com/YaphetS0903/CNShell/releases/tag/v0.1.0
+    about: 下载当前 Beta，查看安装说明、校验值与已知限制。

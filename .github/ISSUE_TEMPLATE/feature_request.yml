@@ -1,0 +1,89 @@
+name: 功能建议
+description: 描述需要解决的真实工作场景和预期交互
+title: "[Feature] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请先描述工作场景和问题，再提出具体方案。这有助于判断功能是否适合 CNshell 的安全边界。
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我搜索过现有 Issue 和路线图，没有发现相同建议。
+          required: true
+        - label: 建议中不包含密码、私钥、令牌、完整主机地址或其他敏感信息。
+          required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 功能区域
+      options:
+        - SSH 连接与认证
+        - 终端与命令效率
+        - SFTP 与远端编辑
+        - 服务器监控与诊断
+        - RDP 或其他协议
+        - 连接库、备份与同步
+        - 自动化
+        - 界面与辅助功能
+        - 安装、更新与发布
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 使用场景与问题
+      description: 目前需要完成什么工作？现有方式为什么不够？
+      placeholder: 当我……时，需要……，目前只能……
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述你期望看到的入口、操作顺序和结果。
+      placeholder: 我希望在……中增加……，操作后……
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 现有替代方式
+      description: 说明现在如何绕过，以及替代方式的不足。没有时填写“无”。
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: 使用频率
+      options:
+        - 每天多次
+        - 每天
+        - 每周
+        - 偶尔
+    validations:
+      required: true
+
+  - type: textarea
+    id: security
+    attributes:
+      label: 安全与隐私影响
+      description: 该功能是否需要读取终端内容、凭据、本地文件、远端文件或访问第三方网络？不确定时填写“不确定”。
+      placeholder: 例如只读取用户选择的本地文件，不需要上传；或不确定。
+    validations:
+      required: true
+
+  - type: textarea
+    id: references
+    attributes:
+      label: 参考资料
+      description: 可附其他工具的公开文档或已经脱敏的界面截图。
