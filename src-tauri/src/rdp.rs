@@ -6,18 +6,27 @@ use crate::{
 use parking_lot::Mutex;
 use std::{
     collections::{HashMap, HashSet},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
-    process::{Child, Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::Arc,
+    thread::JoinHandle,
 };
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 #[derive(Clone, Default)]
 pub struct RdpManager {
-    children: Arc<Mutex<HashMap<String, Arc<Mutex<Child>>>>>,
+    children: Arc<Mutex<HashMap<String, Arc<Mutex<ManagedRdpChild>>>>>,
     closing: Arc<Mutex<HashSet<String>>>,
+}
+
+const MAX_DIAGNOSTIC_BYTES: usize = 64 * 1024;
+
+struct ManagedRdpChild {
+    child: Child,
+    diagnostics: Arc<Mutex<Vec<u8>>>,
+    stderr_reader: Option<JoinHandle<()>>,
 }
 
 pub fn preflight() -> RdpPreflight {
@@ -81,7 +90,7 @@ impl RdpManager {
         let executable = helper_path().ok_or_else(|| AppError::Unavailable(preflight().message))?;
         let password = load_credential(&profile.id)?
             .ok_or_else(|| AppError::Authentication("Keychain 中没有保存 RDP 密码".into()))?;
-        let args = arguments(&executable, &profile, true);
+        let args = arguments(&profile);
         let child = spawn_helper(&executable, &args, &password)?;
         let id = Uuid::new_v4().to_string();
         let shared = Arc::new(Mutex::new(child));
@@ -90,7 +99,7 @@ impl RdpManager {
         let event_id = id.clone();
         std::thread::spawn(move || {
             let status = loop {
-                match shared.lock().try_wait() {
+                match shared.lock().child.try_wait() {
                     Ok(Some(status)) => break status,
                     Ok(None) => std::thread::sleep(std::time::Duration::from_millis(200)),
                     Err(error) => {
@@ -108,6 +117,15 @@ impl RdpManager {
                     }
                 }
             };
+            let stderr_reader = shared.lock().stderr_reader.take();
+            if let Some(reader) = stderr_reader {
+                let _ = reader.join();
+            }
+            let diagnostics = {
+                let buffer = shared.lock().diagnostics.clone();
+                let bytes = buffer.lock().clone();
+                String::from_utf8_lossy(&bytes).into_owned()
+            };
             manager.children.lock().remove(&event_id);
             let requested_close = manager.closing.lock().remove(&event_id);
             let successful = status.success();
@@ -124,7 +142,10 @@ impl RdpManager {
                     last_error: if successful || requested_close {
                         None
                     } else {
-                        Some(format!("FreeRDP 异常退出：{status}"))
+                        Some(format!(
+                            "FreeRDP 连接失败：{}",
+                            diagnostic_message(&diagnostics, &status)
+                        ))
                     },
                     attempt: None,
                 },
@@ -150,6 +171,7 @@ impl RdpManager {
         self.closing.lock().insert(id.into());
         child
             .lock()
+            .child
             .kill()
             .map_err(|error| AppError::Unavailable(format!("无法关闭 FreeRDP：{error}")))
     }
@@ -162,37 +184,104 @@ impl RdpManager {
     }
 }
 
-fn spawn_helper(executable: &Path, args: &[String], password: &str) -> AppResult<Child> {
-    if password.contains(['\r', '\n']) {
-        return Err(AppError::Validation("RDP 密码不能包含换行符".into()));
+fn spawn_helper(executable: &Path, args: &[String], password: &str) -> AppResult<ManagedRdpChild> {
+    if password.contains(['\r', '\n']) || args.iter().any(|arg| arg.contains(['\r', '\n'])) {
+        return Err(AppError::Validation(
+            "RDP 连接参数和密码不能包含换行符".into(),
+        ));
     }
     let mut child = Command::new(executable)
-        .args(args)
+        .arg("/args-from:stdin")
         .stdin(Stdio::piped())
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| AppError::Unavailable(format!("无法启动 FreeRDP：{error}")))?;
     let result = child
         .stdin
         .take()
-        .ok_or_else(|| AppError::Unavailable("FreeRDP 未提供密码输入通道".into()))
+        .ok_or_else(|| AppError::Unavailable("FreeRDP 未提供安全参数输入通道".into()))
         .and_then(|mut stdin| {
-            stdin
-                .write_all(format!("{password}\n").as_bytes())
-                .map_err(|error| {
-                    AppError::Unavailable(format!("无法向 FreeRDP 安全传递密码：{error}"))
-                })
+            for arg in args {
+                writeln!(stdin, "{arg}").map_err(|error| {
+                    AppError::Unavailable(format!("无法向 FreeRDP 安全传递连接参数：{error}"))
+                })?;
+            }
+            writeln!(stdin, "/p:{password}").map_err(|error| {
+                AppError::Unavailable(format!("无法向 FreeRDP 安全传递密码：{error}"))
+            })
         });
     if let Err(error) = result {
         let _ = child.kill();
         return Err(error);
     }
-    Ok(child)
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| AppError::Unavailable("FreeRDP 未提供诊断输出通道".into()))?;
+    let diagnostics = Arc::new(Mutex::new(Vec::new()));
+    let output = diagnostics.clone();
+    let stderr_reader = std::thread::spawn(move || {
+        let mut stderr = stderr;
+        let mut chunk = [0_u8; 4096];
+        while let Ok(size) = stderr.read(&mut chunk) {
+            if size == 0 {
+                break;
+            }
+            append_diagnostic(&output, &chunk[..size]);
+        }
+    });
+    Ok(ManagedRdpChild {
+        child,
+        diagnostics,
+        stderr_reader: Some(stderr_reader),
+    })
 }
 
-fn arguments(executable: &Path, profile: &ConnectionProfile, password_stdin: bool) -> Vec<String> {
-    let _ = executable;
+fn append_diagnostic(output: &Mutex<Vec<u8>>, chunk: &[u8]) {
+    let mut output = output.lock();
+    if chunk.len() >= MAX_DIAGNOSTIC_BYTES {
+        output.clear();
+        output.extend_from_slice(&chunk[chunk.len() - MAX_DIAGNOSTIC_BYTES..]);
+        return;
+    }
+    let overflow = output
+        .len()
+        .saturating_add(chunk.len())
+        .saturating_sub(MAX_DIAGNOSTIC_BYTES);
+    if overflow > 0 {
+        output.drain(..overflow);
+    }
+    output.extend_from_slice(chunk);
+}
+
+fn diagnostic_message(diagnostics: &str, status: &ExitStatus) -> String {
+    let known = [
+        (
+            "NTLM support not available",
+            "Windows NLA/NTLM 认证组件不可用，请重新安装 CNshell",
+        ),
+        (
+            "ERRCONNECT_LOGON_FAILURE",
+            "Windows 拒绝登录，请检查用户名、密码和域",
+        ),
+        ("ERRCONNECT_ACCOUNT_LOCKED_OUT", "Windows 账户已被锁定"),
+        ("ERRCONNECT_ACCOUNT_EXPIRED", "Windows 账户已过期"),
+        ("ERRCONNECT_PASSWORD_EXPIRED", "Windows 密码已过期"),
+        ("ERRCONNECT_DNS_NAME_NOT_FOUND", "无法解析 Windows 主机地址"),
+        ("ERRCONNECT_TLS_CONNECT_FAILED", "无法建立安全的 RDP 连接"),
+        (
+            "ERRCONNECT_CONNECT_TRANSPORT_FAILED",
+            "目标端口未返回有效的 RDP 协商响应，请确认 Windows 已开启远程桌面且端口正确",
+        ),
+    ];
+    known
+        .into_iter()
+        .find_map(|(needle, message)| diagnostics.contains(needle).then_some(message.into()))
+        .unwrap_or_else(|| format!("Helper 异常退出（{status}）"))
+}
+
+fn arguments(profile: &ConnectionProfile) -> Vec<String> {
     let target = if profile.host.contains(':') && !profile.host.starts_with('[') {
         format!("[{}]:{}", profile.host, profile.port)
     } else {
@@ -206,9 +295,7 @@ fn arguments(executable: &Path, profile: &ConnectionProfile, password_stdin: boo
         "+clipboard".into(),
         "+auto-reconnect".into(),
     ];
-    if password_stdin {
-        args.push("/from-stdin".into());
-    }
+    args.push("/log-level:WARN".into());
     args
 }
 
@@ -242,18 +329,16 @@ mod tests {
     }
 
     #[test]
-    fn xfreerdp_args_enable_dynamic_resolution_and_password_stdin() {
-        let args = arguments(Path::new("/usr/local/bin/xfreerdp"), &profile(), true);
+    fn freerdp_args_enable_dynamic_resolution_without_password() {
+        let args = arguments(&profile());
         assert!(args.contains(&"+dynamic-resolution".into()));
-        assert!(args.contains(&"/from-stdin".into()));
         assert!(!args.iter().any(|arg| arg.starts_with("/p:")));
     }
 
     #[test]
-    fn sdl_args_use_freerdp_3_syntax_and_password_stdin() {
-        let args = arguments(Path::new("sdl-freerdp"), &profile(), true);
+    fn sdl_args_use_freerdp_3_syntax() {
+        let args = arguments(&profile());
         assert!(args.contains(&"+clipboard".into()));
-        assert!(args.contains(&"/from-stdin".into()));
         assert!(args.contains(&"/u:user".into()));
         assert!(args.contains(&"/v:host:3389".into()));
         assert!(!args.iter().any(|arg| arg.starts_with("--")));
@@ -277,25 +362,34 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
-    fn helper_receives_password_only_through_stdin() {
+    fn helper_receives_all_arguments_only_through_stdin() {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         let script = directory.path().join("fake-freerdp");
         let args_file = directory.path().join("args.txt");
         let stdin_file = directory.path().join("stdin.txt");
-        std::fs::write(&script, format!("#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\nIFS= read -r secret\nprintf '%s' \"$secret\" > '{}'\n", args_file.display(), stdin_file.display())).unwrap();
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\ncat > '{}'\n",
+                args_file.display(),
+                stdin_file.display()
+            ),
+        )
+        .unwrap();
         let mut permissions = std::fs::metadata(&script).unwrap().permissions();
         permissions.set_mode(0o700);
         std::fs::set_permissions(&script, permissions).unwrap();
-        let args = arguments(Path::new("xfreerdp"), &profile(), true);
+        let args = arguments(&profile());
         let mut child = spawn_helper(&script, &args, "top-secret-password").unwrap();
-        assert!(child.wait().unwrap().success());
+        assert!(child.child.wait().unwrap().success());
+        child.stderr_reader.take().unwrap().join().unwrap();
         let recorded_args = std::fs::read_to_string(args_file).unwrap();
         assert!(!recorded_args.contains("top-secret-password"));
-        assert_eq!(
-            std::fs::read_to_string(stdin_file).unwrap(),
-            "top-secret-password"
-        );
+        assert_eq!(recorded_args.trim(), "/args-from:stdin");
+        let recorded_stdin = std::fs::read_to_string(stdin_file).unwrap();
+        assert!(recorded_stdin.contains("/v:host:3389\n"));
+        assert!(recorded_stdin.contains("/p:top-secret-password\n"));
     }
 
     #[test]
@@ -323,8 +417,33 @@ mod tests {
             .lock()
             .insert("session".into(), child.clone());
         manager.close("session").unwrap();
-        let status = child.lock().wait().unwrap();
+        let status = child.lock().child.wait().unwrap();
         assert!(!status.success());
         assert!(!manager.children.lock().contains_key("session"));
+    }
+
+    #[test]
+    fn diagnostics_translate_authentication_and_transport_failures() {
+        let status = Command::new("sh")
+            .args(["-c", "exit 147"])
+            .status()
+            .unwrap();
+        assert_eq!(
+            diagnostic_message("ERRCONNECT_LOGON_FAILURE", &status),
+            "Windows 拒绝登录，请检查用户名、密码和域"
+        );
+        assert_eq!(
+            diagnostic_message("ERRCONNECT_CONNECT_TRANSPORT_FAILED", &status),
+            "目标端口未返回有效的 RDP 协商响应，请确认 Windows 已开启远程桌面且端口正确"
+        );
+    }
+
+    #[test]
+    fn diagnostic_buffer_keeps_only_the_latest_bounded_output() {
+        let output = Mutex::new(vec![b'a'; MAX_DIAGNOSTIC_BYTES - 2]);
+        append_diagnostic(&output, b"tail");
+        let output = output.into_inner();
+        assert_eq!(output.len(), MAX_DIAGNOSTIC_BYTES);
+        assert!(output.ends_with(b"tail"));
     }
 }

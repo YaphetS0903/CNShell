@@ -35,6 +35,7 @@
 - 凭据与私钥 security-scoped Bookmark 保存于 macOS Keychain。
 - 下载与远端保存使用临时文件和原子替换，避免半成品覆盖正式目标。
 - RDP 密码仅通过 Helper stdin 传递，不进入参数或环境变量。
+- 修复内置 FreeRDP 静态构建缺少 NTLM 所需 MD4/RC4，以及仅显示 `exit status: 147` 的问题；连接参数与密码统一经 stdin 传递，并将握手、登录和账户错误转换为可操作提示。
 - SSH 认证和诊断阻塞具有恢复超时，网络断开使用有限退避重连。
 - 修复关闭会话并闲置后再次连接可能复用已被服务器回收的 Transport、最终报 `Session(-43)`；终端连接改为始终新建独占 Transport，后台共享 Transport 增加闲置淘汰。
 - Keychain 访问改为串行，避免终端、监控和 SFTP 并发触发重复系统授权；后台用户取消不再反复弹错。

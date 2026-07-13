@@ -24,7 +24,7 @@
 | 快捷命令、历史策略、帮助与首次引导 | 通过 | `src/features/terminal/TerminalWorkspace.tsx`、`src/features/help/HelpModal.tsx`、`src-tauri/src/db.rs` | Playwright 验证内置命令只读、用户命令删除和帮助弹窗可访问性；敏感历史检测与全量清空测试通过 |
 | 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/AdvancedSettings.tsx`、`src-tauri/src/backup.rs` | 连接库工具栏与设置均有导入入口；Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
 | 可折叠、可调尺寸的三栏与底部工具区 | 通过 | `src/App.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/lib/layout.ts` | 鼠标拖动与键盘方向键均可调整；侧栏尺寸进入工作区恢复，底部高度本机持久化；紧凑窗口 E2E 通过 |
-| RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，仅经 Helper stdin 传递；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、正常/异常退出事件及应用退出清理。真实 Windows 画面与输入互操作仍需外部主机 |
+| RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，全部参数与密码仅经 Helper stdin 传递；静态 helper 内置 NTLM 所需 MD4/MD5/RC4；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、诊断翻译及应用退出清理。当前局域网测试目标的 TCP 3389 可建立，但对默认、Cookie 和 legacy RDP 协商探针均返回 0 字节并断开，需目标 Windows 开启有效 RDP 服务后再验收画面与输入 |
 | 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分 | `src/styles.css`、`src/components/Modal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与最终 DMG 辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、真实方向键切换与独立菜单入口，SFTP 虚拟表格行列/排序/总数，以及监控数值替代；完整 VoiceOver 朗读顺序仍需用户主动开启系统 VoiceOver 后人工巡检 |
 | SQLite 历史迁移与失败前备份 | 通过 | `src-tauri/src/db.rs`、`src-tauri/migrations/` | v1–v4 无损升级、任务恢复、数据库 `.backup` 测试通过 |
 
@@ -51,14 +51,14 @@
 | `npm run lint` | 通过，0 warning |
 | `npm run test` | 通过，36 个文件、87 个测试；覆盖竞品路线图新增智能命令、日志、高亮性能、批量执行、编辑器、诊断、OpenSSH、协议设置、自动化 UI，以及原有目录树、连接文件夹、布局恢复、监控和通知 |
 | `npm run build` | 通过，TypeScript 与 Vite production build |
-| `cargo test --manifest-path src-tauri/Cargo.toml -- --skip live_ssh_soak` | 通过，93 个测试、1 个 soak 明确跳过；覆盖自动化 Schema、加密同步密文/冲突、OpenSSH 通配、协议能力、日志完整性，以及原有数据库、RDP、Bookmark、Transport Pool、迁移、IPC 和安全路径；所有 live 环境变量均已清除 |
+| `cargo test --manifest-path src-tauri/Cargo.toml -- --skip live_ssh_soak` | 通过，95 个测试、1 个 soak 明确跳过；覆盖自动化 Schema、加密同步密文/冲突、OpenSSH 通配、协议能力、日志完整性，以及原有数据库、RDP、Bookmark、Transport Pool、迁移、IPC 和安全路径；所有 live 环境变量均已清除 |
 | `npm run test:e2e` | 通过，15 个 Playwright 场景；覆盖远端目录树、完整文件右键入口、嵌套连接文件夹/移动入口、布局恢复、左右拆分状态和终端偏好实时应用 |
 | `npm run test:pty-fixture` | 通过；本机 Paramiko 密码认证夹具提供真实 PTY Shell，验证中文/Emoji 双向 UTF-8、ANSI 清屏/光标控制和 True Color 输出 |
 | `CNSHELL_PROTOCOL_FILTER=live_ssh_directory_transfer_round_trip_and_cleanup npm run test:protocol` | 通过；本轮真实 OpenSSH 小目录覆盖嵌套中文文件、上传/下载、覆盖交换及本地/远端临时清理。此前 10 万文件、1 GB、代理、隧道等全量协议证据继续保留，本轮未重复消耗资源 |
 | `npm audit --audit-level=moderate` | 本轮两次请求均在连接 npm registry 前发生 TLS 中断，未取得审计结论；不把网络失败记作 0 漏洞。提交前其余本地门禁不受影响，待 registry 恢复后重跑 |
 | `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；在仅保留 macOS 系统 PATH 的环境中，打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper；DMG SHA-256：`533e21e9ac0a38cdc1a1f28c62219a7443b4e5983fdc08d9e7a268c792d60b23`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；在仅保留 macOS 系统 PATH 的环境中，打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper；DMG SHA-256：`1837594f3bacaae218dd3a99138cf510ebb734b6ddf3e8ba09fbae061af2f3d3`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 
@@ -115,4 +115,4 @@ GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 P
 | 所有长任务立即返回任务 ID | 通过 | 文件传输使用持久化传输队列；连接诊断、远端压缩/解压和默认应用预览使用统一 `TaskManager`，command 立即返回任务 ID，通过 `background-task` 事件报告结果，并支持快照查询和取消。短小 SFTP 元数据及 10 MB 内文本操作保留普通 command，不属于长任务 |
 | 共享类型生成或 JSON Schema | 通过 | Rust `models.rs` 为 IPC 字段、可空性和嵌套结构的单一来源；`scripts/generate-ipc-types.mjs` 离线生成 `src/generated/ipc.ts`，`lint` 与 production build 均拒绝过期结果；前端仅用联合类型收窄业务枚举。本次生成迁移发现并修复了 `ProxyProfile.type` 曾被序列化为 `proxyType` 的真实漂移 |
 | 私钥安全作用域 Bookmark | 通过 | macOS 使用 NSURL 创建只读 security-scoped Bookmark，Base64 存入连接专属 Keychain 条目；认证时解析真实路径并以 RAII 启停访问，复制/永久删除/保存失败均同步处理，旧记录无 Bookmark 时兼容路径回退。真实 OpenSSH 测试将 profile 路径故意设为不存在文件后仍通过 Bookmark 完成认证。当前候选包尚未启用 App Sandbox，这是独立发布权限决策，不再是 Bookmark 实现缺口 |
-| RDP v1.5 完整 sidecar | 部分 | FreeRDP 3.28.0、OpenSSL、SDL、SDL_ttf 与 FreeType 已从固定哈希的官方源码静态构建为最低 macOS 13 的 arm64 + x86_64 sidecar，随应用资源和完整许可分发；Keychain 密码仅经 stdin 传递，支持动态分辨率、剪贴板、自动重连、受管会话标签、关闭与退出/崩溃隔离。仍需真实 Windows 验证画面、键鼠、剪贴板、缩放与多分辨率 |
+| RDP v1.5 完整 sidecar | 部分 | FreeRDP 3.28.0、OpenSSL、SDL、SDL_ttf 与 FreeType 已从固定哈希的官方源码静态构建为最低 macOS 13 的 arm64 + x86_64 sidecar，内置 NTLM 所需 MD4/MD5/RC4，并随应用资源和完整许可分发；连接参数与 Keychain 密码仅经 stdin 传递，支持动态分辨率、剪贴板、自动重连、受管会话标签、关闭、有限诊断捕获与错误翻译。仍需可正常响应 RDP 协商的 Windows 主机验证画面、键鼠、剪贴板、缩放与多分辨率 |

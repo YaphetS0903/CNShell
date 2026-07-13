@@ -16,8 +16,10 @@ OPENSSL_VERSION="3.6.3"
 SDL_VERSION="3.4.12"
 SDL_TTF_VERSION="3.2.2"
 FREETYPE_VERSION="VER-2-13-2-SDL"
+FREERDP_BUILD_REVISION="2"
 
 mkdir -p "$DOWNLOADS" "$SOURCES" "$OUTPUT/licenses"
+touch "$WORK/.metadata_never_index"
 
 download() {
   local filename="$1"
@@ -26,7 +28,8 @@ download() {
   local path="$DOWNLOADS/$filename"
   if [[ ! -f "$path" ]] || ! echo "$checksum  $path" | shasum -a 256 -c - >/dev/null 2>&1; then
     rm -f "$path"
-    curl --fail --location --retry 3 --output "$path" "$url"
+    curl --fail --location --retry 5 --retry-all-errors --connect-timeout 20 \
+      --output "$path" "$url"
   fi
   echo "$checksum  $path" | shasum -a 256 -c - >/dev/null
 }
@@ -75,6 +78,7 @@ build_architecture() {
   local prefix="$WORK/prefix-$arch"
   local openssl_source="$WORK/openssl-$arch"
   local openssl_stamp="$prefix/.openssl-$OPENSSL_VERSION-macos-$DEPLOYMENT_TARGET"
+  local freerdp_stamp="$prefix/.freerdp-$FREERDP_VERSION-r$FREERDP_BUILD_REVISION"
 
   if [[ ! -f "$openssl_stamp" ]]; then
     rm -f "$prefix/lib/libssl.a" "$prefix/lib/libcrypto.a"
@@ -114,7 +118,7 @@ build_architecture() {
     "$CMAKE" --build "$WORK/sdl-ttf-$arch" --target install --parallel "$JOBS" -- -s
   fi
 
-  if [[ ! -x "$prefix/bin/sdl-freerdp" || ! "$prefix/bin/sdl-freerdp" -nt "$openssl_stamp" ]]; then
+  if [[ ! -x "$prefix/bin/sdl-freerdp" || ! -f "$freerdp_stamp" ]]; then
     rm -rf "$WORK/freerdp-$arch"
     "$CMAKE" -S "$SOURCES/freerdp" -B "$WORK/freerdp-$arch" \
       -DCMAKE_BUILD_TYPE=Release \
@@ -126,6 +130,7 @@ build_architecture() {
       -DBUILD_SHARED_LIBS=OFF -DBUILD_TESTING=OFF -DBUILD_TESTING_INTERNAL=OFF \
       -DWITH_SERVER=OFF -DWITH_SAMPLE=OFF -DWITH_MANPAGES=OFF \
       -DWITH_X11=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF \
+      -DWITH_INTERNAL_MD4=ON -DWITH_INTERNAL_MD5=ON -DWITH_INTERNAL_RC4=ON \
       -DWITH_SMARTCARD_EMULATE=OFF -DWITH_SMARTCARD_PCSC=OFF -DWITH_PCSC=OFF -DWITH_AAD=OFF \
       -DCHANNEL_URBDRC=OFF -DCHANNEL_SMARTCARD=OFF -DCHANNEL_PRINTER=OFF \
       -DCHANNEL_SERIAL=OFF -DCHANNEL_PARALLEL=OFF \
@@ -136,6 +141,7 @@ build_architecture() {
     "$CMAKE" --build "$WORK/freerdp-$arch" --target sdl3-freerdp --parallel "$JOBS" -- -s
     mkdir -p "$prefix/bin"
     cp "$WORK/freerdp-$arch/client/SDL/SDL3/sdl-freerdp" "$prefix/bin/sdl-freerdp"
+    touch "$freerdp_stamp"
   fi
 
   [[ -x "$prefix/bin/sdl-freerdp" ]] || {
