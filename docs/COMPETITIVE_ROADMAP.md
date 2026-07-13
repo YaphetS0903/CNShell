@@ -17,7 +17,7 @@ CNshell 当前已经具备以下核心能力：
 - CPU、内存、Swap、进程、网络、延迟和磁盘实时监控。
 - 系统信息、连接诊断、加密备份、软删除和脱敏诊断导出。
 - macOS Keychain、浅色/深色/高对比主题及 universal App/DMG。
-- 外部 FreeRDP Helper 适配层。
+- 随应用分发的 universal FreeRDP SDL sidecar 适配层。
 
 目前基础 SSH/SFTP/监控工作流已经闭环。后续重点不应继续扩张基础页面，而应提高终端操作效率、自动化能力和故障诊断深度。
 

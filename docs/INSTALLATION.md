@@ -4,7 +4,7 @@
 
 - macOS 13 Ventura 或更高版本。
 - Apple Silicon 或 Intel Mac；CNshell DMG 内的应用为 universal binary。
-- SSH/SFTP/监控不需要本机开发环境。RDP 需另行安装 FreeRDP。
+- SSH/SFTP/监控和 RDP 均不需要 Homebrew 或本机开发环境；FreeRDP 已包含在 CNshell 应用包中。
 
 ## 安装
 
@@ -37,7 +37,7 @@
 3. 如需删除本机配置和历史，在 Finder 的“前往文件夹”中打开 `~/Library/Application Support/com.cnshell.desktop`，确认不再需要数据库备份后删除该目录。
 4. 打开“钥匙串访问”，搜索 `com.cnshell.desktop`，核对后删除仍遗留的 CNshell 条目。
 
-卸载不会修改远端服务器、`authorized_keys`、防火墙或用户自行安装的 FreeRDP。端口转发和受管 Helper 会随 CNshell 进程退出。
+卸载不会修改远端服务器、`authorized_keys` 或防火墙。端口转发和受管 FreeRDP sidecar 会随 CNshell 进程退出。
 
 ## 验收状态
 

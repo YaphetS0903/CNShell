@@ -57,6 +57,21 @@ ARCHITECTURES="$(lipo -archs "$EXECUTABLE_PATH")"
   exit 1
 }
 
+FREERDP_HELPER="$APP_PATH/Contents/Resources/freerdp/sdl-freerdp"
+[[ -x "$FREERDP_HELPER" ]] || {
+  echo "发布失败：应用未包含内置 FreeRDP helper。" >&2
+  exit 1
+}
+FREERDP_ARCHITECTURES="$(lipo -archs "$FREERDP_HELPER")"
+[[ " $FREERDP_ARCHITECTURES " == *" arm64 "* && " $FREERDP_ARCHITECTURES " == *" x86_64 "* ]] || {
+  echo "发布失败：FreeRDP helper 不是 arm64 + x86_64 universal binary：$FREERDP_ARCHITECTURES" >&2
+  exit 1
+}
+RDP_PREFLIGHT="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$EXECUTABLE_PATH" --rdp-preflight)"
+printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq '"available":true'
+printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq 'Contents/Resources/freerdp/sdl-freerdp'
+codesign --verify --strict --verbose=2 "$FREERDP_HELPER"
+
 DMG_PATHS=("$BUNDLE_ROOT"/dmg/*.dmg(N))
 (( ${#DMG_PATHS[@]} == 1 )) || {
   echo "发布失败：预期生成且仅生成一个 DMG，实际为 ${#DMG_PATHS[@]} 个。" >&2

@@ -114,7 +114,7 @@ CNshell 要把远程连接、命令行操作、文件传输和服务器状态监
 | 本地数据 | SQLite（WAL）+ SQLx migrations | 连接、文件夹、偏好、历史、任务元数据 |
 | 凭据 | macOS Keychain | 密码、私钥口令、代理凭据；数据库只保存 Keychain 引用 |
 | 图表 | uPlot | 高频、低开销的实时监控折线图 |
-| RDP | 独立 FreeRDP Helper 适配层 | v1.5 Windows 远程桌面，主应用与 GPL 组件进程隔离并单独完成许可审查 |
+| RDP | 内置 FreeRDP SDL sidecar 适配层 | v1.5 Windows 远程桌面，主应用与 Apache-2.0/Zlib/FreeType 许可组件保持进程隔离并随包分发许可文本 |
 | 测试 | Vitest、React Testing Library、Playwright、Rust tests | 单元、组件、端到端和协议测试 |
 
 不选 Electron：CNshell 的核心是长时间驻留的终端与监控工具，Tauri 可显著降低空闲内存和安装包体积。UI 仍使用 Web 技术，以获得成熟的 xterm.js 生态。
@@ -195,7 +195,7 @@ CommandSnippet
 - 应用崩溃后只恢复窗口、连接标签和工作目录，不自动提交未完成命令；传输任务标记为“待恢复”并由用户确认。
 - 断线采用 1、2、5、10、30 秒退避重连，最多自动尝试 5 次；认证失败和主机密钥变化禁止自动重试。
 - 发布包执行 Apple Developer ID 签名、公证和 Tauri 签名更新；更新失败保留当前可运行版本。
-- RDP Helper 在引入前完成 GPL 许可、打包与签名审查；若不能合规随包分发，则改为检测用户安装的 Helper，不降低 SSH 主线交付质量。
+- RDP sidecar 从固定哈希的官方源码静态构建为 universal binary，随包签名并分发 Apache-2.0、Zlib 与 FreeType 许可文本；用户不需要 Homebrew 或 XQuartz。
 
 ## 6. 分阶段实施计划
 

@@ -74,4 +74,11 @@ jobs:
           test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")" = 13.0
           architectures="$(lipo -archs "$app/Contents/MacOS/$executable")"
           [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]]
+          helper="$app/Contents/Resources/freerdp/sdl-freerdp"
+          test -x "$helper"
+          helper_architectures="$(lipo -archs "$helper")"
+          [[ " $helper_architectures " == *" arm64 "* && " $helper_architectures " == *" x86_64 "* ]]
+          preflight="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$app/Contents/MacOS/$executable" --rdp-preflight)"
+          printf '%s\n' "$preflight" | grep -Fq '"available":true'
+          printf '%s\n' "$preflight" | grep -Fq 'Contents/Resources/freerdp/sdl-freerdp'
           codesign --verify --deep --strict --verbose=2 "$app"

@@ -32,6 +32,6 @@ npm run tauri build -- --bundles app,dmg
 - SOCKS5、HTTP CONNECT、SSH 跳板机、本地/远程/动态端口转发
 - 本地连接库、Keychain 凭据、加密备份与脱敏诊断
 - SFTP、监控和文件任务复用受控 SSH Transport Pool，终端与隧道使用独占连接
-- 受管外部 FreeRDP Helper 生命周期；密码仅经标准输入传递，不进入参数或环境变量，且不随应用捆绑 GPL 组件
+- 随 DMG 内置受管 FreeRDP SDL sidecar；密码仅经标准输入传递，不进入参数或环境变量
 
 安装、升级和卸载见 [docs/INSTALLATION.md](docs/INSTALLATION.md)，用户说明见 [docs/USER_GUIDE.md](docs/USER_GUIDE.md)，版本变化见 [CHANGELOG.md](CHANGELOG.md)。架构、安全、快捷键和故障排查文档位于 `docs/`。

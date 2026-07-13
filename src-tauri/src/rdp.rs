@@ -35,19 +35,42 @@ pub fn preflight() -> RdpPreflight {
         None => RdpPreflight {
             available: false,
             executable: None,
-            message:
-                "未检测到 FreeRDP。请先通过 Homebrew 安装 freerdp，CNshell 不直接捆绑 GPL 组件。"
-                    .into(),
+            message: "CNshell 内置的 FreeRDP 组件缺失或损坏，请重新安装 CNshell。".into(),
         },
     }
 }
 
+const HELPER_NAMES: [&str; 3] = ["sdl-freerdp", "xfreerdp", "wlfreerdp"];
+
+fn bundled_helper_path_for(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()?
+        .parent()
+        .map(|contents| contents.join("Resources/freerdp/sdl-freerdp"))
+}
+
 fn helper_path() -> Option<PathBuf> {
-    std::env::var_os("CNSHELL_FREERDP_HELPER")
-        .map(PathBuf::from)
+    std::env::current_exe()
+        .ok()
+        .and_then(|executable| bundled_helper_path_for(&executable))
         .filter(|path| path.is_file())
         .or_else(|| {
-            ["wlfreerdp", "xfreerdp", "sdl-freerdp"]
+            std::env::var_os("CNSHELL_FREERDP_HELPER")
+                .map(PathBuf::from)
+                .filter(|path| path.is_file())
+        })
+        .or_else(|| {
+            ["/opt/homebrew/bin", "/usr/local/bin"]
+                .into_iter()
+                .flat_map(|directory| {
+                    HELPER_NAMES
+                        .into_iter()
+                        .map(move |name| Path::new(directory).join(name))
+                })
+                .find(|path| path.is_file())
+        })
+        .or_else(|| {
+            HELPER_NAMES
                 .into_iter()
                 .find_map(|candidate| which::which(candidate).ok())
         })
@@ -169,44 +192,24 @@ fn spawn_helper(executable: &Path, args: &[String], password: &str) -> AppResult
 }
 
 fn arguments(executable: &Path, profile: &ConnectionProfile, password_stdin: bool) -> Vec<String> {
-    let name = executable
-        .file_name()
-        .and_then(|value| value.to_str())
-        .unwrap_or("xfreerdp");
+    let _ = executable;
     let target = if profile.host.contains(':') && !profile.host.starts_with('[') {
         format!("[{}]:{}", profile.host, profile.port)
     } else {
         format!("{}:{}", profile.host, profile.port)
     };
-    if name == "sdl-freerdp" {
-        let mut args = vec![
-            "--server".into(),
-            target,
-            "--username".into(),
-            profile.username.clone(),
-            "--dynamic-resolution".into(),
-            "--clipboard".into(),
-            "--cert".into(),
-            "tofu".into(),
-        ];
-        if password_stdin {
-            args.push("--from-stdin".into());
-        }
-        args
-    } else {
-        let mut args = vec![
-            format!("/v:{target}"),
-            format!("/u:{}", profile.username),
-            "/cert:tofu".into(),
-            "/dynamic-resolution".into(),
-            "+clipboard".into(),
-            "/auto-reconnect".into(),
-        ];
-        if password_stdin {
-            args.push("/from-stdin".into());
-        }
-        args
+    let mut args = vec![
+        format!("/v:{target}"),
+        format!("/u:{}", profile.username),
+        "/cert:tofu".into(),
+        "+dynamic-resolution".into(),
+        "+clipboard".into(),
+        "+auto-reconnect".into(),
+    ];
+    if password_stdin {
+        args.push("/from-stdin".into());
     }
+    args
 }
 
 #[cfg(test)]
@@ -241,21 +244,34 @@ mod tests {
     #[test]
     fn xfreerdp_args_enable_dynamic_resolution_and_password_stdin() {
         let args = arguments(Path::new("/usr/local/bin/xfreerdp"), &profile(), true);
-        assert!(args.contains(&"/dynamic-resolution".into()));
+        assert!(args.contains(&"+dynamic-resolution".into()));
         assert!(args.contains(&"/from-stdin".into()));
         assert!(!args.iter().any(|arg| arg.starts_with("/p:")));
     }
 
     #[test]
-    fn sdl_args_use_long_options_and_password_stdin() {
+    fn sdl_args_use_freerdp_3_syntax_and_password_stdin() {
         let args = arguments(Path::new("sdl-freerdp"), &profile(), true);
-        assert!(args.contains(&"--clipboard".into()));
-        assert!(args.contains(&"--from-stdin".into()));
+        assert!(args.contains(&"+clipboard".into()));
+        assert!(args.contains(&"/from-stdin".into()));
+        assert!(args.contains(&"/u:user".into()));
+        assert!(args.contains(&"/v:host:3389".into()));
+        assert!(!args.iter().any(|arg| arg.starts_with("--")));
+    }
+
+    #[test]
+    fn native_sdl_helper_is_preferred_over_x11_and_wayland() {
+        assert_eq!(HELPER_NAMES, ["sdl-freerdp", "xfreerdp", "wlfreerdp"]);
+    }
+
+    #[test]
+    fn bundled_helper_uses_the_macos_resource_directory() {
+        let executable = Path::new("/Applications/CNshell.app/Contents/MacOS/cnshell");
         assert_eq!(
-            args.windows(2)
-                .find(|pair| pair[0] == "--username")
-                .unwrap()[1],
-            "user"
+            bundled_helper_path_for(executable),
+            Some(PathBuf::from(
+                "/Applications/CNshell.app/Contents/Resources/freerdp/sdl-freerdp"
+            ))
         );
     }
 

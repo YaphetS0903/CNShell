@@ -6,5 +6,5 @@
 - **认证失败**：检查 Keychain 条目、私钥权限、SSH Agent 身份和服务端认证策略。
 - **SFTP 不可用**：确认服务端启用 SFTP subsystem，且用户具有目录权限。
 - **监控为空**：非 Linux 系统或 `/proc` 不可用时会降级，终端仍可使用。
-- **RDP 不可用**：运行 `brew install freerdp`，再重启 CNshell。
+- **RDP 组件缺失或损坏**：重新从完整 DMG 安装 CNshell；不要单独移动或删除应用包 `Contents/Resources/freerdp` 中的文件。
 - **提交问题**：设置 → 故障诊断 → 导出脱敏诊断；先确认文件中没有不希望分享的信息。

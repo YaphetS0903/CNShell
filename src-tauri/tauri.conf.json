@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build:desktop",
     "frontendDist": "../dist"
   },
   "app": {
@@ -35,6 +35,9 @@
     "shortDescription": "SSH, SFTP and server monitoring for macOS",
     "longDescription": "CNshell brings secure remote terminals, file transfer and Linux monitoring into one macOS workspace.",
     "copyright": "Copyright © 2026 CNshell Contributors",
+    "resources": {
+      "resources/freerdp/": "freerdp/"
+    },
     "macOS": { "minimumSystemVersion": "13.0" }
   },
   "plugins": {

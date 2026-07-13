@@ -46,6 +46,10 @@ pub struct AppState {
     external_edits: ExternalEditManager,
 }
 
+pub fn rdp_preflight_json() -> String {
+    serde_json::to_string(&rdp::preflight()).expect("RDP preflight is serializable")
+}
+
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("CNshell".into()),
