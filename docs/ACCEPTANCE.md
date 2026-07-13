@@ -75,7 +75,7 @@
 | Linux 非 UTF-8 文件名真机操作 | 部分 | 原始字节路径编码、显示、解码和子路径拼接单测通过；macOS/APFS OpenSSH 夹具拒绝创建非法 UTF-8 文件名，仍需 Linux 文件系统真机注入验证 |
 | Ventura、Sonoma、Sequoia 与 Intel 真机 | 外部阻塞 | 最低版本和 universal 构建可静态验证；仍需对应设备运行 |
 | 连续 SSH + 监控、空闲内存 < 150 MB | 用户验收通过 | 用户于约 2 小时 50 分钟时主动结束长测并认可结果；期间 4 条 SSH TCP 连接持续建立，RSS 从约 36 MB 降至并稳定在约 21 MB。未宣称实际运行满 8 小时 |
-| 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 文档已提供，需干净 Mac 验收 |
+| 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 本机已完成可回滚生命周期回归：覆盖安装、临时移除 App、恢复启动后，6 条连接记录稳定哈希与 6 个关联 Keychain 条目均保持不变；文档已提供。仍需另一台无开发环境的干净 Mac 验收首次安装与 Gatekeeper 流程 |
 | Developer ID 签名、公证、正式 updater | 外部阻塞 | 应用内已实现手动检查、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。仍需要 Apple 证书、notary 凭据、正式 HTTPS endpoint 与 public key 才能完成真实更新验收；发布脚本会拒绝占位配置 |
 
 本机候选包另已完成以下桌面证据：DMG 只读挂载后，包内应用通过 `codesign --verify --deep --strict` 并连续运行；辅助功能树可识别原生菜单、主工具栏、连接表单字段和安全密码输入框，模态打开后焦点进入关闭按钮，Escape 可关闭。该 ad-hoc 签名只用于本机结构验收，不等同 Developer ID 签名或 Apple 公证。
