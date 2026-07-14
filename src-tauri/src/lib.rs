@@ -243,7 +243,9 @@ pub fn run() {
             commands::rdp_close,
             commands::settings_get,
             commands::settings_save,
-            commands::diagnostics_export
+            commands::diagnostics_export,
+            commands::diagnostics_environment,
+            commands::diagnostics_reveal
         ])
         .run(tauri::generate_context!())
         .expect("CNshell 启动失败");

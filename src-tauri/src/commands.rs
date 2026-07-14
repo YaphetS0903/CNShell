@@ -1143,6 +1143,16 @@ pub async fn diagnostics_export(state: State<'_, AppState>, path: String) -> App
     crate::diagnostics::export(&state.db, &path).await
 }
 
+#[tauri::command]
+pub fn diagnostics_environment() -> crate::diagnostics::FeedbackEnvironment {
+    crate::diagnostics::feedback_environment()
+}
+
+#[tauri::command]
+pub fn diagnostics_reveal(path: String) -> AppResult<()> {
+    crate::diagnostics::reveal(&path)
+}
+
 #[allow(dead_code)]
 fn _assert_state_types(_: Database, _: SessionManager, _: TransferManager, _: MonitorState) {}
 

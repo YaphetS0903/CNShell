@@ -4,7 +4,16 @@ use crate::{
     rdp,
 };
 use serde::Serialize;
-use std::path::Path;
+use std::{path::Path, process::Command};
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeedbackEnvironment {
+    app_version: String,
+    operating_system: String,
+    os_version: String,
+    architecture: String,
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -58,6 +67,45 @@ pub async fn export(db: &Database, path: &str) -> AppResult<()> {
         },
     };
     write_report(Path::new(path), &report)
+}
+
+pub fn feedback_environment() -> FeedbackEnvironment {
+    FeedbackEnvironment {
+        app_version: env!("CARGO_PKG_VERSION").into(),
+        operating_system: std::env::consts::OS.into(),
+        os_version: system_version(),
+        architecture: std::env::consts::ARCH.into(),
+    }
+}
+
+pub fn reveal(path: &str) -> AppResult<()> {
+    let target = Path::new(path);
+    if !target.is_file() || target.extension().and_then(|value| value.to_str()) != Some("json") {
+        return Err(AppError::Validation(
+            "诊断文件不存在或不是 JSON 文件".into(),
+        ));
+    }
+    let status = Command::new("/usr/bin/open")
+        .arg("-R")
+        .arg(target)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(AppError::Unavailable("无法在 Finder 中显示诊断文件".into()))
+    }
+}
+
+fn system_version() -> String {
+    Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|version| version.trim().to_owned())
+        .filter(|version| !version.is_empty())
+        .unwrap_or_else(|| "unknown".into())
 }
 
 fn write_report(target: &Path, report: &DiagnosticReport) -> AppResult<()> {
@@ -118,5 +166,15 @@ mod tests {
             serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(value["product"], "CNshell");
         assert!(!directory.path().join("diagnostics.json.tmp").exists());
+    }
+    #[test]
+    fn feedback_environment_contains_only_public_runtime_metadata() {
+        let json = serde_json::to_value(feedback_environment()).unwrap();
+        let object = json.as_object().unwrap();
+        assert_eq!(object.len(), 4);
+        assert!(object.contains_key("appVersion"));
+        assert!(object.contains_key("operatingSystem"));
+        assert!(object.contains_key("osVersion"));
+        assert!(object.contains_key("architecture"));
     }
 }

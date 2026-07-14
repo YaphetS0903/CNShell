@@ -1,6 +1,6 @@
 [package]
 name = "cnshell"
-version = "0.1.0"
+version = "0.1.1"
 description = "A native macOS SSH, SFTP and server monitoring workspace"
 authors = ["CNshell Contributors"]
 edition = "2024"

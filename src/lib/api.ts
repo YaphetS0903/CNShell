@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type {
   AppSettings,
   AutomationPlan,
@@ -32,6 +33,13 @@ import type { CommandSnippet, PortForward, ProxyProfile, SaveProxyInput } from "
 import { normalizeAppSettings } from "../types";
 
 const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+
+export interface FeedbackEnvironment {
+  appVersion: string;
+  operatingSystem: string;
+  osVersion: string;
+  architecture: string;
+}
 
 const demoConnection: ConnectionProfile = {
   id: "demo-localhost",
@@ -239,4 +247,13 @@ export const api = {
   async saveWorkspace(value: unknown): Promise<void> { if (isTauri()) await invoke("workspace_save", { value }); },
   async loadWorkspace<T>(): Promise<T | null> { return isTauri() ? invoke("workspace_load") : null; }
   ,async exportDiagnostics(path: string): Promise<void> { return invoke("diagnostics_export", { path }); }
+  ,async feedbackEnvironment():Promise<FeedbackEnvironment>{
+    if(isTauri())return invoke("diagnostics_environment");
+    return {appVersion:"0.1.1",operatingSystem:"macos",osVersion:"浏览器预览",architecture:navigator.platform||"unknown"};
+  }
+  ,async revealDiagnostics(path:string):Promise<void>{return invoke("diagnostics_reveal",{path});}
+  ,async openExternal(url:string):Promise<void>{
+    if(isTauri())return openExternal(url);
+    window.open(url,"_blank","noopener,noreferrer");
+  }
 };
