@@ -1,0 +1,33 @@
+diff --git a/client/SDL/SDL3/sdl_context.cpp b/client/SDL/SDL3/sdl_context.cpp
+index 723107de1..5a897af11 100644
+--- a/client/SDL/SDL3/sdl_context.cpp
++++ b/client/SDL/SDL3/sdl_context.cpp
+@@ -791,6 +791,8 @@ DWORD SdlContext::rdpThreadRun(SdlContext* sdl)
+ 	int exit_code = sdl->sdl_client_thread_connect(error_msg);
+ 	if (exit_code == sdl::error::SUCCESS)
+ 		exit_code = sdl->sdl_client_thread_run(error_msg);
++	if (sdl->_userCloseRequested)
++		exit_code = sdl::error::SUCCESS;
+ 	sdl->sdl_client_cleanup(exit_code, error_msg);
+ 
+ 	return static_cast<DWORD>(exit_code);
+@@ -1150,6 +1152,7 @@ bool SdlContext::handleEvent(const SDL_WindowEvent& ev)
+		case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+		{
+			SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "Window closed, terminating RDP session...");
++			_userCloseRequested = true;
+			freerdp_abort_connect_context(context());
+		}
+		break;
+diff --git a/client/SDL/SDL3/sdl_context.hpp b/client/SDL/SDL3/sdl_context.hpp
+index 289c844c7..a4d109369 100644
+--- a/client/SDL/SDL3/sdl_context.hpp
++++ b/client/SDL/SDL3/sdl_context.hpp
+@@ -220,6 +220,7 @@ class SdlContext
+ 	bool _grabKeyboard = false;
+ 	int _exitCode = -1;
+ 	std::atomic<bool> _rdpThreadRunning = false;
++	std::atomic<bool> _userCloseRequested = false;
+ 	SDL_PixelFormat _sdlPixelFormat = SDL_PIXELFORMAT_UNKNOWN;
+ 
+ 	CriticalSection _critical;
