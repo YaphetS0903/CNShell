@@ -17,6 +17,7 @@ mod sftp;
 mod ssh;
 mod task;
 mod tunnel;
+mod zmodem;
 
 use batch::BatchManager;
 use db::Database;
@@ -183,6 +184,8 @@ pub fn run() {
             commands::terminal_input,
             commands::terminal_resize,
             commands::terminal_close,
+            commands::zmodem_start,
+            commands::zmodem_cancel,
             commands::terminal_log_start,
             commands::terminal_log_stop,
             commands::terminal_log_status,

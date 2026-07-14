@@ -27,7 +27,8 @@ import type {
   TerminalOutput,
   TerminalStatus,
   TerminalSession,
-  TransferTask
+  TransferTask,
+  ZmodemEvent
 } from "../types";
 import type { CommandSnippet, PortForward, ProxyProfile, SaveProxyInput } from "../types";
 import { normalizeAppSettings } from "../types";
@@ -159,6 +160,15 @@ export const api = {
   async onTerminalStatus(handler: (status: TerminalStatus) => void): Promise<UnlistenFn> {
     if (isTauri()) return listen<TerminalStatus>("terminal-status", (event) => handler(event.payload));
     return () => undefined;
+  },
+  async startZmodem(sessionId:string,transferId:string,paths:string[]):Promise<ZmodemEvent>{
+    return invoke("zmodem_start",{sessionId,transferId,paths});
+  },
+  async cancelZmodem(sessionId:string,transferId:string):Promise<ZmodemEvent>{
+    return invoke("zmodem_cancel",{sessionId,transferId});
+  },
+  async onZmodemEvent(handler:(event:ZmodemEvent)=>void):Promise<UnlistenFn>{
+    return isTauri()?listen<ZmodemEvent>("zmodem-event",(event)=>handler(event.payload)):()=>undefined;
   },
   async listFiles(sessionId: string, path: string, showHidden: boolean): Promise<RemoteFile[]> {
     if (isTauri()) return invoke("sftp_list", { sessionId, path, showHidden });

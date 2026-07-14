@@ -25,6 +25,8 @@ import {
 import { searchBuffer } from "./terminal-safety";
 import { useAppStore } from "../../store/app-store";
 import { resolveTerminalPreferences, terminalFontFamilies, terminalThemes } from "./terminal-preferences";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { ZmodemEvent } from "../../types";
 
 export interface TerminalActions {
   findNext: (term: string) => boolean;
@@ -50,6 +52,7 @@ export const TerminalView = forwardRef<
   const [timestampRows, setTimestampRows] = useState<
     { line: number; timestamp: number | null }[]
   >([]);
+  const [zmodem, setZmodem] = useState<ZmodemEvent | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const triggerConfigRef = useRef<TriggerConfig | null>(null);
@@ -458,6 +461,33 @@ export const TerminalView = forwardRef<
   useEffect(() => {
     if (focused) terminalRef.current?.focus();
   }, [focused]);
+  useEffect(() => {
+    let disposed=false;
+    const unlisten=api.onZmodemEvent((event)=>{
+      if(event.sessionId!==session.id)return;
+      setZmodem(event);
+      if(["completed","failed","cancelled"].includes(event.status))
+        window.setTimeout(()=>setZmodem((current)=>current?.id===event.id?null:current),5000);
+    });
+    return()=>{disposed=true;void unlisten.then((stop)=>{if(disposed)stop();});};
+  },[session.id]);
+  const authorizeZmodem=async()=>{
+    if(!zmodem)return;
+    const path=await open({
+      multiple:zmodem.direction==="upload",
+      directory:zmodem.direction==="download",
+      title:zmodem.direction==="download"?"选择 Zmodem 下载目录":"选择 Zmodem 上传文件",
+    });
+    if(!path){await api.cancelZmodem(session.id,zmodem.id);return;}
+    try{setZmodem(await api.startZmodem(session.id,zmodem.id,Array.isArray(path)?path:[path]));}
+    catch(error){setZmodem((current)=>current?{...current,status:"failed",error:String(error)}:current);window.setTimeout(()=>setZmodem((current)=>current?.id===zmodem.id?null:current),5000);}
+  };
+  const cancelZmodem=async()=>{
+    if(!zmodem)return;
+    try{setZmodem(await api.cancelZmodem(session.id,zmodem.id));}
+    catch(error){setZmodem((current)=>current?{...current,status:"failed",error:String(error)}:current);window.setTimeout(()=>setZmodem((current)=>current?.id===zmodem.id?null:current),5000);}
+  };
+  const zmodemPercent=zmodem?.totalBytes?Math.min(100,Math.round(zmodem.transferredBytes/zmodem.totalBytes*100)):null;
   return (
     <div
       className={`terminal-instance ${visible ? "active" : ""} ${showTimestamps ? "with-timestamps" : ""}`}
@@ -466,6 +496,16 @@ export const TerminalView = forwardRef<
       aria-label={`${session.title} 终端`}
     >
       <div className="terminal-host" ref={hostRef} />
+      {zmodem&&<section className="zmodem-card" role="status" aria-live="polite">
+        <header><strong>Zmodem {zmodem.direction==="download"?"下载":"上传"}</strong><span>{zmodem.status==="awaitingAuthorization"?"等待授权":zmodem.status==="running"?"传输中":zmodem.status==="completed"?"已完成":zmodem.status==="cancelled"?"已取消":"失败"}</span></header>
+        {zmodem.fileName&&<div className="zmodem-file" title={zmodem.fileName}>{zmodem.fileName}</div>}
+        {zmodem.status==="awaitingAuthorization"?<p>{zmodem.direction==="download"?"远端正在发送文件，请选择保存目录。":"远端正在接收文件，请选择要上传的文件。"}</p>:<>
+          <div className="zmodem-progress"><i style={{width:`${zmodemPercent??0}%`}}/></div>
+          <p>{zmodem.transferredBytes.toLocaleString()} bytes{zmodem.totalBytes!=null?` / ${zmodem.totalBytes.toLocaleString()} bytes`:""}{zmodemPercent!=null?` · ${zmodemPercent}%`:""}</p>
+        </>}
+        {zmodem.error&&<p className="zmodem-error">{zmodem.error}</p>}
+        <footer>{zmodem.status==="awaitingAuthorization"&&<button className="button primary" onClick={()=>void authorizeZmodem()}>选择{zmodem.direction==="download"?"目录":"文件"}</button>}{["awaitingAuthorization","running"].includes(zmodem.status)&&<button className="button secondary" onClick={()=>void cancelZmodem()}>取消</button>}</footer>
+      </section>}
       {showTimestamps && (
         <div className="terminal-timestamp-gutter" aria-label="终端逐行时间戳">
           {timestampRows.map((item) => (

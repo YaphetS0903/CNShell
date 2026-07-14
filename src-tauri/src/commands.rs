@@ -461,6 +461,27 @@ pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> A
 }
 
 #[tauri::command]
+pub async fn zmodem_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    transfer_id: String,
+    paths: Vec<String>,
+) -> AppResult<ZmodemEvent> {
+    crate::ssh::zmodem_start(app, state.sessions.clone(), session_id, transfer_id, paths).await
+}
+
+#[tauri::command]
+pub async fn zmodem_cancel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    transfer_id: String,
+) -> AppResult<ZmodemEvent> {
+    crate::ssh::zmodem_cancel(app, state.sessions.clone(), session_id, transfer_id).await
+}
+
+#[tauri::command]
 pub async fn terminal_log_start(
     state: State<'_, AppState>,
     session_id: String,

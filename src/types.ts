@@ -39,6 +39,7 @@ import type {
   TerminalStatus as GeneratedTerminalStatus,
   TransferInput as GeneratedTransferInput,
   TransferTask as GeneratedTransferTask,
+  ZmodemEvent as GeneratedZmodemEvent,
 } from "./generated/ipc";
 
 export type Protocol = "ssh" | "rdp";
@@ -93,6 +94,10 @@ export type TransferTask = Omit<GeneratedTransferTask, "direction" | "status" | 
 export type TransferInput = Omit<GeneratedTransferInput, "direction" | "conflictPolicy"> & {
   direction: TransferDirection;
   conflictPolicy: ConflictPolicy;
+};
+export type ZmodemEvent = Omit<GeneratedZmodemEvent, "direction" | "status"> & {
+  direction: "upload" | "download";
+  status: "awaitingAuthorization" | "running" | "completed" | "failed" | "cancelled";
 };
 export type TerminalFontFamily = "system" | "menlo" | "monaco" | "courier";
 export type TerminalCursorStyle = "block" | "underline" | "bar";

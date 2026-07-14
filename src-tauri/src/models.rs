@@ -376,6 +376,19 @@ pub struct TransferInput {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ZmodemEvent {
+    pub id: String,
+    pub session_id: String,
+    pub direction: String,
+    pub status: String,
+    pub file_name: Option<String>,
+    pub total_bytes: Option<u64>,
+    pub transferred_bytes: u64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ProcessInfo {
     pub pid: u32,
     pub started_at: String,

@@ -3,8 +3,13 @@ use crate::{
     error::{AppError, AppResult},
     models::{
         ConnectionDiagnostic, ConnectionProfile, TerminalOutput, TerminalSession, TerminalStatus,
+        ZmodemEvent,
     },
     session_log::SessionLogManager,
+    zmodem::{
+        ActiveTransfer, AwaitingTransfer, CANCEL_SEQUENCE, Direction as ZmodemDirection,
+        FinishingTransfer, SessionState as ZmodemState,
+    },
 };
 use base64::{
     Engine,
@@ -185,6 +190,7 @@ pub struct TerminalHandle {
     pub cols: u32,
     pub rows: u32,
     pub agent_forwarding: bool,
+    pub zmodem: ZmodemState,
     transport: Option<TransportLease>,
 }
 
@@ -986,6 +992,7 @@ fn open_pty(
         cols,
         rows,
         agent_forwarding,
+        zmodem: ZmodemState::default(),
         transport: Some(transport),
     })
 }
@@ -1061,15 +1068,9 @@ fn spawn_reader(
                 )
             };
             if read > 0 {
-                logs.write_output(&session_id, &buffer[..read]);
-                let data_base64 = STANDARD.encode(&buffer[..read]);
-                let _ = app.emit(
-                    "terminal-output",
-                    TerminalOutput {
-                        session_id: session_id.clone(),
-                        data_base64,
-                    },
-                );
+                route_terminal_bytes(&app, &logs, &session_id, &handle, &buffer[..read]);
+            } else {
+                expire_zmodem_authorization(&app, &session_id, &handle);
             }
             if closed {
                 if manager.get(&session_id).is_err() {
@@ -1084,6 +1085,7 @@ fn spawn_reader(
                         terminal.agent_forwarding,
                     )
                 };
+                fail_zmodem_for_disconnect(&app, &session_id, &handle);
                 let mut recovered = false;
                 let mut last_error = read_error.unwrap_or_else(|| "SSH 服务端已关闭会话".into());
                 for (attempt, delay) in RECONNECT_DELAYS.iter().enumerate() {
@@ -1188,7 +1190,377 @@ pub async fn terminal_input(
     let handle = manager.get(&session_id)?;
     tokio::task::spawn_blocking(move || {
         let mut terminal = handle.lock();
+        if !matches!(terminal.zmodem, ZmodemState::Detecting(_)) {
+            return Err(AppError::Unavailable(
+                "Zmodem 正在等待授权或传输文件，普通终端输入已暂停".into(),
+            ));
+        }
         write_channel_input(&mut terminal.channel, data.as_bytes())
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+fn emit_terminal_bytes(app: &AppHandle, logs: &SessionLogManager, session_id: &str, bytes: &[u8]) {
+    if bytes.is_empty() {
+        return;
+    }
+    logs.write_output(session_id, bytes);
+    let _ = app.emit(
+        "terminal-output",
+        TerminalOutput {
+            session_id: session_id.to_owned(),
+            data_base64: STANDARD.encode(bytes),
+        },
+    );
+}
+
+fn zmodem_event(
+    id: &str,
+    session_id: &str,
+    direction: ZmodemDirection,
+    status: &str,
+    progress: Option<crate::zmodem::TransferProgress>,
+    error: Option<String>,
+) -> ZmodemEvent {
+    let progress = progress.unwrap_or(crate::zmodem::TransferProgress {
+        file_name: None,
+        total_bytes: None,
+        transferred_bytes: 0,
+    });
+    ZmodemEvent {
+        id: id.to_owned(),
+        session_id: session_id.to_owned(),
+        direction: direction.as_str().into(),
+        status: status.into(),
+        file_name: progress.file_name,
+        total_bytes: progress.total_bytes,
+        transferred_bytes: progress.transferred_bytes,
+        error,
+    }
+}
+
+fn route_terminal_bytes(
+    app: &AppHandle,
+    logs: &SessionLogManager,
+    session_id: &str,
+    handle: &Arc<Mutex<TerminalHandle>>,
+    bytes: &[u8],
+) {
+    let mut terminal_bytes = Vec::new();
+    let mut event = None;
+    let mut terminal = handle.lock();
+    let state = std::mem::take(&mut terminal.zmodem);
+    terminal.zmodem = match state {
+        ZmodemState::Detecting(mut detector) => {
+            let output = detector.feed(bytes);
+            terminal_bytes = output.terminal_bytes;
+            if let Some(detection) = output.detection {
+                let id = Uuid::new_v4().to_string();
+                event = Some(zmodem_event(
+                    &id,
+                    session_id,
+                    detection.direction,
+                    "awaitingAuthorization",
+                    None,
+                    None,
+                ));
+                ZmodemState::Awaiting(AwaitingTransfer {
+                    id,
+                    direction: detection.direction,
+                    protocol_bytes: detection.protocol_bytes,
+                    detected_at: Instant::now(),
+                })
+            } else {
+                ZmodemState::Detecting(detector)
+            }
+        }
+        ZmodemState::Awaiting(mut awaiting) => match awaiting.append(bytes) {
+            Ok(()) => ZmodemState::Awaiting(awaiting),
+            Err(error) => {
+                let _ = write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE);
+                event = Some(zmodem_event(
+                    &awaiting.id,
+                    session_id,
+                    awaiting.direction,
+                    "failed",
+                    None,
+                    Some(error.to_string()),
+                ));
+                ZmodemState::default()
+            }
+        },
+        ZmodemState::Active(mut active) => {
+            let direction = active.direction();
+            let id = active_id(&active);
+            let result = active
+                .append_wire(bytes)
+                .and_then(|()| active.drive(&mut terminal.channel));
+            match result {
+                Ok(result) => {
+                    terminal_bytes = result.terminal_bytes;
+                    let status = result.status.unwrap_or("running");
+                    event = Some(zmodem_event(
+                        &id,
+                        session_id,
+                        direction,
+                        status,
+                        Some(result.progress),
+                        None,
+                    ));
+                    if result.status == Some("completed") && direction == ZmodemDirection::Download
+                    {
+                        let mut finishing = FinishingTransfer::new(terminal_bytes.split_off(0));
+                        if let Some(bytes) = finishing.feed(&[]) {
+                            terminal_bytes = bytes;
+                            ZmodemState::default()
+                        } else {
+                            ZmodemState::Finishing(finishing)
+                        }
+                    } else if result.status.is_some() {
+                        ZmodemState::default()
+                    } else {
+                        ZmodemState::Active(active)
+                    }
+                }
+                Err(error) => {
+                    let progress = active.progress();
+                    let _ = write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE);
+                    event = Some(zmodem_event(
+                        &id,
+                        session_id,
+                        direction,
+                        "failed",
+                        Some(progress),
+                        Some(error.to_string()),
+                    ));
+                    ZmodemState::default()
+                }
+            }
+        }
+        ZmodemState::Finishing(mut finishing) => {
+            if let Some(bytes) = finishing.feed(bytes) {
+                terminal_bytes = bytes;
+                ZmodemState::default()
+            } else {
+                ZmodemState::Finishing(finishing)
+            }
+        }
+    };
+    drop(terminal);
+    emit_terminal_bytes(app, logs, session_id, &terminal_bytes);
+    if let Some(event) = event {
+        let _ = app.emit("zmodem-event", event);
+    }
+}
+
+fn active_id(active: &ActiveTransfer) -> String {
+    match active {
+        ActiveTransfer::Download(transfer) => transfer.id.clone(),
+        ActiveTransfer::Upload(transfer) => transfer.id.clone(),
+    }
+}
+
+fn expire_zmodem_authorization(
+    app: &AppHandle,
+    session_id: &str,
+    handle: &Arc<Mutex<TerminalHandle>>,
+) {
+    let mut terminal = handle.lock();
+    let state = std::mem::take(&mut terminal.zmodem);
+    match state {
+        ZmodemState::Awaiting(awaiting) if awaiting.expired() => {
+            let _ = write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE);
+            let _ = app.emit(
+                "zmodem-event",
+                zmodem_event(
+                    &awaiting.id,
+                    session_id,
+                    awaiting.direction,
+                    "cancelled",
+                    None,
+                    Some("等待文件授权超时，已取消 Zmodem 传输".into()),
+                ),
+            );
+        }
+        ZmodemState::Finishing(finishing) if finishing.expired() => {}
+        other => terminal.zmodem = other,
+    }
+}
+
+fn fail_zmodem_for_disconnect(
+    app: &AppHandle,
+    session_id: &str,
+    handle: &Arc<Mutex<TerminalHandle>>,
+) {
+    let mut terminal = handle.lock();
+    let state = std::mem::take(&mut terminal.zmodem);
+    let event = match state {
+        ZmodemState::Detecting(detector) => {
+            terminal.zmodem = ZmodemState::Detecting(detector);
+            None
+        }
+        ZmodemState::Awaiting(awaiting) => Some(zmodem_event(
+            &awaiting.id,
+            session_id,
+            awaiting.direction,
+            "failed",
+            None,
+            Some("SSH 连接已中断，Zmodem 传输无法恢复".into()),
+        )),
+        ZmodemState::Active(active) => Some(zmodem_event(
+            &active_id(&active),
+            session_id,
+            active.direction(),
+            "failed",
+            Some(active.progress()),
+            Some("SSH 连接已中断，Zmodem 传输无法恢复".into()),
+        )),
+        ZmodemState::Finishing(_) => None,
+    };
+    drop(terminal);
+    if let Some(event) = event {
+        let _ = app.emit("zmodem-event", event);
+    }
+}
+
+pub async fn zmodem_start(
+    app: AppHandle,
+    manager: SessionManager,
+    session_id: String,
+    transfer_id: String,
+    paths: Vec<String>,
+) -> AppResult<ZmodemEvent> {
+    let handle = manager.get(&session_id)?;
+    tokio::task::spawn_blocking(move || {
+        let mut terminal = handle.lock();
+        let state = std::mem::take(&mut terminal.zmodem);
+        let awaiting = match state {
+            ZmodemState::Awaiting(awaiting) if awaiting.id == transfer_id => awaiting,
+            other => {
+                terminal.zmodem = other;
+                return Err(AppError::Unavailable(
+                    "Zmodem 授权请求已过期或不匹配".into(),
+                ));
+            }
+        };
+        let active_result = match awaiting.direction {
+            ZmodemDirection::Download if paths.len() == 1 => ActiveTransfer::download(
+                Path::new(&paths[0]).to_path_buf(),
+                awaiting.protocol_bytes,
+                awaiting.id.clone(),
+            ),
+            ZmodemDirection::Download => {
+                Err(AppError::Validation("Zmodem 下载需要选择一个目录".into()))
+            }
+            ZmodemDirection::Upload => ActiveTransfer::upload(
+                paths
+                    .iter()
+                    .map(|path| Path::new(path).to_path_buf())
+                    .collect(),
+                awaiting.protocol_bytes,
+                awaiting.id.clone(),
+            ),
+        };
+        let mut active = match active_result {
+            Ok(active) => active,
+            Err(error) => {
+                let _ = write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE);
+                let event = zmodem_event(
+                    &awaiting.id,
+                    &session_id,
+                    awaiting.direction,
+                    "failed",
+                    None,
+                    Some(error.to_string()),
+                );
+                let _ = app.emit("zmodem-event", event);
+                return Err(error);
+            }
+        };
+        let drive = match active.drive(&mut terminal.channel) {
+            Ok(drive) => drive,
+            Err(error) => {
+                let progress = active.progress();
+                let _ = write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE);
+                let event = zmodem_event(
+                    &awaiting.id,
+                    &session_id,
+                    awaiting.direction,
+                    "failed",
+                    Some(progress),
+                    Some(error.to_string()),
+                );
+                let _ = app.emit("zmodem-event", event);
+                return Err(error);
+            }
+        };
+        let event = zmodem_event(
+            &awaiting.id,
+            &session_id,
+            awaiting.direction,
+            drive.status.unwrap_or("running"),
+            Some(drive.progress),
+            None,
+        );
+        terminal.zmodem = if drive.status == Some("completed")
+            && awaiting.direction == ZmodemDirection::Download
+        {
+            let mut finishing = FinishingTransfer::new(drive.terminal_bytes);
+            if let Some(bytes) = finishing.feed(&[]) {
+                if !bytes.is_empty() {
+                    let _ = app.emit(
+                        "terminal-output",
+                        TerminalOutput {
+                            session_id: session_id.clone(),
+                            data_base64: STANDARD.encode(bytes),
+                        },
+                    );
+                }
+                ZmodemState::default()
+            } else {
+                ZmodemState::Finishing(finishing)
+            }
+        } else if drive.status.is_some() {
+            ZmodemState::default()
+        } else {
+            ZmodemState::Active(active)
+        };
+        let _ = app.emit("zmodem-event", event.clone());
+        Ok(event)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+pub async fn zmodem_cancel(
+    app: AppHandle,
+    manager: SessionManager,
+    session_id: String,
+    transfer_id: String,
+) -> AppResult<ZmodemEvent> {
+    let handle = manager.get(&session_id)?;
+    tokio::task::spawn_blocking(move || {
+        let mut terminal = handle.lock();
+        let state = std::mem::take(&mut terminal.zmodem);
+        let (id, direction, progress) = match state {
+            ZmodemState::Awaiting(awaiting) if awaiting.id == transfer_id => {
+                (awaiting.id, awaiting.direction, None)
+            }
+            ZmodemState::Active(active) if active_id(&active) == transfer_id => {
+                let direction = active.direction();
+                let progress = active.progress();
+                (transfer_id, direction, Some(progress))
+            }
+            other => {
+                terminal.zmodem = other;
+                return Err(AppError::Unavailable("Zmodem 传输已结束或不匹配".into()));
+            }
+        };
+        write_channel_input(&mut terminal.channel, CANCEL_SEQUENCE)?;
+        let event = zmodem_event(&id, &session_id, direction, "cancelled", progress, None);
+        let _ = app.emit("zmodem-event", event.clone());
+        Ok(event)
     })
     .await
     .map_err(|error| AppError::Internal(error.to_string()))?

@@ -154,6 +154,27 @@
   position: absolute;
   inset: 0;
 }
+.zmodem-card {
+  position: absolute;
+  z-index: 12;
+  right: 16px;
+  bottom: 16px;
+  width: min(360px, calc(100% - 32px));
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+}
+.zmodem-card header,.zmodem-card footer{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.zmodem-card header span{color:var(--muted);font-size:11px}
+.zmodem-card p{margin:8px 0;color:var(--muted);font-size:11px}
+.zmodem-card footer{justify-content:flex-end;margin-top:10px}
+.zmodem-file{margin-top:8px;overflow:hidden;color:var(--text);font:11px SFMono-Regular,Menlo,monospace;text-overflow:ellipsis;white-space:nowrap}
+.zmodem-progress{height:5px;margin-top:10px;overflow:hidden;border-radius:3px;background:var(--surface-3)}
+.zmodem-progress i{display:block;height:100%;border-radius:inherit;background:var(--blue);transition:width .15s ease}
+.zmodem-error{color:var(--danger)!important}
 .terminal-instance.with-timestamps .terminal-host {
   left: 70px;
 }
