@@ -82,6 +82,7 @@ DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要
 | 文档 | 内容 |
 | --- | --- |
 | [用户手册](docs/USER_GUIDE.md) | 首次连接、终端、文件、监控、RDP、备份与高级功能 |
+| [后续开发总规划](docs/NEXT_DEVELOPMENT_PLAN.md) | Zmodem、Mosh、RDP 内嵌、AI、插件、团队版与正式发布阶段 |
 | [快捷键](docs/SHORTCUTS.md) | 全局、终端和文件操作快捷键 |
 | [故障排查](docs/TROUBLESHOOTING.md) | 连接、认证、SFTP、监控和 RDP 常见问题 |
 | [安装说明](docs/INSTALLATION.md) | 安装、手动升级、数据保留和完整卸载 |
