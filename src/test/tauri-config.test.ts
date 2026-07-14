@@ -27,3 +27,11 @@ describe("Tauri updater configuration", () => {
     expect(capability.permissions).not.toContain("updater:default");
   });
 });
+
+describe("Tauri window permissions", () => {
+  it("allows the close-request handler to destroy the main window", () => {
+    const capability = JSON.parse(readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8")) as { permissions: string[] };
+
+    expect(capability.permissions).toContain("core:window:allow-destroy");
+  });
+});
