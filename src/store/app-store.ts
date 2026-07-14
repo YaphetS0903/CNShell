@@ -2,6 +2,18 @@ import { create } from "zustand";
 import { api } from "../lib/api";
 import { defaultSettings, type AppSettings, type ConnectionProfile, type MonitorSnapshot, type TerminalSession, type TransferTask } from "../types";
 
+const pendingSessionUpdates = new Map<string, Partial<TerminalSession>>();
+const MAX_PENDING_SESSION_UPDATES = 128;
+
+function cachePendingSessionUpdate(id: string, patch: Partial<TerminalSession>) {
+  pendingSessionUpdates.set(id, { ...pendingSessionUpdates.get(id), ...patch });
+  while (pendingSessionUpdates.size > MAX_PENDING_SESSION_UPDATES) {
+    const oldest = pendingSessionUpdates.keys().next().value;
+    if (oldest === undefined) break;
+    pendingSessionUpdates.delete(oldest);
+  }
+}
+
 type Panel = "files" | "commands" | "transfers" | "system";
 
 interface AppState {
@@ -49,8 +61,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   refreshConnections: async () => set({ connections: await api.listConnections() }),
   setActiveSession: (activeSessionId) => set({ activeSessionId }),
-  addSession: (session) => set((state) => ({ sessions: [...state.sessions, session], activeSessionId: session.id })),
-  updateSession: (id, patch) => set((state) => ({ sessions: state.sessions.map((session) => session.id === id ? { ...session, ...patch } : session) })),
+  addSession: (session) => set((state) => {
+    const pending = pendingSessionUpdates.get(session.id);
+    pendingSessionUpdates.delete(session.id);
+    return { sessions: [...state.sessions, { ...session, ...pending }], activeSessionId: session.id };
+  }),
+  updateSession: (id, patch) => set((state) => {
+    if (!state.sessions.some((session) => session.id === id)) {
+      cachePendingSessionUpdate(id, patch);
+      return state;
+    }
+    return { sessions: state.sessions.map((session) => session.id === id ? { ...session, ...patch } : session) };
+  }),
   removeSession: (id) => set((state) => {
     const sessions = state.sessions.filter((session) => session.id !== id);
     return { sessions, activeSessionId: state.activeSessionId === id ? sessions.at(-1)?.id ?? null : state.activeSessionId };
