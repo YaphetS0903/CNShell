@@ -1116,6 +1116,107 @@ pub async fn team_share_apply(
 }
 
 #[tauri::command]
+pub async fn team_relay_profile_list(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<TeamRelayProfile>> {
+    crate::team_relay::profiles(&state.db).await
+}
+
+#[tauri::command]
+pub async fn team_relay_profile_save(
+    state: State<'_, AppState>,
+    input: SaveTeamRelayProfileInput,
+) -> AppResult<TeamRelayProfile> {
+    crate::team_relay::save_profile(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_profile_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::team_relay::delete_profile(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn team_relay_account_register(
+    state: State<'_, AppState>,
+    input: TeamRelayAccountInput,
+) -> AppResult<TeamRelayProfile> {
+    crate::team_relay::register_account(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_account_login(
+    state: State<'_, AppState>,
+    input: TeamRelayAccountInput,
+) -> AppResult<TeamRelayProfile> {
+    crate::team_relay::login_account(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_account_logout(
+    state: State<'_, AppState>,
+    profile_id: String,
+) -> AppResult<()> {
+    crate::team_relay::logout_account(&state.db, &profile_id).await
+}
+
+#[tauri::command]
+pub async fn team_relay_binding_list(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<TeamRelayWorkspaceBinding>> {
+    crate::team_relay::bindings(&state.db).await
+}
+
+#[tauri::command]
+pub async fn team_relay_workspace_publish(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    profile_id: String,
+) -> AppResult<TeamRelayWorkspaceBinding> {
+    crate::team_relay::publish_workspace(&state.db, &workspace_id, &profile_id).await
+}
+
+#[tauri::command]
+pub async fn team_relay_workspace_sync(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<TeamWorkspace> {
+    crate::team_relay::sync_workspace(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_relay_invitation_create(
+    state: State<'_, AppState>,
+    input: CreateTeamRelayInvitationInput,
+) -> AppResult<TeamRelayInvitation> {
+    crate::team_relay::create_invitation(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_invitation_accept(
+    state: State<'_, AppState>,
+    input: AcceptTeamRelayInvitationInput,
+) -> AppResult<TeamWorkspace> {
+    crate::team_relay::accept_invitation(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_member_update(
+    state: State<'_, AppState>,
+    input: UpdateTeamRelayMemberInput,
+) -> AppResult<TeamWorkspace> {
+    crate::team_relay::update_member(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_device_revoke(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    device_id: String,
+) -> AppResult<TeamWorkspace> {
+    crate::team_relay::revoke_device(&state.db, &workspace_id, &device_id).await
+}
+
+#[tauri::command]
 pub async fn team_terminal_room_start(
     state: State<'_, AppState>,
     workspace_id: String,

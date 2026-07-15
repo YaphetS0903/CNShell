@@ -336,7 +336,7 @@ impl RelayStore {
         validate_token_shape(&input.token)?;
         let invitation_hash = token_hash("workspace-invitation", &input.token);
         let mut transaction = self.pool.begin().await?;
-        let row = sqlx::query("SELECT id,workspace_id,member_id,email,role FROM workspace_invitations WHERE token_hash=? AND accepted_at IS NULL AND revoked_at IS NULL AND expires_at>?")
+        let row = sqlx::query("SELECT id,workspace_id,member_id,email,role,accepted_at FROM workspace_invitations WHERE token_hash=? AND revoked_at IS NULL AND expires_at>?")
             .bind(invitation_hash)
             .bind(Utc::now().to_rfc3339())
             .fetch_optional(&mut *transaction)
@@ -351,6 +351,41 @@ impl RelayStore {
             return Err(RelayError::PermissionDenied(
                 "工作区邀请不属于当前账号".into(),
             ));
+        }
+        if row.get::<Option<String>, _>(5).is_some() {
+            let matching_device: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM members m JOIN devices d ON d.member_id=m.id AND d.workspace_id=m.workspace_id WHERE m.id=? AND m.workspace_id=? AND m.account_id=? AND m.status='active' AND d.id=? AND d.name=? AND d.encryption_public_key=? AND d.signing_public_key=? AND d.fingerprint=? AND d.status='active'")
+                .bind(&member_id)
+                .bind(&workspace_id)
+                .bind(&account.account_id)
+                .bind(&input.device.id)
+                .bind(&input.device.name)
+                .bind(&input.device.encryption_public_key)
+                .bind(&input.device.signing_public_key)
+                .bind(&input.device.fingerprint)
+                .fetch_one(&mut *transaction)
+                .await?;
+            if matching_device != 1 {
+                return Err(RelayError::Authentication(
+                    "工作区邀请已经由另一设备接受".into(),
+                ));
+            }
+            let epoch: i64 = sqlx::query_scalar(
+                "SELECT key_epoch FROM workspaces WHERE id=? AND status='active'",
+            )
+            .bind(&workspace_id)
+            .fetch_one(&mut *transaction)
+            .await?;
+            let output = issue_device_session(
+                &mut transaction,
+                &workspace_id,
+                &member_id,
+                &input.device.id,
+                &role,
+                epoch,
+            )
+            .await?;
+            transaction.commit().await?;
+            return Ok(output);
         }
         let member_count: i64 = sqlx::query_scalar(
             "SELECT COUNT(*) FROM members WHERE workspace_id=? AND status='active'",

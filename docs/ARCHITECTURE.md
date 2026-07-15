@@ -11,6 +11,7 @@ React WebView 仅负责展示与输入，通过由 Rust 模型生成的 TypeScri
 - `src-tauri/src/task.rs`：诊断、归档和预览共用的可取消后台任务模型。
 - `src-tauri/src/rdp.rs`：进程隔离的内置 FreeRDP SDL sidecar 适配。
 - `src-tauri/src/collaboration.rs`：团队终端房间、端到端邀请/帧加密、控制租约和本机补帧状态机。
+- `src-tauri/src/team_relay.rs`：HTTPS relay 客户端、Keychain 会话、设备 challenge、工作区发布/邀请与权威目录同步。
 - `services/team-relay`：独立在线账号、设备会话、服务端 RBAC/epoch/撤销和仅密文 WebSocket relay。
 
 SFTP、监控、传输、压缩和预览优先租用同一连接配置下的空闲已认证 Transport；并发繁忙时池自动创建附加 Transport，配置、代理或主机身份变化时使旧池失效。终端 PTY 与隧道使用不可复用的独占 Transport，避免 `libssh2::Session` 互斥锁让交互输入被后台 Channel 阻塞。

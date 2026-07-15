@@ -659,6 +659,69 @@ export interface TeamTerminalClientRoom {
   status: string;
 }
 
+export interface TeamRelayProfile {
+  id: string;
+  name: string;
+  baseUrl: string;
+  accountId: string | null;
+  accountEmail: string | null;
+  hasAccountSession: boolean;
+  accountSessionExpiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SaveTeamRelayProfileInput {
+  id: string;
+  name: string;
+  baseUrl: string;
+}
+
+export interface TeamRelayAccountInput {
+  profileId: string;
+  email: string;
+  password: string;
+  displayName?: string | null;
+}
+
+export interface TeamRelayWorkspaceBinding {
+  workspaceId: string;
+  profileId: string;
+  profileName: string;
+  baseUrl: string;
+  accountId: string;
+  deviceSessionExpiresAt: string | null;
+  lastSyncedAt: string | null;
+}
+
+export interface CreateTeamRelayInvitationInput {
+  workspaceId: string;
+  email: string;
+  role: string;
+}
+
+export interface TeamRelayInvitation {
+  invitationId: string;
+  token: string;
+  memberId: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+}
+
+export interface AcceptTeamRelayInvitationInput {
+  profileId: string;
+  token: string;
+  deviceName: string;
+}
+
+export interface UpdateTeamRelayMemberInput {
+  workspaceId: string;
+  memberId: string;
+  role: string;
+  status: string;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;

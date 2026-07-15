@@ -839,6 +839,85 @@ pub struct TeamTerminalClientRoom {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayProfile {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+    pub account_id: Option<String>,
+    pub account_email: Option<String>,
+    pub has_account_session: bool,
+    pub account_session_expires_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SaveTeamRelayProfileInput {
+    pub id: String,
+    pub name: String,
+    pub base_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TeamRelayAccountInput {
+    pub profile_id: String,
+    pub email: String,
+    pub password: String,
+    pub display_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayWorkspaceBinding {
+    pub workspace_id: String,
+    pub profile_id: String,
+    pub profile_name: String,
+    pub base_url: String,
+    pub account_id: String,
+    pub device_session_expires_at: Option<String>,
+    pub last_synced_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateTeamRelayInvitationInput {
+    pub workspace_id: String,
+    pub email: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayInvitation {
+    pub invitation_id: String,
+    pub token: String,
+    pub member_id: String,
+    pub email: String,
+    pub role: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AcceptTeamRelayInvitationInput {
+    pub profile_id: String,
+    pub token: String,
+    pub device_name: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateTeamRelayMemberInput {
+    pub workspace_id: String,
+    pub member_id: String,
+    pub role: String,
+    pub status: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginAuditEvent {

@@ -263,6 +263,37 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         .await
         .unwrap();
     assert_eq!(recipient_session.key_epoch, 2);
+    let retried_recipient_session: DeviceSessionOutput = client
+        .post(format!("{}/v1/invitations/accept", server.base_url))
+        .header("Authorization", bearer(&bob.token))
+        .json(&json!({
+            "token": invitation.token,
+            "device": recipient_device.registration
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(
+        retried_recipient_session.workspace_id,
+        recipient_session.workspace_id
+    );
+    assert_eq!(
+        retried_recipient_session.member_id,
+        recipient_session.member_id
+    );
+    assert_eq!(
+        retried_recipient_session.device_id,
+        recipient_session.device_id
+    );
+    assert_eq!(
+        retried_recipient_session.key_epoch,
+        recipient_session.key_epoch
+    );
 
     let snapshot: WorkspaceSnapshot = client
         .get(format!(

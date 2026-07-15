@@ -26,6 +26,7 @@ mod sftp;
 mod ssh;
 mod task;
 mod team;
+mod team_relay;
 mod team_share;
 mod telnet;
 mod touch_id;
@@ -308,6 +309,19 @@ pub fn run() {
             commands::team_share_export,
             commands::team_share_preview,
             commands::team_share_apply,
+            commands::team_relay_profile_list,
+            commands::team_relay_profile_save,
+            commands::team_relay_profile_delete,
+            commands::team_relay_account_register,
+            commands::team_relay_account_login,
+            commands::team_relay_account_logout,
+            commands::team_relay_binding_list,
+            commands::team_relay_workspace_publish,
+            commands::team_relay_workspace_sync,
+            commands::team_relay_invitation_create,
+            commands::team_relay_invitation_accept,
+            commands::team_relay_member_update,
+            commands::team_relay_device_revoke,
             commands::team_terminal_room_start,
             commands::team_terminal_room_join,
             commands::team_terminal_invitation_create,

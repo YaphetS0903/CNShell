@@ -49,7 +49,7 @@ rand = "0.8"
 regex = "1"
 cron = "0.15"
 rustpython-parser = "0.4.0"
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["json", "rustls", "stream"] }
 tempfile = "3"
 zmodem2 = "0.7.1"
 portable-pty = "0.9"
@@ -64,6 +64,8 @@ objc2-local-authentication = "0.3.2"
 security-framework = { version = "3.7", features = ["OSX_10_15"] }
 
 [dev-dependencies]
+axum = "0.8"
+cnshell-team-relay = { path = "../services/team-relay" }
 wat = "=1.253.0"
 
 [patch.crates-io]

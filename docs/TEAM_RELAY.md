@@ -49,6 +49,26 @@ cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D 
 cargo test --manifest-path services/team-relay/Cargo.toml
 ```
 
+## macOS 客户端接入
+
+客户端只接受 `https://` relay 地址；`http://` 仅允许 `localhost`、`127.0.0.1` 和 `::1`
+自动化测试。请求禁用重定向，连接和总请求有超时，响应限制为 1 MiB。
+
+- 账号 token 和每工作区设备 token 仅保存到 `cn.cnshell.team-relay` Keychain 服务；SQLite
+  只保存 endpoint、账号 ID/邮箱、会话到期时间、工作区绑定和最后同步时间。
+- 设备 token 临近过期或丢失时，客户端使用既有 Ed25519 私钥签署服务端一次性 challenge，
+  不要求重新输入账号密码。
+- 本地工作区发布前只允许单一 Owner/本机设备，避免把旧的手工成员目录误当成在线组织。
+  发布后成员、设备、角色和 `keyEpoch` 以服务端快照为准。
+- 邀请接受在本机保存只含邀请 token 哈希和公钥的待处理身份；网络响应丢失时复用同一设备
+  ID 和 Keychain 私钥重试。服务端只对同账号、同成员和完全相同设备公钥进行幂等恢复。
+- 快照落库前校验数量、UUID、角色、状态、公钥格式、组合指纹，并固定比对本机既有公钥，
+  异常快照不能替换与 Keychain 私钥配对的本机身份。
+
+真实 loopback 客户端测试使用两个独立 SQLite/Keychain 身份完成账号注册、工作区发布、邀请
+接受、角色和 epoch 同步，并删除设备 token 验证 challenge 自动刷新；同时检查客户端 SQLite
+不含明文账号密码或 token。
+
 ## 尚未构成的外部验收
 
 本地服务代码和 loopback HTTP/WebSocket 协议测试不等于已经上线正式服务。公开交付仍需要：
@@ -57,4 +77,4 @@ cargo test --manifest-path services/team-relay/Cargo.toml
 2. 代理层登录/注册速率限制、邮件投递与邮箱验证、防滥用和告警。
 3. 加密卷、自动备份、恢复演练、日志保留、监控和事故响应。
 4. 至少两台真实设备跨网络完成观看、控制移交、断网恢复和撤销传播验收。
-5. 客户端在线账号、工作区同步与多人终端 UI 接入；在完成前默认入口保持关闭。
+5. 客户端多人终端房间 REST/WebSocket、观看与控制 UI 接入；在完成前在线终端入口保持关闭。

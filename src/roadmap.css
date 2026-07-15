@@ -332,6 +332,104 @@
   overflow-wrap: anywhere;
 }
 
+.team-relay-settings {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.team-relay-settings .plugin-report {
+  margin-top: 0;
+}
+
+.team-relay-form-row,
+.team-relay-account-status,
+.team-relay-token {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.team-relay-form-row > label {
+  display: grid;
+  gap: 4px;
+  min-width: 150px;
+  flex: 1 1 180px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.team-relay-form-row input,
+.team-relay-form-row select {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 8px;
+}
+
+.team-relay-password > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  gap: 4px;
+}
+
+.team-relay-password .icon-button {
+  width: 30px;
+  height: 30px;
+}
+
+.team-relay-url {
+  min-width: 0;
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
+}
+
+.team-relay-account-status {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.team-relay-account-status > div,
+.team-relay-token > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.team-relay-token {
+  align-items: center;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+
+.team-relay-token code {
+  overflow-wrap: anywhere;
+  user-select: text;
+  font: 10px SFMono-Regular, Menlo, monospace;
+}
+
+@media (max-width: 680px) {
+  .team-relay-form-row > label {
+    flex-basis: 100%;
+  }
+
+  .team-relay-form-row > .mini-button,
+  .team-relay-account-status > .mini-button,
+  .team-relay-token > .mini-button {
+    margin-left: 0;
+  }
+}
+
 .recording-status {
   color: var(--muted);
   font-size: 12px;

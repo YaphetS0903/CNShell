@@ -69,6 +69,8 @@ describe("TeamSettings", () => {
     dialog.save.mockReset();
     dialog.open.mockReset();
     vi.spyOn(api, "listTeamWorkspaces").mockResolvedValue([workspace]);
+    vi.spyOn(api, "listTeamRelayBindings").mockResolvedValue([]);
+    vi.spyOn(api, "listTeamRelayProfiles").mockResolvedValue([]);
     vi.spyOn(api, "getTeamPermissions").mockResolvedValue(permissions);
     vi.spyOn(api, "listTeamMembers").mockResolvedValue([owner, viewer]);
     vi.spyOn(api, "listTeamDevices").mockResolvedValue([]);
@@ -122,5 +124,30 @@ describe("TeamSettings", () => {
       recipientDeviceIds: [device.id],
       includeCredential: true,
     })));
+  });
+
+  it("routes connected workspace role changes through the relay", async () => {
+    const user = userEvent.setup();
+    vi.mocked(api.listTeamRelayBindings).mockResolvedValue([{
+      workspaceId: workspace.id,
+      profileId: "77777777-7777-4777-8777-777777777777",
+      profileName: "Relay",
+      baseUrl: "https://relay.example.com/",
+      accountId: "88888888-8888-4888-8888-888888888888",
+      deviceSessionExpiresAt: "2026-07-15T00:15:00Z",
+      lastSyncedAt: workspace.updatedAt,
+    }]);
+    const update = vi.spyOn(api, "updateTeamRelayMember").mockResolvedValue(workspace);
+    const localSave = vi.spyOn(api, "saveTeamMember");
+    render(<TeamSettings onError={vi.fn()}/>);
+
+    await user.selectOptions(await screen.findByLabelText("修改 Bob 角色"), "operator");
+    await waitFor(() => expect(update).toHaveBeenCalledWith({
+      workspaceId: workspace.id,
+      memberId: viewer.id,
+      role: "operator",
+      status: "active",
+    }));
+    expect(localSave).not.toHaveBeenCalled();
   });
 });
