@@ -27,6 +27,7 @@
 | RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，全部参数与密码仅经 Helper stdin 传递；静态 helper 内置 NTLM 所需 MD4/MD5/RC4；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、诊断翻译及应用退出清理。当前局域网测试目标的 TCP 3389 可建立，但对默认、Cookie 和 legacy RDP 协商探针均返回 0 字节并断开，需目标 Windows 开启有效 RDP 服务后再验收画面与输入 |
 | 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分 | `src/styles.css`、`src/components/Modal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与最终 DMG 辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、真实方向键切换与独立菜单入口，SFTP 虚拟表格行列/排序/总数，以及监控数值替代；完整 VoiceOver 朗读顺序仍需用户主动开启系统 VoiceOver 后人工巡检 |
 | SQLite 历史迁移与失败前备份 | 通过 | `src-tauri/src/db.rs`、`src-tauri/migrations/` | v1–v4 无损升级、任务恢复、数据库 `.backup` 测试通过 |
+| 本地 Shell / Telnet 基线 | 通过（代码与回环协议测试） | `src-tauri/src/local_shell.rs`、`src-tauri/src/telnet.rs`、连接编辑器 | 本地 PTY 的生命周期、输入、resize 和关闭已接入；Telnet 回环连接、IAC 协商过滤、IPv6 地址、关闭/断线状态和禁止保存密码均有 Rust/前端测试。Telnet 明文风险已持续显示；未把它当作 SSH 替代。 |
 
 ## 2. 自动化证据
 

@@ -688,7 +688,7 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
     if input.username.trim().is_empty() || input.username.chars().any(char::is_control) {
         return Err(AppError::Validation("用户名不能为空或包含控制字符".into()));
     }
-    if !["ssh", "rdp", "local"].contains(&input.protocol.as_str()) {
+    if !["ssh", "rdp", "local", "telnet"].contains(&input.protocol.as_str()) {
         return Err(AppError::Validation("不支持的协议".into()));
     }
     if input.protocol == "local" {
@@ -697,6 +697,21 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
         }
         if input.auth_type != "none" && input.auth_type != "password" {
             return Err(AppError::Validation("本地 Shell 不支持该认证方式".into()));
+        }
+        return Ok(());
+    }
+    if input.protocol == "telnet" {
+        if input.auth_type != "none" {
+            return Err(AppError::Validation(
+                "Telnet 不支持认证方式，也不会保存密码".into(),
+            ));
+        }
+        if input
+            .credential
+            .as_deref()
+            .is_some_and(|value| !value.is_empty())
+        {
+            return Err(AppError::Validation("Telnet 不允许保存密码".into()));
         }
         return Ok(());
     }
@@ -908,6 +923,34 @@ mod tests {
             credential: None,
         };
         assert!(validate_connection(&input).is_ok());
+    }
+
+    #[test]
+    fn telnet_profile_rejects_saved_credentials() {
+        let input = SaveConnectionInput {
+            id: "telnet".into(),
+            folder_id: None,
+            protocol: "telnet".into(),
+            name: "遗留设备".into(),
+            host: "127.0.0.1".into(),
+            port: 23,
+            username: "anonymous".into(),
+            auth_type: "none".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: std::collections::BTreeMap::new(),
+            credential: Some("must-not-be-saved".into()),
+        };
+        assert!(validate_connection(&input).is_err());
+        let mut safe = input;
+        safe.credential = None;
+        assert!(validate_connection(&safe).is_ok());
     }
     #[test]
     fn rejects_invalid_settings_and_environment() {

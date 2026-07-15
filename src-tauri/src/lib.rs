@@ -22,6 +22,7 @@ mod session_log;
 mod sftp;
 mod ssh;
 mod task;
+mod telnet;
 mod touch_id;
 mod tunnel;
 mod webdav;
@@ -44,6 +45,7 @@ use tauri::{
     Emitter, Manager,
     menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
 };
+use telnet::TelnetManager;
 use tunnel::TunnelManager;
 
 pub struct AppState {
@@ -60,6 +62,7 @@ pub struct AppState {
     external_edits: ExternalEditManager,
     ai: AiManager,
     local_shell: LocalShellManager,
+    telnet: TelnetManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -170,6 +173,7 @@ pub fn run() {
                 external_edits: ExternalEditManager::default(),
                 ai: AiManager::default(),
                 local_shell: LocalShellManager::default(),
+                telnet: TelnetManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -188,6 +192,7 @@ pub fn run() {
                 window.state::<AppState>().rdp.close_all();
                 window.state::<AppState>().mosh.close_all();
                 window.state::<AppState>().local_shell.close_all();
+                window.state::<AppState>().telnet.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![

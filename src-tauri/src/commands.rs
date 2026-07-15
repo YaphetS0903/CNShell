@@ -837,6 +837,13 @@ pub async fn terminal_open(
         let _ = state.db.mark_connected(&connection_id).await;
         return Ok(session);
     }
+    if profile.protocol == "telnet" {
+        let session = state
+            .telnet
+            .open(app, profile, state.logs.clone(), cols, rows)?;
+        let _ = state.db.mark_connected(&connection_id).await;
+        return Ok(session);
+    }
     if profile.protocol != "ssh" {
         return Err(AppError::Validation("RDP 连接请使用远程桌面入口".into()));
     }
@@ -894,6 +901,9 @@ pub async fn terminal_input(
     if state.local_shell.contains(&session_id) {
         return state.local_shell.input(&session_id, &data);
     }
+    if state.telnet.contains(&session_id) {
+        return state.telnet.input(&session_id, &data);
+    }
     if state.mosh.contains(&session_id) {
         return state.mosh.input(&session_id, &data);
     }
@@ -910,6 +920,9 @@ pub async fn terminal_resize(
     if state.local_shell.contains(&session_id) {
         return state.local_shell.resize(&session_id, cols, rows);
     }
+    if state.telnet.contains(&session_id) {
+        return state.telnet.resize(&session_id, cols, rows);
+    }
     if state.mosh.contains(&session_id) {
         return state.mosh.resize(&session_id, cols, rows);
     }
@@ -920,6 +933,8 @@ pub async fn terminal_resize(
 pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
     let result = if state.local_shell.contains(&session_id) {
         state.local_shell.close(&session_id)
+    } else if state.telnet.contains(&session_id) {
+        state.telnet.close(&session_id)
     } else if state.mosh.contains(&session_id) {
         state.mosh.close(&session_id)
     } else {

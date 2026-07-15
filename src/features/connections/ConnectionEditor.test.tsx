@@ -30,6 +30,19 @@ describe("ConnectionEditor", () => {
     expect(screen.getByPlaceholderText("例如：tmux attach || tmux")).toHaveValue("");
   });
 
+  it("marks Telnet as plaintext and exposes no password field", async () => {
+    const user = userEvent.setup();
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "telnet");
+
+    expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(23);
+    expect(screen.getByText(/Telnet 未加密/)).toBeInTheDocument();
+    expect(screen.getByText(/不保存 Telnet 密码/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("密码")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Windows 密码")).not.toBeInTheDocument();
+  });
+
   it("configures RDP display and least-privilege redirection options", async () => {
     const user=userEvent.setup();
     vi.spyOn(api,"rdpDisplays").mockResolvedValue([{id:1,name:"Built-in Retina Display",width:1352,height:878,primary:true}]);

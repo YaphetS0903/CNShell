@@ -36,6 +36,12 @@ CNshell 每 2 秒通过独立 SSH Exec Channel 读取 `/proc`、`df`、`ip` 和 
 
 直接创建 RDP 连接即可。CNshell 应用包已内置 universal `sdl-freerdp`，使用原生 SDL/Metal 窗口、动态分辨率、文本剪贴板和自动重连，不需要 Homebrew 或 XQuartz。连接编辑页可选择窗口/全屏、显示器、缩放、画质/带宽和远端声音；麦克风与本地目录映射默认关闭，启用前会确认权限。密码和目录 Bookmark 保存在 macOS Keychain，参数和密码仅通过 sidecar stdin 传递，不进入命令行参数或环境变量。CNshell 标签会显示 connecting/online/reconnecting/closed/failed 状态，可切到或隐藏受管远程窗口；关闭标签会终止对应远程桌面进程。
 
+## 本地 Shell 与 Telnet
+
+创建连接时可选择“本地 Shell”，使用当前 macOS 登录 Shell 打开独立 PTY 会话。它支持标签、分屏、终端偏好和会话日志，但不会启用远程监控或 SFTP。
+
+Telnet 仅用于受控内网中的遗留设备。连接和标签会持续标记“未加密”，CNshell 不提供 Telnet 密码字段，也拒绝从导入或 IPC 保存 Telnet 凭据。需要登录时只能在已建立的明文终端中手动输入；公网或不可信网络应使用 SSH。
+
 ## 备份与诊断
 
 - “安全导出”不含任何凭据。
