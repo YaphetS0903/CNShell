@@ -605,6 +605,9 @@ pub fn authenticate(
                 return Err(AppError::Authentication("SSH Agent 中没有可用身份".into()));
             }
         }
+        "fido2Agent" => {
+            authenticate_fido2_agent(&connected.session, &profile.username)?;
+        }
         other => {
             return Err(AppError::Authentication(format!(
                 "不支持的认证方式：{other}"
@@ -615,6 +618,124 @@ pub fn authenticate(
         return Err(AppError::Authentication("服务端拒绝认证".into()));
     }
     Ok(connected)
+}
+
+const FIDO2_KEY_TYPES: [&str; 4] = [
+    "sk-ssh-ed25519@openssh.com",
+    "sk-ecdsa-sha2-nistp256@openssh.com",
+    "sk-ssh-ed25519-cert-v01@openssh.com",
+    "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com",
+];
+
+fn public_key_type(blob: &[u8]) -> Option<&str> {
+    let length = u32::from_be_bytes(blob.get(..4)?.try_into().ok()?) as usize;
+    let end = 4usize.checked_add(length)?;
+    std::str::from_utf8(blob.get(4..end)?).ok()
+}
+
+fn is_fido2_key(blob: &[u8]) -> bool {
+    public_key_type(blob).is_some_and(|key_type| FIDO2_KEY_TYPES.contains(&key_type))
+}
+
+fn public_key_fingerprint(blob: &[u8]) -> String {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(blob);
+    format!(
+        "SHA256:{}",
+        base64::engine::general_purpose::STANDARD_NO_PAD.encode(digest)
+    )
+}
+
+fn fido2_identity(identity: &ssh2::PublicKey) -> Option<crate::models::Fido2Identity> {
+    let key_type = public_key_type(identity.blob())?;
+    if !FIDO2_KEY_TYPES.contains(&key_type) {
+        return None;
+    }
+    Some(crate::models::Fido2Identity {
+        key_type: key_type.to_owned(),
+        comment: identity.comment().to_owned(),
+        fingerprint: public_key_fingerprint(identity.blob()),
+    })
+}
+
+fn connected_agent(session: &ssh2::Session) -> AppResult<ssh2::Agent> {
+    if std::env::var_os("SSH_AUTH_SOCK").is_none() {
+        return Err(AppError::Unavailable(
+            "未检测到 SSH Agent。请先将 FIDO2 硬件密钥加入 macOS/OpenSSH Agent".into(),
+        ));
+    }
+    let mut agent = session
+        .agent()
+        .map_err(|error| AppError::Unavailable(format!("无法初始化 SSH Agent：{error}")))?;
+    agent
+        .connect()
+        .map_err(|error| AppError::Unavailable(format!("无法连接 SSH Agent：{error}")))?;
+    agent
+        .list_identities()
+        .map_err(|error| AppError::Unavailable(format!("无法读取 SSH Agent 身份：{error}")))?;
+    Ok(agent)
+}
+
+pub fn list_fido2_identities() -> AppResult<Vec<crate::models::Fido2Identity>> {
+    let session = ssh2::Session::new()
+        .map_err(|error| AppError::Unavailable(format!("无法初始化 SSH：{error}")))?;
+    let agent = connected_agent(&session)?;
+    let identities = agent
+        .identities()
+        .map_err(|error| AppError::Unavailable(format!("无法读取 SSH Agent 身份：{error}")))?;
+    Ok(identities.iter().filter_map(fido2_identity).collect())
+}
+
+fn authenticate_fido2_agent(session: &ssh2::Session, username: &str) -> AppResult<()> {
+    let agent = connected_agent(session)?;
+    let identities = agent
+        .identities()
+        .map_err(|error| AppError::Authentication(format!("无法读取 SSH Agent 身份：{error}")))?;
+    let hardware_identities = identities
+        .iter()
+        .filter(|identity| is_fido2_key(identity.blob()))
+        .collect::<Vec<_>>();
+    if hardware_identities.is_empty() {
+        return Err(AppError::Authentication(
+            "SSH Agent 中没有 FIDO2 硬件身份。请插入安全密钥，并用 ssh-add 加载 sk-ssh-ed25519 或 sk-ecdsa-sha2-nistp256 密钥".into(),
+        ));
+    }
+    let mut last_error = None;
+    for identity in hardware_identities {
+        match agent.userauth(username, identity) {
+            Ok(()) if session.authenticated() => return Ok(()),
+            Ok(()) => last_error = Some("服务端拒绝该硬件身份".to_owned()),
+            Err(error) => last_error = Some(error.to_string()),
+        }
+    }
+    Err(AppError::Authentication(fido2_failure_message(
+        last_error.as_deref(),
+    )))
+}
+
+fn fido2_failure_message(agent_error: Option<&str>) -> String {
+    let detail = agent_error.unwrap_or_default();
+    let normalized = detail.to_ascii_lowercase();
+    let guidance = if normalized.contains("cancel") || normalized.contains("canceled") {
+        "已取消硬件密钥验证；请重新连接并完成系统提示"
+    } else if normalized.contains("pin") {
+        "硬件密钥需要 PIN，或 PIN 验证失败；请在系统提示中输入正确 PIN"
+    } else if normalized.contains("touch") || normalized.contains("presence") {
+        "未完成触摸确认；请在硬件密钥闪烁时触摸设备"
+    } else if normalized.contains("removed")
+        || normalized.contains("no such device")
+        || normalized.contains("device not found")
+    {
+        "硬件密钥已拔出或不可用；请重新插入设备后连接"
+    } else {
+        "请确认设备仍已插入，并按系统提示触摸密钥或输入 PIN；如果刚刚取消了提示，请重新连接"
+    };
+    if detail.is_empty() {
+        format!("FIDO2 硬件密钥认证失败：{guidance}")
+    } else {
+        format!("FIDO2 硬件密钥认证失败：{guidance}。Agent 返回：{detail}")
+    }
 }
 
 async fn transport_connection_with_chain(
@@ -1792,6 +1913,44 @@ pub async fn terminal_close(manager: SessionManager, session_id: String) -> AppR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn ssh_blob(key_type: &str) -> Vec<u8> {
+        let mut blob = (key_type.len() as u32).to_be_bytes().to_vec();
+        blob.extend_from_slice(key_type.as_bytes());
+        blob.extend_from_slice(b"fixture-public-key-body");
+        blob
+    }
+
+    #[test]
+    fn fido2_identity_filter_accepts_only_openssh_security_key_algorithms() {
+        for key_type in FIDO2_KEY_TYPES {
+            let blob = ssh_blob(key_type);
+            assert_eq!(public_key_type(&blob), Some(key_type));
+            assert!(is_fido2_key(&blob));
+        }
+        assert!(!is_fido2_key(&ssh_blob("ssh-ed25519")));
+        assert!(!is_fido2_key(&ssh_blob("ecdsa-sha2-nistp256")));
+        assert!(!is_fido2_key(&[0, 0, 0, 40, b's', b'k']));
+    }
+
+    #[test]
+    fn fido2_fingerprint_uses_openssh_sha256_format() {
+        assert_eq!(
+            public_key_fingerprint(b""),
+            "SHA256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU"
+        );
+        assert!(!public_key_fingerprint(b"fixture").contains('='));
+    }
+
+    #[test]
+    fn fido2_agent_failures_keep_distinct_actionable_categories() {
+        assert!(fido2_failure_message(Some("user canceled")).contains("已取消"));
+        assert!(fido2_failure_message(Some("PIN invalid")).contains("PIN"));
+        assert!(fido2_failure_message(Some("touch required")).contains("触摸"));
+        assert!(fido2_failure_message(Some("device removed")).contains("拔出"));
+        assert!(fido2_failure_message(Some("agent refused operation")).contains("仍已插入"));
+    }
+
     #[tokio::test]
     async fn blocking_operation_timeout_returns_a_recoverable_error() {
         let started = Instant::now();

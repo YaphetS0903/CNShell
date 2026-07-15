@@ -22,6 +22,8 @@ import type {
   SessionLogStatus,
   SaveConnectionInput,
   SshCertificateInfo,
+  Fido2Identity,
+  TouchIdSyncStatus,
   SystemInfo,
   SyncOptions,
   SyncResult,
@@ -100,6 +102,9 @@ export const api = {
     if (isTauri()) return invoke("ssh_certificate_inspect", { path });
     throw new Error("SSH Certificate 检查需要运行 CNshell 桌面版");
   },
+  async listFido2Identities(): Promise<Fido2Identity[]> {
+    return isTauri() ? invoke("fido2_identity_list") : [];
+  },
   async duplicateConnection(id:string,newId:string):Promise<ConnectionProfile>{return invoke("connection_duplicate",{id,newId});},
   async deleteConnection(id: string): Promise<void> {
     if (isTauri()) await invoke("connection_delete", { id });
@@ -124,6 +129,11 @@ export const api = {
   async startAutomation(plan:AutomationPlan):Promise<BackgroundTask>{return invoke("automation_start",{plan});},
   async writeEncryptedSync(folder:string,passphrase:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write",{folder,passphrase,options});},
   async readEncryptedSync(folder:string,passphrase:string):Promise<SyncResult>{return invoke("sync_read",{folder,passphrase});},
+  async touchIdSyncStatus(folder:string):Promise<TouchIdSyncStatus>{return isTauri()?invoke("touch_id_sync_status",{folder}):{supported:false,saved:false,message:"Touch ID 需要运行 CNshell 桌面版"};},
+  async saveTouchIdSyncKey(folder:string,passphrase:string):Promise<TouchIdSyncStatus>{return invoke("touch_id_sync_save",{folder,passphrase});},
+  async deleteTouchIdSyncKey(folder:string):Promise<void>{return invoke("touch_id_sync_delete",{folder});},
+  async writeEncryptedSyncWithTouchId(folder:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write_touch_id",{folder,options});},
+  async readEncryptedSyncWithTouchId(folder:string):Promise<SyncResult>{return invoke("sync_read_touch_id",{folder});},
   async listProxies(): Promise<ProxyProfile[]> { return isTauri() ? invoke("proxy_list") : []; },
   async saveProxy(input: SaveProxyInput): Promise<ProxyProfile> { return invoke("proxy_save", { input }); },
   async deleteProxy(id: string): Promise<void> { return invoke("proxy_delete", { id }); },

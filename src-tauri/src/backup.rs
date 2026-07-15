@@ -39,11 +39,12 @@ struct ExportConnection {
 
 impl ExportConnection {
     fn from_profile(profile: ConnectionProfile, include_secret: bool) -> AppResult<Self> {
-        let credential = if include_secret && profile.auth_type != "sshAgent" {
-            load_credential(&profile.id)?
-        } else {
-            None
-        };
+        let credential =
+            if include_secret && !matches!(profile.auth_type.as_str(), "sshAgent" | "fido2Agent") {
+                load_credential(&profile.id)?
+            } else {
+                None
+            };
         Ok(Self {
             id: profile.id,
             folder_id: profile.folder_id,
@@ -406,7 +407,9 @@ async fn import_file(
     let mut prepared = Vec::with_capacity(count);
     let mut changed = Vec::new();
     for input in inputs {
-        let reference = if input.protocol == "ssh" && input.auth_type != "sshAgent" {
+        let reference = if input.protocol == "ssh"
+            && !matches!(input.auth_type.as_str(), "sshAgent" | "fido2Agent")
+        {
             if let Some(secret) = input.credential.as_deref() {
                 let previous = match load_credential(&input.id) {
                     Ok(previous) => previous,

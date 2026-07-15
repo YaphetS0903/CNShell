@@ -138,6 +138,35 @@
   border-radius: 7px;
   padding: 3px 8px;
 }
+.touch-id-vault {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+.touch-id-vault > div:first-child {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+.touch-id-vault.available > div:first-child > svg {
+  color: var(--accent);
+}
+.touch-id-vault.unavailable > div:first-child > svg {
+  color: var(--faint);
+}
+.touch-id-vault span {
+  display: grid;
+  gap: 2px;
+}
+.touch-id-vault small {
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1.45;
+}
 .sync-result {
   display: flex;
   flex-direction: column;

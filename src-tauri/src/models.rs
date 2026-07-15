@@ -161,6 +161,22 @@ pub struct SshCertificateInfo {
     pub status: String,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct Fido2Identity {
+    pub key_type: String,
+    pub comment: String,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TouchIdSyncStatus {
+    pub supported: bool,
+    pub saved: bool,
+    pub message: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalSession {

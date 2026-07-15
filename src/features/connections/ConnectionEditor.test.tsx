@@ -90,5 +90,19 @@ describe("ConnectionEditor", () => {
     expect(screen.getByText("有效")).toBeInTheDocument();
   });
 
+  it("detects and displays only the backend-provided FIDO2 identities", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "listFido2Identities").mockResolvedValue([{keyType:"sk-ssh-ed25519@openssh.com",comment:"YubiKey 5",fingerprint:"SHA256:hardware"}]);
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "fido2Agent");
+
+    expect(await screen.findByText("YubiKey 5")).toBeInTheDocument();
+    expect(screen.getByText("sk-ssh-ed25519@openssh.com")).toBeInTheDocument();
+    expect(screen.getByText("SHA256:hardware")).toBeInTheDocument();
+    expect(screen.queryByLabelText("私钥口令")).not.toBeInTheDocument();
+    expect(api.listFido2Identities).toHaveBeenCalledTimes(1);
+  });
+
   it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null, certificatePath: null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
 });

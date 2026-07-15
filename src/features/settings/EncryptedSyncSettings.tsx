@@ -1,9 +1,9 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { CloudCog, FolderOpen, LockKeyhole } from "lucide-react";
-import { useState } from "react";
+import { CloudCog, Fingerprint, FolderOpen, LockKeyhole, Trash2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
-import type { SyncOptions, SyncResult } from "../../types";
+import type { SyncOptions, SyncResult, TouchIdSyncStatus } from "../../types";
 
 export function EncryptedSyncSettings({
   onError,
@@ -19,6 +19,24 @@ export function EncryptedSyncSettings({
   });
   const [result, setResult] = useState<SyncResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [touchBusy, setTouchBusy] = useState(false);
+  const [touchStatus, setTouchStatus] = useState<TouchIdSyncStatus | null>(null);
+  useEffect(() => {
+    if (!folder) {
+      setTouchStatus(null);
+      return;
+    }
+    let active = true;
+    void api.touchIdSyncStatus(folder).then((status) => {
+      if (active) setTouchStatus(status);
+    }).catch((error) => {
+      if (active) {
+        setTouchStatus(null);
+        onError(errorMessage(error));
+      }
+    });
+    return () => { active = false; };
+  }, [folder, onError]);
   const choose = async () => {
     const path = await open({
       directory: true,
@@ -45,6 +63,20 @@ export function EncryptedSyncSettings({
       setBusy(false);
     }
   };
+  const touchSync = async () => {
+    if (
+      options.includeCredentials &&
+      !confirm("凭据将从 macOS Keychain 读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？")
+    ) return;
+    setTouchBusy(true);
+    try {
+      setResult(await api.writeEncryptedSyncWithTouchId(folder, options));
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setTouchBusy(false);
+    }
+  };
   const pull = async () => {
     if (
       !confirm(
@@ -60,6 +92,40 @@ export function EncryptedSyncSettings({
       onError(errorMessage(error));
     } finally {
       setBusy(false);
+    }
+  };
+  const touchPull = async () => {
+    if (!confirm("使用 Touch ID 解锁并从同步目录导入连接？同 ID 的本地连接不会被覆盖，将保留为双方冲突副本。")) return;
+    setTouchBusy(true);
+    try {
+      setResult(await api.readEncryptedSyncWithTouchId(folder));
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setTouchBusy(false);
+    }
+  };
+  const saveTouchId = async () => {
+    setTouchBusy(true);
+    try {
+      setTouchStatus(await api.saveTouchIdSyncKey(folder, passphrase));
+      setPassphrase("");
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setTouchBusy(false);
+    }
+  };
+  const deleteTouchId = async () => {
+    if (!confirm("移除此同步文件夹保存的 Touch ID 口令？现有加密同步包不会被删除，之后仍可用手动口令恢复。")) return;
+    setTouchBusy(true);
+    try {
+      await api.deleteTouchIdSyncKey(folder);
+      setTouchStatus(await api.touchIdSyncStatus(folder));
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setTouchBusy(false);
     }
   };
   return (
@@ -87,7 +153,7 @@ export function EncryptedSyncSettings({
         </div>
       </label>
       <label>
-        <span>同步口令（至少 8 位，不保存）</span>
+        <span>同步口令（至少 8 位；默认不保存）</span>
         <input
           type="password"
           value={passphrase}
@@ -95,6 +161,14 @@ export function EncryptedSyncSettings({
           autoComplete="new-password"
         />
       </label>
+      {folder && touchStatus && <div className={`touch-id-vault ${touchStatus.supported ? "available" : "unavailable"}`}>
+        <div><Fingerprint size={17}/><span><strong>Touch ID 本地保护</strong><small>{touchStatus.message}</small></span></div>
+        <div className="backup-actions">
+          {!touchStatus.saved && <button className="button secondary" disabled={!touchStatus.supported || passphrase.length < 8 || busy || touchBusy} onClick={()=>void saveTouchId()}><Fingerprint size={14}/>{touchBusy?"处理中…":"用 Touch ID 保存当前口令"}</button>}
+          {touchStatus.saved && <button className="button secondary danger" disabled={busy || touchBusy} onClick={()=>void deleteTouchId()}><Trash2 size={14}/>移除已保存口令</button>}
+        </div>
+        <small>口令使用仅限这台 Mac，并绑定当前录入的指纹集合；指纹变化或验证失败时可继续使用上方手动口令。</small>
+      </div>}
       <div className="sync-toggles">
         <label className="check-row">
           <input
@@ -142,15 +216,17 @@ export function EncryptedSyncSettings({
           onClick={() => void sync()}
         >
           <LockKeyhole size={14} />
-          {busy ? "处理中…" : "生成加密同步包"}
+          {busy ? "处理中…" : "用手动口令生成"}
         </button>
         <button
           className="button secondary"
           disabled={!folder || passphrase.length < 8 || busy}
           onClick={() => void pull()}
         >
-          导入并保留冲突副本
+          用手动口令导入
         </button>
+        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchSync()}><Fingerprint size={14}/>{touchBusy?"等待 Touch ID…":"用 Touch ID 生成"}</button>}
+        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchPull()}>用 Touch ID 导入</button>}
       </div>
       {result && (
         <div className="sync-result">

@@ -40,8 +40,8 @@
 | SCP 安全降级 | 通过（代码/编译） | SFTP 子系统失败后使用 `ssh2::Session::scp_send/scp_recv`，复用现有认证、代理和主机指纹；临时文件、取消和大小校验保留。未破坏用户服务器以人为制造 SFTP 故障，因此未声明真机故障注入通过 |
 | Agent 转发 | 通过（本机能力） | `ProtocolSettings.test.tsx` 验证逐连接选择和风险确认；Rust 连接及重连路径调用 `request_auth_agent_forwarding`。是否获远端 sshd 允许取决于目标主机配置 |
 | 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览；Rust 验证固定 Schema、步骤/超时/正则边界，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
-| 加密同步 | 通过 | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步且口令不保存 |
-| Zmodem/Mosh/X11 | 条件未满足 | 设置页报告本机 `rz/sz`、Mosh 和 XQuartz 状态并显示安全边界；当前本机依赖缺失，X11 亦缺少引擎支持，因此保持关闭，不计作协议互操作通过 |
+| 加密同步 | 通过（代码/本机密钥边界） | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步。可选 Touch ID 口令使用设备专属 Data Protection Keychain 与当前指纹集合保护，解锁后不返回前端，手动口令恢复入口始终保留 |
+| Zmodem/Mosh/X11 | 部分 | Zmodem 已与腾讯云 `lrzsz` 完成双向互操作；Mosh 已完成真实公网 UDP 短测；X11 已由本机 OpenSSH 接受真实 `x11-req` 并建立远端 `DISPLAY`。XQuartz GUI、Mosh 漫游/Intel 与对应外部环境仍待验收 |
 | AI、插件、团队协作 | 路线图延期 | 未增加任何数据上传或任意权限入口，符合 P3 必须等待签名、隐私和权限模型稳定的前置要求 |
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
@@ -72,6 +72,18 @@
 | Cookie 与边界 | 大小端 X11 setup 首包均验证随机假 cookie 并替换为真实 cookie；错误 cookie、远程 display、畸形长度和超过 64 KB 首包拒绝，单会话最多 8 个 channel |
 | 生命周期 | X11 forwarder 保存在终端 handle，关闭和重连替换会停止接收器与桥接线程；X11 与 Mosh 互斥，开关默认关闭并要求风险确认 |
 | 保留验收边界 | 当前 Mac 未安装 XQuartz且没有 `DISPLAY`，因此真实 GUI 窗口、XQuartz 重启和多图形 channel 端到端仍待对应环境，不声明通过 |
+
+### 2026-07-15 FIDO2 与 Touch ID 增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| FIDO2 身份隔离 | 新增独立 `fido2Agent` 模式，只接受 OpenSSH `sk-ssh-ed25519`、`sk-ecdsa-sha2-nistp256` 及证书变体；普通 Agent 身份由解析器测试证明不会进入候选集 |
+| FIDO2 交互与诊断 | 编辑器可枚举硬件身份的算法、备注和 OpenSSH SHA-256 指纹；后端覆盖无硬件身份以及 Agent 可提供信号时的触摸、PIN、取消、拔出分类，未知 Agent failure 保持诚实的综合提示 |
+| Touch ID 密钥边界 | 同步目录以规范化路径 SHA-256 作为 Keychain account，不保存原路径；同步口令使用 `BIOMETRY_CURRENT_SET`、设备专属且设置密码保护的 Data Protection Keychain 项，读取与加密同步均留在 Rust 后端，临时字符串使用 zeroize 清理 |
+| 恢复与 UI | 手动同步口令入口始终可用；Touch ID 可保存、移除、生成同步包和导入，取消/认证失败/指纹变化均提示手动恢复，不把 Touch ID 表述为远端 SSH 生物认证 |
+| 自动化门禁 | FIDO2 blob/算法/指纹/错误分类、Touch ID 目录账户脱敏、缺失目录和前端保存/恢复/后端同步调用均有测试；Rust `127/127`（另跳过既有 soak）、前端 `105/105`、lint、production build 和 arm64 Tauri App 构建通过 |
+| 本机安装 | arm64 App 完成严格 ad-hoc 深度签名并覆盖安装至 `/Applications/CNshell.app`；安装前后现有 SQLite 哈希一致，6 条连接仍在，应用进程正常启动。本机 `bioutil` 确认 Touch ID 解锁策略有效，但未自动弹出会打断用户的生物识别提示 |
+| 保留验收边界 | 当前没有实体 FIDO2 设备，不声明真实触摸、PIN、取消或拔出通过；Touch ID 系统弹窗的保存、解锁与取消仍需用户在已安装应用中完成一次人工交互后才能标记真机通过 |
 
 | 命令 | 结果（2026-07-12） |
 | --- | --- |

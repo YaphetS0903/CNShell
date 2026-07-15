@@ -128,6 +128,18 @@ export interface SshCertificateInfo {
   status: string;
 }
 
+export interface Fido2Identity {
+  keyType: string;
+  comment: string;
+  fingerprint: string;
+}
+
+export interface TouchIdSyncStatus {
+  supported: boolean;
+  saved: boolean;
+  message: string;
+}
+
 export interface TerminalSession {
   id: string;
   connectionId: string;

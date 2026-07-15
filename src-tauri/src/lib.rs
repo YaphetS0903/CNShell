@@ -18,6 +18,7 @@ mod session_log;
 mod sftp;
 mod ssh;
 mod task;
+mod touch_id;
 mod tunnel;
 mod x11;
 mod zmodem;
@@ -178,6 +179,7 @@ pub fn run() {
             commands::connection_test_start,
             commands::connection_trust_host,
             commands::ssh_certificate_inspect,
+            commands::fido2_identity_list,
             commands::openssh_import,
             commands::openssh_generate_key,
             commands::openssh_deploy_key,
@@ -188,6 +190,11 @@ pub fn run() {
             commands::automation_start,
             commands::sync_write,
             commands::sync_read,
+            commands::touch_id_sync_status,
+            commands::touch_id_sync_save,
+            commands::touch_id_sync_delete,
+            commands::sync_write_touch_id,
+            commands::sync_read_touch_id,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,

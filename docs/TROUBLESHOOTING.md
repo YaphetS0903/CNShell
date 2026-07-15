@@ -5,6 +5,8 @@
 - **指纹变化**：不要直接接受；先确认服务器是否重装或密钥轮换。
 - **认证失败**：检查 Keychain 条目、私钥权限、SSH Agent 身份和服务端认证策略。
 - **SSH Certificate 无效**：确认选择的是 `*-cert.pub` 用户证书及其对应私钥，证书当前已生效且未过期，主体包含登录用户名，服务端 `TrustedUserCAKeys` 信任签发 CA；CNshell 不会自动放宽这些检查。
+- **FIDO2 身份未检测到**：先插入安全密钥，并确认 `ssh-add -L` 中存在 `sk-ssh-ed25519@openssh.com` 或 `sk-ecdsa-sha2-nistp256@openssh.com` 身份；驻留密钥也必须先加载进当前 OpenSSH Agent。连接时按提示触摸设备或输入硬件 PIN，普通 RSA/Ed25519 Agent 密钥不会被此模式使用。
+- **Touch ID 同步不可用**：确认 Mac 支持 Touch ID、系统已录入指纹且当前会话已解锁。取消、锁定或指纹集合变化后，可直接改用原同步口令；需要重新绑定时先移除已保存口令，再用手动口令重新保存。
 - **X11 不可用**：先启动 XQuartz，再在 XQuartz 终端确认 `DISPLAY` 与 `/opt/X11/bin/xauth list "$DISPLAY"` 有 MIT cookie；随后回到 CNshell 重新探测并为可信连接启用。服务端还必须允许 `X11Forwarding`，Mosh 模式不能承载 X11 channel。
 - **SFTP 不可用**：确认服务端启用 SFTP subsystem，且用户具有目录权限。
 - **监控为空**：非 Linux 系统或 `/proc` 不可用时会降级，终端仍可使用。

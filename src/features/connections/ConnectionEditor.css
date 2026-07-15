@@ -45,3 +45,39 @@
 .certificate-info.warning div:last-child dd {
   color: var(--warning);
 }
+
+.fido2-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fido2-heading .button {
+  padding: 5px 9px;
+  font-size: 10px;
+}
+
+.fido2-identities {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.fido2-identities > div {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-raised);
+}
+
+.fido2-identities code,
+.fido2-identities small {
+  overflow-wrap: anywhere;
+}
+
+.fido2-identities .warning {
+  color: var(--warning);
+}

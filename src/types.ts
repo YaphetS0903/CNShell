@@ -30,6 +30,8 @@ import type {
   ProxyProfile as GeneratedProxyProfile,
   RdpPreflight,
   SshCertificateInfo,
+  Fido2Identity,
+  TouchIdSyncStatus,
   SessionLogStatus,
   RemoteFile as GeneratedRemoteFile,
   SaveConnectionInput as GeneratedSaveConnectionInput,
@@ -44,7 +46,7 @@ import type {
 } from "./generated/ipc";
 
 export type Protocol = "ssh" | "rdp";
-export type AuthType = "password" | "privateKey" | "sshCertificate" | "sshAgent";
+export type AuthType = "password" | "privateKey" | "sshCertificate" | "sshAgent" | "fido2Agent";
 export type HostKeyPolicy = "strict" | "acceptNew";
 export type SessionStatus = "connecting" | "online" | "reconnecting" | "failed" | "closed";
 export type ProxyType = "socks5" | "http" | "sshJump";
@@ -78,6 +80,7 @@ export type PortForward = Omit<GeneratedPortForward, "type" | "status"> & {
   status: "stopped" | "running" | "failed" | null;
 };
 export type CommandSnippet = GeneratedCommandSnippet & { builtIn?: boolean };
+export type { Fido2Identity, TouchIdSyncStatus };
 
 export type ConnectionDiagnostic = Omit<GeneratedConnectionDiagnostic, "stage"> & {
   stage: "dns" | "tcp" | "proxy" | "hostKey" | "authentication" | "shell" | "complete";

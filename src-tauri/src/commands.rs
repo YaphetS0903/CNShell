@@ -52,6 +52,13 @@ pub async fn ssh_certificate_inspect(path: String) -> AppResult<SshCertificateIn
 }
 
 #[tauri::command]
+pub async fn fido2_identity_list() -> AppResult<Vec<Fido2Identity>> {
+    tokio::task::spawn_blocking(crate::ssh::list_fido2_identities)
+        .await
+        .map_err(|error| AppError::Internal(format!("FIDO2 身份检测任务失败：{error}")))?
+}
+
+#[tauri::command]
 pub async fn connection_save(
     state: State<'_, AppState>,
     input: SaveConnectionInput,
@@ -69,7 +76,7 @@ pub async fn connection_save(
     {
         return Err(AppError::Validation("RDP 连接必须输入密码".into()));
     }
-    if input.protocol == "ssh" && input.auth_type == "sshAgent" {
+    if input.protocol == "ssh" && matches!(input.auth_type.as_str(), "sshAgent" | "fido2Agent") {
         let previous = crate::ssh::load_credential(&input.id)?;
         crate::ssh::delete_credential(&input.id)?;
         if let Err(error) = crate::bookmark::delete(&input.id) {
@@ -464,6 +471,58 @@ pub async fn sync_read(
     passphrase: String,
 ) -> AppResult<SyncResult> {
     crate::backup::sync_read(&state.db, &folder, &passphrase).await
+}
+
+#[tauri::command]
+pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
+    tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
+        .await
+        .map_err(|error| AppError::Internal(format!("Touch ID 状态任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn touch_id_sync_save(
+    folder: String,
+    passphrase: String,
+) -> AppResult<TouchIdSyncStatus> {
+    tokio::task::spawn_blocking(move || {
+        let passphrase = zeroize::Zeroizing::new(passphrase);
+        crate::touch_id::save(&folder, passphrase.as_str())
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("Touch ID 保存任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn touch_id_sync_delete(folder: String) -> AppResult<()> {
+    tokio::task::spawn_blocking(move || crate::touch_id::delete(&folder))
+        .await
+        .map_err(|error| AppError::Internal(format!("Touch ID 删除任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn sync_write_touch_id(
+    state: State<'_, AppState>,
+    folder: String,
+    options: SyncOptions,
+) -> AppResult<SyncResult> {
+    let key_folder = folder.clone();
+    let passphrase = tokio::task::spawn_blocking(move || crate::touch_id::load(&key_folder))
+        .await
+        .map_err(|error| AppError::Internal(format!("Touch ID 解锁任务失败：{error}")))??;
+    crate::backup::sync_write(&state.db, &folder, passphrase.as_str(), &options).await
+}
+
+#[tauri::command]
+pub async fn sync_read_touch_id(
+    state: State<'_, AppState>,
+    folder: String,
+) -> AppResult<SyncResult> {
+    let key_folder = folder.clone();
+    let passphrase = tokio::task::spawn_blocking(move || crate::touch_id::load(&key_folder))
+        .await
+        .map_err(|error| AppError::Internal(format!("Touch ID 解锁任务失败：{error}")))??;
+    crate::backup::sync_read(&state.db, &folder, passphrase.as_str()).await
 }
 
 #[tauri::command]

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCheck, TerminalSquare } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, TerminalSquare } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, Folder, ProxyProfile, SaveConnectionInput, SshCertificateInfo } from "../../types";
+import type { AuthType, Fido2Identity, Folder, ProxyProfile, SaveConnectionInput, SshCertificateInfo } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -20,6 +20,8 @@ export function ConnectionEditor() {
   const [proxies, setProxies] = useState<ProxyProfile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [certificateInfo, setCertificateInfo] = useState<SshCertificateInfo | null>(null);
+  const [fido2Identities, setFido2Identities] = useState<Fido2Identity[] | null>(null);
+  const [fido2Busy, setFido2Busy] = useState(false);
   const [overrideEnabled,setOverrideEnabled]=useState(false);
   const [terminalOverride,setTerminalOverride]=useState(settings.terminal);
   useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
@@ -28,6 +30,7 @@ export function ConnectionEditor() {
     setForm(initial);
     setShowSecret(false);
     setCertificateInfo(null);
+    setFido2Identities(null);
     const override=settings.terminalOverrides[initial.id];
     setOverrideEnabled(Boolean(override));
     setTerminalOverride(override??settings.terminal);
@@ -66,6 +69,17 @@ export function ConnectionEditor() {
       setError(errorMessage(error));
     }
   };
+  const detectFido2 = async () => {
+    setFido2Busy(true);
+    try {
+      setFido2Identities(await api.listFido2Identities());
+    } catch (error) {
+      setFido2Identities([]);
+      setError(errorMessage(error));
+    } finally {
+      setFido2Busy(false);
+    }
+  };
   return <Modal title={editingConnection ? "编辑连接" : "新建连接"} onClose={closeConnectionEditor} wide>
     <form onSubmit={submit} className="connection-form">
       <div className="form-section-title"><span><ShieldCheck size={17}/>常规</span><small>连接资料仅保存在这台 Mac</small></div>
@@ -80,8 +94,9 @@ export function ConnectionEditor() {
       {form.protocol === "ssh" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>认证</span><small>密码与私钥口令写入 macOS Keychain</small></div>
         <div className="form-grid">
-          <label><span>认证方式</span><select value={form.authType} onChange={(event) => {const authType=event.target.value as AuthType;const usesKey=authType==="privateKey"||authType==="sshCertificate";setForm((current)=>({...current,authType,credential:"",privateKeyPath:usesKey?current.privateKeyPath:null,certificatePath:authType==="sshCertificate"?current.certificatePath:null}));if(authType!=="sshCertificate")setCertificateInfo(null);}}><option value="password">密码</option><option value="privateKey">私钥</option><option value="sshCertificate">SSH Certificate</option><option value="sshAgent">SSH Agent</option></select></label>
-          {form.authType !== "sshAgent" && <label><span>{form.authType === "password" ? "密码" : "私钥口令"}</span><div className="password-field"><input type={showSecret ? "text" : "password"} value={form.credential ?? ""} onChange={(event) => change("credential", event.target.value)} placeholder={editingConnection?.hasCredential ? "留空以保留已保存凭据" : ""} autoComplete="new-password"/><button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? "隐藏密码" : "显示密码"}>{showSecret ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>}
+          <label><span>认证方式</span><select value={form.authType} onChange={(event) => {const authType=event.target.value as AuthType;const usesKey=authType==="privateKey"||authType==="sshCertificate";setForm((current)=>({...current,authType,credential:"",privateKeyPath:usesKey?current.privateKeyPath:null,certificatePath:authType==="sshCertificate"?current.certificatePath:null}));if(authType!=="sshCertificate")setCertificateInfo(null);if(authType==="fido2Agent"&&fido2Identities===null)void detectFido2();}}><option value="password">密码</option><option value="privateKey">私钥</option><option value="sshCertificate">SSH Certificate</option><option value="sshAgent">SSH Agent</option><option value="fido2Agent">FIDO2 硬件密钥</option></select></label>
+          {!(["sshAgent","fido2Agent"] as AuthType[]).includes(form.authType) && <label><span>{form.authType === "password" ? "密码" : "私钥口令"}</span><div className="password-field"><input type={showSecret ? "text" : "password"} value={form.credential ?? ""} onChange={(event) => change("credential", event.target.value)} placeholder={editingConnection?.hasCredential ? "留空以保留已保存凭据" : ""} autoComplete="new-password"/><button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? "隐藏密码" : "显示密码"}>{showSecret ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>}
+          {form.authType === "fido2Agent" && <div className="span-2 field-group"><div className="fido2-heading"><label>Agent 中的 FIDO2 身份</label><button type="button" className="button secondary" onClick={()=>void detectFido2()} disabled={fido2Busy}><RefreshCw size={14} className={fido2Busy?"spin":undefined}/>{fido2Busy?"检测中…":"重新检测"}</button></div><small>仅尝试 sk-ssh-ed25519 / sk-ecdsa 硬件身份；普通 Agent 密钥不会被使用。连接时由 macOS/OpenSSH Agent 显示触摸或 PIN 提示。</small>{fido2Identities!==null&&<div className="fido2-identities">{fido2Identities.length===0?<span className="warning">未检测到硬件身份</span>:fido2Identities.map((identity)=><div key={`${identity.keyType}-${identity.fingerprint}`}><strong>{identity.comment||"未命名硬件密钥"}</strong><code>{identity.keyType}</code><small>{identity.fingerprint}</small></div>)}</div>}</div>}
           {(form.authType === "privateKey" || form.authType === "sshCertificate") && <div className="span-2 field-group"><label htmlFor="private-key-path">私钥路径</label><div className="private-key-field"><input id="private-key-path" required value={form.privateKeyPath ?? ""} onChange={(event) => change("privateKeyPath", event.target.value)} placeholder="/Users/me/.ssh/id_ed25519" /><button type="button" className="button secondary" aria-label="选择私钥" onClick={() => void choosePrivateKey()}><FolderOpen size={15}/>选择…</button></div><small>可选择 OpenSSH 私钥，也可直接输入绝对路径。</small></div>}
           {form.authType === "sshCertificate" && <div className="span-2 field-group"><label htmlFor="certificate-path">证书路径</label><div className="private-key-field"><input id="certificate-path" required value={form.certificatePath ?? ""} onChange={(event) => {change("certificatePath",event.target.value);setCertificateInfo(null);}} placeholder="/Users/me/.ssh/id_ed25519-cert.pub" /><button type="button" className="button secondary" aria-label="选择证书" onClick={() => void chooseCertificate()}><FolderOpen size={15}/>选择…</button></div><small>只接受 OpenSSH 用户证书；连接时会再次检查有效期。</small>{certificateInfo&&<dl className={`certificate-info ${certificateInfo.validNow?"":"warning"}`}><div><dt>Key ID</dt><dd>{certificateInfo.keyId||"未设置"}</dd></div><div><dt>序列号</dt><dd>{certificateInfo.serial}</dd></div><div><dt>签发 CA</dt><dd>{certificateInfo.signingCa}</dd></div><div><dt>有效期</dt><dd>{certificateInfo.validFrom} 至 {certificateInfo.validTo}</dd></div><div><dt>主体</dt><dd>{certificateInfo.principals.length?certificateInfo.principals.join(", "):"未限制"}</dd></div><div><dt>状态</dt><dd>{certificateInfo.status==="valid"?"有效":certificateInfo.status==="expired"?"已过期":"尚未生效"}</dd></div></dl>}</div>}
           <label><span>主机密钥策略</span><select value={form.hostKeyPolicy} onChange={(event) => change("hostKeyPolicy", event.target.value as "strict"|"acceptNew")}><option value="strict">首次人工核对（推荐）</option><option value="acceptNew">自动信任首次密钥（有风险）</option></select></label>

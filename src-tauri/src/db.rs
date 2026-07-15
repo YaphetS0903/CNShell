@@ -104,7 +104,7 @@ impl Database {
                     .fetch_optional(&mut *transaction)
                     .await?;
             let created = existing.unwrap_or_else(|| now.clone());
-            sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
+            sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type IN ('sshAgent','fido2Agent') THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
                 .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.certificate_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_|"[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&mut *transaction).await?;
         }
         transaction.commit().await?;
@@ -150,7 +150,7 @@ impl Database {
                 .fetch_optional(&self.pool)
                 .await?;
         let created = existing.unwrap_or_else(|| now.clone());
-        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
+        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type IN ('sshAgent','fido2Agent') THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
             .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.certificate_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&self.pool).await?;
         self.get_connection(&input.id).await
     }
@@ -680,8 +680,14 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
         return Err(AppError::Validation("不支持的协议".into()));
     }
     if input.protocol == "ssh"
-        && !["password", "privateKey", "sshCertificate", "sshAgent"]
-            .contains(&input.auth_type.as_str())
+        && ![
+            "password",
+            "privateKey",
+            "sshCertificate",
+            "sshAgent",
+            "fido2Agent",
+        ]
+        .contains(&input.auth_type.as_str())
     {
         return Err(AppError::Validation("SSH 认证方式无效".into()));
     }
@@ -808,6 +814,31 @@ fn validate_terminal_preferences(preferences: &TerminalPreferences) -> AppResult
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn accepts_fido2_agent_as_a_distinct_credentialless_authentication_mode() {
+        let input = SaveConnectionInput {
+            id: "fido2".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "FIDO2".into(),
+            host: "host".into(),
+            port: 22,
+            username: "root".into(),
+            auth_type: "fido2Agent".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        assert!(validate_connection(&input).is_ok());
+    }
+
     #[test]
     fn rejects_invalid_port() {
         let input = SaveConnectionInput {
