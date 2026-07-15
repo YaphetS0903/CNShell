@@ -590,6 +590,68 @@ pub struct PluginRunResult {
     pub duration_ms: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamWorkspace {
+    pub id: String,
+    pub name: String,
+    pub local_member_id: String,
+    pub local_role: String,
+    pub key_epoch: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamMember {
+    pub id: String,
+    pub workspace_id: String,
+    pub display_name: String,
+    pub role: String,
+    pub status: String,
+    pub joined_at: String,
+    pub updated_at: String,
+    pub removed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateTeamWorkspaceInput {
+    pub name: String,
+    pub owner_name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveTeamMemberInput {
+    pub workspace_id: String,
+    pub member_id: Option<String>,
+    pub display_name: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamPermissionReport {
+    pub workspace_id: String,
+    pub member_id: String,
+    pub role: String,
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamAuditEvent {
+    pub id: String,
+    pub workspace_id: String,
+    pub actor_member_id: String,
+    pub action: String,
+    pub target_type: String,
+    pub target_id: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginAuditEvent {

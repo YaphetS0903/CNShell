@@ -925,6 +925,69 @@ pub async fn plugin_audit_export(state: State<'_, AppState>, path: String) -> Ap
 }
 
 #[tauri::command]
+pub async fn team_workspace_list(state: State<'_, AppState>) -> AppResult<Vec<TeamWorkspace>> {
+    crate::team::list_workspaces(&state.db).await
+}
+
+#[tauri::command]
+pub async fn team_workspace_create(
+    state: State<'_, AppState>,
+    input: CreateTeamWorkspaceInput,
+) -> AppResult<TeamWorkspace> {
+    crate::team::create_workspace(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_member_list(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<Vec<TeamMember>> {
+    crate::team::list_members(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_member_save(
+    state: State<'_, AppState>,
+    input: SaveTeamMemberInput,
+) -> AppResult<TeamMember> {
+    crate::team::save_member(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_member_remove(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    member_id: String,
+) -> AppResult<()> {
+    crate::team::remove_member(&state.db, &workspace_id, &member_id).await
+}
+
+#[tauri::command]
+pub async fn team_permission_report(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<TeamPermissionReport> {
+    crate::team::permission_report(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_audit_list(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<Vec<TeamAuditEvent>> {
+    crate::team::list_audit(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_audit_export(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    path: String,
+) -> AppResult<usize> {
+    crate::team::export_audit(&state.db, &workspace_id, &path).await
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await

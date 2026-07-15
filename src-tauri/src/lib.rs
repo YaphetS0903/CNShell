@@ -24,6 +24,7 @@ mod session_log;
 mod sftp;
 mod ssh;
 mod task;
+mod team;
 mod telnet;
 mod touch_id;
 mod tunnel;
@@ -275,6 +276,14 @@ pub fn run() {
             commands::plugin_run,
             commands::plugin_remove,
             commands::plugin_audit_export,
+            commands::team_workspace_list,
+            commands::team_workspace_create,
+            commands::team_member_list,
+            commands::team_member_save,
+            commands::team_member_remove,
+            commands::team_permission_report,
+            commands::team_audit_list,
+            commands::team_audit_export,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,

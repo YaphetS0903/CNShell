@@ -16,6 +16,8 @@ pub enum AppError {
     HostKeyChanged { expected: String, actual: String },
     #[error("认证失败：{0}")]
     Authentication(String),
+    #[error("权限不足：{0}")]
+    PermissionDenied(String),
     #[error("远程操作失败：{0}")]
     Remote(String),
     #[error("本地存储失败：{0}")]
@@ -53,6 +55,7 @@ impl Serialize for AppError {
             ),
             Self::HostKeyChanged { .. } => ("host_key_changed", None, None),
             Self::Authentication(_) => ("authentication", None, None),
+            Self::PermissionDenied(_) => ("permission_denied", None, None),
             Self::Remote(_) => ("remote", None, None),
             Self::Storage(_) => ("storage", None, None),
             Self::Unavailable(_) => ("unavailable", None, None),

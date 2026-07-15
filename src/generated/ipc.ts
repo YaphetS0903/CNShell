@@ -451,6 +451,56 @@ export interface PluginRunResult {
   durationMs: number;
 }
 
+export interface TeamWorkspace {
+  id: string;
+  name: string;
+  localMemberId: string;
+  localRole: string;
+  keyEpoch: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TeamMember {
+  id: string;
+  workspaceId: string;
+  displayName: string;
+  role: string;
+  status: string;
+  joinedAt: string;
+  updatedAt: string;
+  removedAt: string | null;
+}
+
+export interface CreateTeamWorkspaceInput {
+  name: string;
+  ownerName: string;
+}
+
+export interface SaveTeamMemberInput {
+  workspaceId: string;
+  memberId: string | null;
+  displayName: string;
+  role: string;
+}
+
+export interface TeamPermissionReport {
+  workspaceId: string;
+  memberId: string;
+  role: string;
+  permissions: string[];
+}
+
+export interface TeamAuditEvent {
+  id: string;
+  workspaceId: string;
+  actorMemberId: string;
+  action: string;
+  targetType: string;
+  targetId: string;
+  createdAt: string;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;

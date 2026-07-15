@@ -68,3 +68,4 @@ Serial 会话的“文件”面板提供 Xmodem 128/1K CRC、传统 Checksum、Y
 - 启动自动导入默认关闭。开启后需另存同步口令到 Keychain，CNshell 下次启动只下载并导入远端加密包；未保存口令时不会在启动阶段联网。
 - “AI 辅助”先保存用户选择的 Provider 和模型，再对选中文本生成脱敏预览。只有点击确认后才发送，API Key 保存在 Keychain；命令结果需要用户手动复制和执行，错误解释与日志总结不会自动修改主机。
 - “插件信任与沙箱”可以导入 Ed25519 发布者根、检查 manifest、登记、启用、运行、禁用、撤销和导出审计。导入前应通过独立渠道核对发布者公钥指纹；撤销会立即禁用该发布者全部插件。CNshell 同时固定 manifest 与 WASM SHA-256，并在每次运行前重新校验。当前沙箱无 WASI、网络、文件、终端或 Keychain 能力，只接受导出 `cnshell_main: () -> i32` 的受信任 WASM；详见 `docs/PLUGIN_SDK.md`。移除登记不会删除原 manifest 或 WASM 文件。
+- “团队工作区与 RBAC”可在本机建立工作区和 Owner/Admin/Operator/Viewer 成员，查看当前权限、密钥 epoch 与最近审计。只有 Owner 能管理 Owner；Admin 可管理普通成员；Operator 可使用连接和控制终端；Viewer 只读。成员移除或角色变化会推进 epoch，审计导出不含终端正文。当前没有在线邀请、账号同步或多人终端服务，角色列表不会发送到网络。
