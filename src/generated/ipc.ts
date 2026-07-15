@@ -209,6 +209,9 @@ export interface ProtocolCapability {
 export interface ConnectionProtocolOptions {
   connectionId: string;
   agentForwarding: boolean;
+  moshEnabled: boolean;
+  moshPortStart: number;
+  moshPortEnd: number;
 }
 
 export interface AutomationPlan {

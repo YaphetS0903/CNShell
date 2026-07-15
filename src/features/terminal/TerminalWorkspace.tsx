@@ -26,6 +26,10 @@ import { FileManager } from "../files/FileManager";
 import { TransferQueue } from "../files/TransferQueue";
 import { SystemInfoPanel } from "../monitor/SystemInfoPanel";
 import type { ConnectionProfile, TerminalSession } from "../../types";
+
+const isInteractiveTerminal = (
+  session: TerminalSession | undefined,
+): session is TerminalSession => Boolean(session && session.sessionType !== "rdp");
 import { clampPanelSize, resizeFromKeyboard } from "../../lib/layout";
 import { RdpWorkspace } from "../rdp/RdpWorkspace";
 import "./TerminalWorkspace.css";
@@ -101,7 +105,7 @@ export default function TerminalWorkspace({
     () => new Map<string, React.RefObject<TerminalActions | null>>(),
   );
   sessions.forEach((session) => {
-    if (session.sessionType === "terminal" && !refs.has(session.id))
+    if (isInteractiveTerminal(session) && !refs.has(session.id))
       refs.set(session.id, createRef<TerminalActions>());
   });
   const close = useCallback(
@@ -141,7 +145,7 @@ export default function TerminalWorkspace({
       const session = useAppStore
         .getState()
         .sessions.find((item) => item.id === id);
-      if (session?.sessionType === "terminal") {
+      if (isInteractiveTerminal(session)) {
         setTerminalLayout((current) =>
           current && layoutSessions(current).includes(id) ? current : leaf(id),
         );
@@ -233,7 +237,7 @@ export default function TerminalWorkspace({
         event.preventDefault();
         refs.get(activeSessionId)?.current?.clear();
       }
-      if(event.metaKey&&activeSessionId&&["=","+","-","0"].includes(event.key)){const session=sessions.find((item)=>item.id===activeSessionId);if(session?.sessionType==="terminal"){event.preventDefault();const current=resolveTerminalPreferences(settings,session.connectionId).fontSize;const next=event.key==="0"?13:current+(event.key==="-"?-1:1);void saveSettings(withTerminalFontSize(settings,session.connectionId,next)).catch((reason)=>setError(errorMessage(reason)));}}
+      if(event.metaKey&&activeSessionId&&["=","+","-","0"].includes(event.key)){const session=sessions.find((item)=>item.id===activeSessionId);if(isInteractiveTerminal(session)){event.preventDefault();const current=resolveTerminalPreferences(settings,session.connectionId).fontSize;const next=event.key==="0"?13:current+(event.key==="-"?-1:1);void saveSettings(withTerminalFontSize(settings,session.connectionId,next)).catch((reason)=>setError(errorMessage(reason)));}}
       if (event.metaKey && event.key.toLowerCase() === "w" && activeSessionId) {
         const session = sessions.find((item) => item.id === activeSessionId);
         if (
@@ -326,7 +330,7 @@ export default function TerminalWorkspace({
       const available = new Set(
         useAppStore
           .getState()
-          .sessions.filter((item) => item.sessionType === "terminal")
+          .sessions.filter((item) => isInteractiveTerminal(item))
           .map((item) => item.id),
       );
       const restored =
@@ -358,7 +362,7 @@ export default function TerminalWorkspace({
       .sessions.find(
         (item) => item.id === useAppStore.getState().activeSessionId,
       );
-    if (active?.sessionType === "terminal")
+    if (isInteractiveTerminal(active))
       setTerminalLayout((current) => current ?? leaf(active.id));
   }, [activeSessionId]);
   if (!sessions.length)
@@ -386,7 +390,7 @@ export default function TerminalWorkspace({
   const active =
     sessions.find((item) => item.id === activeSessionId) ?? sessions[0];
   const effectiveLayout =
-    active.sessionType === "terminal"
+    isInteractiveTerminal(active)
       ? terminalLayout && layoutSessions(terminalLayout).includes(active.id)
         ? terminalLayout
         : leaf(active.id)
@@ -454,7 +458,7 @@ export default function TerminalWorkspace({
                   <RefreshCw size={13} />
                   重新连接
                 </button>
-                {session.sessionType === "terminal" && (
+                {isInteractiveTerminal(session) && (
                   <>
                     <button
                       role="menuitem"
@@ -505,30 +509,30 @@ export default function TerminalWorkspace({
           label="多主机执行"
           onClick={() => setBatchDialogOpen(true)}
         />
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton icon={ClipboardList} label="粘贴历史" onClick={() => setPasteHistoryOpen(true)} />
         )}
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton icon={Clock3} label="行时间戳" active={showTimestamps} onClick={() => setShowTimestamps(!showTimestamps)} />
         )}
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton icon={Search} label="跨标签搜索" onClick={() => setGlobalSearchOpen(true)} />
         )}
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton
             icon={Highlighter}
             label="高亮与通知"
             onClick={() => setTriggerDialogOpen(true)}
           />
         )}
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton
             icon={FileClock}
             label="会话日志"
             onClick={() => setLogDialogOpen(true)}
           />
         )}
-        {active.sessionType === "terminal" && (
+        {isInteractiveTerminal(active) && (
           <IconButton
             icon={Search}
             label="搜索终端"
@@ -591,7 +595,7 @@ export default function TerminalWorkspace({
             >
               <div className="terminal-area">
                 {sessions
-                  .filter((session) => session.sessionType === "terminal")
+                  .filter((session) => isInteractiveTerminal(session))
                   .map((session) => {
                     const rect = rectBySession.get(session.id);
                     const style = rect
@@ -773,14 +777,14 @@ export default function TerminalWorkspace({
           </>
         )}
       </div>
-      {logDialogOpen && active.sessionType === "terminal" && (
+      {logDialogOpen && isInteractiveTerminal(active) && (
         <SessionLogDialog
           session={active}
           onClose={() => setLogDialogOpen(false)}
           onError={(message) => setError(message)}
         />
       )}
-      {triggerDialogOpen && active.sessionType === "terminal" && (
+      {triggerDialogOpen && isInteractiveTerminal(active) && (
         <TriggerRulesDialog
           session={active}
           onClose={() => setTriggerDialogOpen(false)}
@@ -802,7 +806,7 @@ export default function TerminalWorkspace({
         <PasteHistoryDialog items={workspaceRuntime.pasteHistory} onClose={() => setPasteHistoryOpen(false)} onClear={() => { workspaceRuntime.pasteHistory = []; setActivityVersion(activityVersion + 1); }} onSelect={(text) => { setPasteHistoryOpen(false); const request = { sessionId: active.id, text }; const risk = pasteRisk(text); if (risk.multiline || risk.highRisk) setPasteRequest(request); else refs.get(active.id)?.current?.paste(text); }} />
       )}
       {globalSearchOpen && (
-        <GlobalTerminalSearch sessions={sessions.filter((item) => item.sessionType === "terminal")} onClose={() => setGlobalSearchOpen(false)} onSelect={(sessionId, line) => { selectSession(sessionId); requestAnimationFrame(() => refs.get(sessionId)?.current?.selectLine(line)); setGlobalSearchOpen(false); }} />
+        <GlobalTerminalSearch sessions={sessions.filter((item) => isInteractiveTerminal(item))} onClose={() => setGlobalSearchOpen(false)} onSelect={(sessionId, line) => { selectSession(sessionId); requestAnimationFrame(() => refs.get(sessionId)?.current?.selectLine(line)); setGlobalSearchOpen(false); }} />
       )}
     </main>
   );

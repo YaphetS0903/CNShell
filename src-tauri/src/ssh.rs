@@ -197,6 +197,7 @@ pub struct TerminalHandle {
 #[derive(Clone, Default)]
 pub struct SessionManager {
     sessions: Arc<Mutex<HashMap<String, Arc<Mutex<TerminalHandle>>>>>,
+    external_profiles: Arc<Mutex<HashMap<String, ConnectionProfile>>>,
     transports: TransportPool,
 }
 
@@ -216,7 +217,22 @@ impl SessionManager {
     }
 
     pub fn profile(&self, id: &str) -> AppResult<ConnectionProfile> {
-        Ok(self.get(id)?.lock().profile.clone())
+        if let Ok(handle) = self.get(id) {
+            return Ok(handle.lock().profile.clone());
+        }
+        self.external_profiles
+            .lock()
+            .get(id)
+            .cloned()
+            .ok_or_else(|| AppError::NotFound(format!("会话 {id}")))
+    }
+
+    pub fn insert_external(&self, id: String, profile: ConnectionProfile) {
+        self.external_profiles.lock().insert(id, profile);
+    }
+
+    pub fn remove_external(&self, id: &str) {
+        self.external_profiles.lock().remove(id);
     }
 
     pub fn remove(&self, id: &str) -> Option<Arc<Mutex<TerminalHandle>>> {

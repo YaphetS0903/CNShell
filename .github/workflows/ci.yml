@@ -65,6 +65,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: npm run build:mosh
       - run: APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app
       - name: Verify architectures and minimum macOS
         run: |
@@ -81,4 +82,10 @@ jobs:
           preflight="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$app/Contents/MacOS/$executable" --rdp-preflight)"
           printf '%s\n' "$preflight" | grep -Fq '"available":true'
           printf '%s\n' "$preflight" | grep -Fq 'Contents/Resources/freerdp/sdl-freerdp'
+          mosh="$app/Contents/Resources/mosh/mosh-client"
+          test -x "$mosh"
+          mosh_architectures="$(lipo -archs "$mosh")"
+          [[ " $mosh_architectures " == *" arm64 "* && " $mosh_architectures " == *" x86_64 "* ]]
+          test -s "$app/Contents/Resources/mosh/licenses/Mosh-GPL-3.0-or-later.txt"
+          "$mosh" -c >/dev/null
           codesign --verify --deep --strict --verbose=2 "$app"

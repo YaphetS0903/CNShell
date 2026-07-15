@@ -13,3 +13,4 @@ playwright-report/
 src-tauri/tauri.release.json
 src-tauri/resources/freerdp/sdl-freerdp
 src-tauri/resources/freerdp/licenses/
+src-tauri/resources/mosh/mosh-client

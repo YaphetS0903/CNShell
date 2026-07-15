@@ -22,7 +22,7 @@ export function createWorkspaceSnapshot(
   return {
     ...layout,
     sessions: sessions
-      .filter((session) => session.sessionType === "terminal")
+      .filter((session) => session.sessionType !== "rdp")
       .map((session) => ({
         id: session.id,
         connectionId: session.connectionId,

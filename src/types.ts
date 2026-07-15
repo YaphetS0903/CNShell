@@ -82,7 +82,7 @@ export type ConnectionDiagnostic = Omit<GeneratedConnectionDiagnostic, "stage"> 
 };
 export type TerminalSession = Omit<GeneratedTerminalSession, "status" | "sessionType"> & {
   status: SessionStatus;
-  sessionType: "terminal" | "rdp";
+  sessionType: "terminal" | "mosh" | "rdp";
 };
 export type TerminalStatus = Omit<GeneratedTerminalStatus, "status"> & { status: SessionStatus };
 export type RemoteFile = Omit<GeneratedRemoteFile, "kind"> & { kind: "file" | "directory" | "symlink" | "other" };

@@ -264,6 +264,20 @@ pub struct ProtocolCapability {
 pub struct ConnectionProtocolOptions {
     pub connection_id: String,
     pub agent_forwarding: bool,
+    #[serde(default)]
+    pub mosh_enabled: bool,
+    #[serde(default = "default_mosh_port_start")]
+    pub mosh_port_start: u16,
+    #[serde(default = "default_mosh_port_end")]
+    pub mosh_port_end: u16,
+}
+
+fn default_mosh_port_start() -> u16 {
+    60000
+}
+
+fn default_mosh_port_end() -> u16 {
+    60010
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

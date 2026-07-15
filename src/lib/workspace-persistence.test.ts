@@ -15,7 +15,7 @@ const terminal = (id: string, sessionType: TerminalSession["sessionType"]): Term
 describe("workspace persistence", () => {
   it("stores restorable SSH sessions without persisting RDP sessions", () => {
     const snapshot = createWorkspaceSnapshot(
-      [terminal("ssh", "terminal"), terminal("rdp", "rdp")],
+      [terminal("ssh", "terminal"), terminal("mosh", "mosh"), terminal("rdp", "rdp")],
       "ssh",
       new Map([["ssh", "/srv/app"]]),
       {
@@ -29,7 +29,7 @@ describe("workspace persistence", () => {
       },
     );
 
-    expect(snapshot.sessions).toEqual([{ id: "ssh", connectionId: "ssh-connection", cwd: "/srv/app" }]);
+    expect(snapshot.sessions).toEqual([{ id: "ssh", connectionId: "ssh-connection", cwd: "/srv/app" }, { id: "mosh", connectionId: "mosh-connection", cwd: null }]);
   });
 
   it("waits for the save before destroying the window", async () => {

@@ -22,6 +22,7 @@ jobs:
         with:
           workspaces: src-tauri
       - run: npm ci
+      - run: npm run build:mosh
       - run: npx playwright install webkit
       - name: Prepare private release configuration
         env:

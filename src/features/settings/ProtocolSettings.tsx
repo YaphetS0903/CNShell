@@ -20,6 +20,9 @@ export function ProtocolSettings({
   const [capabilities, setCapabilities] = useState<ProtocolCapability[]>([]);
   const [selected, setSelected] = useState("");
   const [agentForwarding, setAgentForwarding] = useState(false);
+  const [moshEnabled, setMoshEnabled] = useState(false);
+  const [moshPortStart, setMoshPortStart] = useState(60000);
+  const [moshPortEnd, setMoshPortEnd] = useState(60010);
   const [loading, setLoading] = useState(false);
   const refresh = useCallback(async () => {
     try {
@@ -34,14 +37,20 @@ export function ProtocolSettings({
   useEffect(() => {
     if (!selected) {
       setAgentForwarding(false);
+      setMoshEnabled(false);
       return;
     }
     void api
       .getProtocolOptions(selected)
-      .then((value) => setAgentForwarding(value.agentForwarding))
+      .then((value) => {
+        setAgentForwarding(value.agentForwarding);
+        setMoshEnabled(value.moshEnabled);
+        setMoshPortStart(value.moshPortStart);
+        setMoshPortEnd(value.moshPortEnd);
+      })
       .catch((error) => onError(errorMessage(error)));
   }, [selected, onError]);
-  const save = async (value: boolean) => {
+  const saveAgent = async (value: boolean) => {
     if (!selected) return;
     if (
       value &&
@@ -55,6 +64,9 @@ export function ProtocolSettings({
       const saved = await api.saveProtocolOptions({
         connectionId: selected,
         agentForwarding: value,
+        moshEnabled,
+        moshPortStart,
+        moshPortEnd,
       });
       setAgentForwarding(saved.agentForwarding);
     } catch (error) {
@@ -66,6 +78,28 @@ export function ProtocolSettings({
   const agentAvailable =
     capabilities.find((item) => item.id === "agentForwarding")?.available ??
     false;
+  const moshAvailable =
+    capabilities.find((item) => item.id === "mosh")?.available ?? false;
+  const saveMosh = async (enabled = moshEnabled) => {
+    if (!selected) return;
+    setLoading(true);
+    try {
+      const saved = await api.saveProtocolOptions({
+        connectionId: selected,
+        agentForwarding,
+        moshEnabled: enabled,
+        moshPortStart,
+        moshPortEnd,
+      });
+      setMoshEnabled(saved.moshEnabled);
+      setMoshPortStart(saved.moshPortStart);
+      setMoshPortEnd(saved.moshPortEnd);
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setLoading(false);
+    }
+  };
   return (
     <section className="protocol-settings">
       <div className="section-heading">
@@ -131,10 +165,55 @@ export function ProtocolSettings({
             type="checkbox"
             checked={agentForwarding}
             disabled={!selected || !agentAvailable || loading}
-            onChange={(event) => void save(event.target.checked)}
+            onChange={(event) => void saveAgent(event.target.checked)}
           />
           <span>为该连接启用 SSH Agent 转发（高风险）</span>
         </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={moshEnabled}
+            disabled={!selected || !moshAvailable || loading}
+            onChange={(event) => void saveMosh(event.target.checked)}
+          />
+          <span>为该连接启用 Mosh 漫游终端</span>
+        </label>
+        {moshEnabled && (
+          <div className="protocol-port-range">
+            <label>
+              <span>UDP 起始端口</span>
+              <input
+                type="number"
+                min={1024}
+                max={65535}
+                value={moshPortStart}
+                onChange={(event) => setMoshPortStart(Number(event.target.value))}
+              />
+            </label>
+            <label>
+              <span>UDP 结束端口</span>
+              <input
+                type="number"
+                min={1024}
+                max={65535}
+                value={moshPortEnd}
+                onChange={(event) => setMoshPortEnd(Number(event.target.value))}
+              />
+            </label>
+            <button
+              className="button secondary"
+              disabled={loading}
+              onClick={() => void saveMosh()}
+            >
+              保存端口范围
+            </button>
+          </div>
+        )}
+        {moshEnabled && (
+          <p className="muted-copy">
+            SSH 仅用于认证和启动服务；请在云防火墙与系统防火墙放行上述 UDP 范围。代理连接仍要求本机可直达服务器 UDP。
+          </p>
+        )}
         <p className="muted-copy">
           更改仅影响下一次连接；当前会话不会静默重建。
         </p>

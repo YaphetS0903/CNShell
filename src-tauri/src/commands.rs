@@ -333,6 +333,9 @@ pub async fn protocol_options_get(
         .unwrap_or(ConnectionProtocolOptions {
             connection_id,
             agent_forwarding: false,
+            mosh_enabled: false,
+            mosh_port_start: crate::mosh::default_ports().0,
+            mosh_port_end: crate::mosh::default_ports().1,
         }))
 }
 
@@ -345,7 +348,12 @@ pub async fn protocol_options_save(
     if profile.protocol != "ssh" {
         return Err(AppError::Validation("协议选项仅支持 SSH 连接".into()));
     }
-    crate::protocols::validate_options(options.agent_forwarding)?;
+    crate::protocols::validate_options(
+        options.agent_forwarding,
+        options.mosh_enabled,
+        options.mosh_port_start,
+        options.mosh_port_end,
+    )?;
     state
         .db
         .save_named_state(
@@ -417,18 +425,38 @@ pub async fn terminal_open(
         .unwrap_or(ConnectionProtocolOptions {
             connection_id: connection_id.clone(),
             agent_forwarding: false,
+            mosh_enabled: false,
+            mosh_port_start: crate::mosh::default_ports().0,
+            mosh_port_end: crate::mosh::default_ports().1,
         });
-    let session = crate::ssh::open_terminal(
-        app,
-        state.db.clone(),
-        state.sessions.clone(),
-        profile,
-        cols,
-        rows,
-        state.logs.clone(),
-        options.agent_forwarding,
-    )
-    .await?;
+    let session = if options.mosh_enabled {
+        state
+            .mosh
+            .open(
+                app,
+                state.db.clone(),
+                state.sessions.clone(),
+                profile,
+                state.logs.clone(),
+                cols,
+                rows,
+                options.mosh_port_start,
+                options.mosh_port_end,
+            )
+            .await?
+    } else {
+        crate::ssh::open_terminal(
+            app,
+            state.db.clone(),
+            state.sessions.clone(),
+            profile,
+            cols,
+            rows,
+            state.logs.clone(),
+            options.agent_forwarding,
+        )
+        .await?
+    };
     let _ = state.db.mark_connected(&connection_id).await;
     Ok(session)
 }
@@ -439,6 +467,9 @@ pub async fn terminal_input(
     session_id: String,
     data: String,
 ) -> AppResult<()> {
+    if state.mosh.contains(&session_id) {
+        return state.mosh.input(&session_id, &data);
+    }
     crate::ssh::terminal_input(state.sessions.clone(), session_id, data).await
 }
 
@@ -449,12 +480,19 @@ pub async fn terminal_resize(
     cols: u32,
     rows: u32,
 ) -> AppResult<()> {
+    if state.mosh.contains(&session_id) {
+        return state.mosh.resize(&session_id, cols, rows);
+    }
     crate::ssh::terminal_resize(state.sessions.clone(), session_id, cols, rows).await
 }
 
 #[tauri::command]
 pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
-    let result = crate::ssh::terminal_close(state.sessions.clone(), session_id.clone()).await;
+    let result = if state.mosh.contains(&session_id) {
+        state.mosh.close(&session_id)
+    } else {
+        crate::ssh::terminal_close(state.sessions.clone(), session_id.clone()).await
+    };
     let _ = state.logs.stop(&session_id);
     state.monitor.remove(&session_id);
     result

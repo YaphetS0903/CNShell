@@ -72,6 +72,23 @@ printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq '"available":true'
 printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq 'Contents/Resources/freerdp/sdl-freerdp'
 codesign --verify --strict --verbose=2 "$FREERDP_HELPER"
 
+MOSH_CLIENT="$APP_PATH/Contents/Resources/mosh/mosh-client"
+[[ -x "$MOSH_CLIENT" ]] || {
+  echo "发布失败：应用未包含内置 Mosh 客户端。" >&2
+  exit 1
+}
+MOSH_ARCHITECTURES="$(lipo -archs "$MOSH_CLIENT")"
+[[ " $MOSH_ARCHITECTURES " == *" arm64 "* && " $MOSH_ARCHITECTURES " == *" x86_64 "* ]] || {
+  echo "发布失败：Mosh 客户端不是 arm64 + x86_64 universal binary：$MOSH_ARCHITECTURES" >&2
+  exit 1
+}
+[[ -s "$APP_PATH/Contents/Resources/mosh/licenses/Mosh-GPL-3.0-or-later.txt" ]] || {
+  echo "发布失败：Mosh GPLv3 许可证缺失。" >&2
+  exit 1
+}
+"$MOSH_CLIENT" -c >/dev/null
+codesign --verify --strict --verbose=2 "$MOSH_CLIENT"
+
 DMG_PATHS=("$BUNDLE_ROOT"/dmg/*.dmg(N))
 (( ${#DMG_PATHS[@]} == 1 )) || {
   echo "发布失败：预期生成且仅生成一个 DMG，实际为 ${#DMG_PATHS[@]} 个。" >&2

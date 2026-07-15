@@ -9,6 +9,7 @@ mod error;
 mod external_edit;
 mod models;
 mod monitor;
+mod mosh;
 mod openssh;
 mod protocols;
 mod rdp;
@@ -23,6 +24,7 @@ use batch::BatchManager;
 use db::Database;
 use external_edit::ExternalEditManager;
 use monitor::MonitorState;
+use mosh::MoshManager;
 use rdp::RdpManager;
 use session_log::SessionLogManager;
 use sftp::TransferManager;
@@ -39,6 +41,7 @@ pub struct AppState {
     sessions: SessionManager,
     transfers: TransferManager,
     monitor: MonitorState,
+    mosh: MoshManager,
     tunnels: TunnelManager,
     tasks: TaskManager,
     rdp: RdpManager,
@@ -135,6 +138,7 @@ pub fn run() {
                 sessions: SessionManager::default(),
                 transfers: TransferManager::default(),
                 monitor: MonitorState::default(),
+                mosh: MoshManager::default(),
                 tunnels: TunnelManager::default(),
                 tasks: TaskManager::default(),
                 rdp: RdpManager::default(),
@@ -154,6 +158,7 @@ pub fn run() {
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<AppState>().rdp.close_all();
+                window.state::<AppState>().mosh.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![

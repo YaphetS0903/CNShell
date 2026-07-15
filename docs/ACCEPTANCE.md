@@ -46,6 +46,15 @@
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
 
+### 2026-07-15 Mosh 阶段增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 官方 Mosh sidecar | `scripts/build-mosh-sidecar.sh` 从固定哈希的 Mosh 1.4.0 与 protobuf 21.12 源码成功重建；产物为 arm64 + x86_64 universal binary、最低 macOS 13，仅链接 macOS 系统库，许可证与 ad-hoc 签名检查通过 |
+| 自动化门禁 | `npm run lint`、99 个前端测试、114 个 Rust 库测试、`npm run build` 与 `git diff --check` 通过；覆盖握手严格解析、密钥脱敏、端口边界、旧配置默认值、外部会话 profile 生命周期及分块断线提示检测 |
+| 腾讯云互操作短测 | Ubuntu 24.04 x86_64 的 `mosh-server` 完成 SSH 握手，修复云主机 NAT 内网地址误用后，内置客户端使用连接配置公网地址建立 UDP 会话、接收输入并正常退出；未重复长测，临时服务端会话已清理 |
+| 保留验收边界 | Wi-Fi/IP 切换、30 秒断网恢复、Intel 真机运行和自动化屏幕 resize 捕获仍待对应环境；当前不声明这些场景通过 |
+
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |

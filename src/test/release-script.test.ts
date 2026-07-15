@@ -18,5 +18,7 @@ describe("release script gates", () => {
     expect(script).toContain('xcrun stapler validate "$APP_PATH"');
     expect(script).toContain('xcrun stapler validate "$DMG_PATH"');
     expect(script).toContain("*.app.tar.gz.sig");
+    expect(script).toContain('lipo -archs "$MOSH_CLIENT"');
+    expect(script).toContain("Mosh-GPL-3.0-or-later.txt");
   });
 });

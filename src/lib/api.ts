@@ -112,7 +112,7 @@ export const api = {
   async generateSshKey(path:string,comment:string):Promise<GeneratedSshKey>{return invoke("openssh_generate_key",{path,comment});},
   async deploySshKey(connectionId:string,publicKey:string):Promise<void>{return invoke("openssh_deploy_key",{connectionId,publicKey});},
   async protocolCapabilities():Promise<ProtocolCapability[]>{return isTauri()?invoke("protocol_capabilities"):[];},
-  async getProtocolOptions(connectionId:string):Promise<ConnectionProtocolOptions>{return isTauri()?invoke("protocol_options_get",{connectionId}):{connectionId,agentForwarding:false};},
+  async getProtocolOptions(connectionId:string):Promise<ConnectionProtocolOptions>{return isTauri()?invoke("protocol_options_get",{connectionId}):{connectionId,agentForwarding:false,moshEnabled:false,moshPortStart:60000,moshPortEnd:60010};},
   async saveProtocolOptions(options:ConnectionProtocolOptions):Promise<ConnectionProtocolOptions>{return invoke("protocol_options_save",{options});},
   async validateAutomation(plan:AutomationPlan):Promise<AutomationPlan>{return invoke("automation_validate",{plan});},
   async startAutomation(plan:AutomationPlan):Promise<BackgroundTask>{return invoke("automation_start",{plan});},

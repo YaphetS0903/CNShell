@@ -36,7 +36,8 @@
     "longDescription": "CNshell brings secure remote terminals, file transfer and Linux monitoring into one macOS workspace.",
     "copyright": "Copyright © 2026 CNshell Contributors",
     "resources": {
-      "resources/freerdp/": "freerdp/"
+      "resources/freerdp/": "freerdp/",
+      "resources/mosh/": "mosh/"
     },
     "macOS": { "minimumSystemVersion": "13.0" }
   },
