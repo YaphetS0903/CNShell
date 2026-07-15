@@ -1,8 +1,8 @@
 # CNshell Team Relay 运维手册
 
 > 适用范围：`services/team-relay` 单实例 SQLite 部署。
-> 当前证据：本机 loopback 的健康检查、指标、优雅停机、明文测试及临时 `age` 二进制的
-> 加密备份/恢复功能演练已通过；正式 DNS/TLS/WSS、经供应链验证的 `age` 生产密钥、加密卷、
+> 当前证据：本机 loopback 的健康检查、指标、优雅停机、明文测试及 Sigsum 验证后的官方
+> `age v1.3.1` 加密备份/恢复功能演练已通过；正式 DNS/TLS/WSS、生产 identity、加密卷、
 > 监控平台和异地主机恢复仍需部署环境验收。
 
 ## 1. 运行边界
@@ -48,6 +48,21 @@ RUST_LOG=cnshell_team_relay=info,tower_http=info
 备份脚本使用 SQLite `VACUUM INTO` 创建在线一致性快照，再执行 `quick_check`、
 `foreign_key_check` 和 relay 核心表校验。最终载荷与 SHA-256 sidecar 在同一目录暂存后改名，
 权限为 `0600`。
+
+下载官方 release 时必须先验证 Sigsum proof，不能只核对与下载文件同源的 SHA-256。项目保存
+了 age 官方 `SIGSUM.md` 中的两把发布公钥，并提供固定验证入口。先从受信任渠道安装 Go，
+再通过 Go module checksum 获取固定验证器：
+
+```bash
+go install sigsum.org/sigsum-go/cmd/sigsum-verify@v0.13.1
+CNSHELL_SIGSUM_VERIFY_BIN="$(go env GOPATH)/bin/sigsum-verify" \
+  npm run verify:relay-age -- /absolute/path/to/verified-age
+```
+
+脚本默认验证 v1.3.1，使用验证器内置的 `sigsum-generic-2025-1` 生产策略；只有 proof 通过后
+才检查精确归档清单并解包。输出目录必须不存在，任何失败都会清理脚本创建的目录。v1.2.1
+仍作为显式兼容版本保留，其他版本必须先审查归档结构并修改脚本。验证器本身必须严格显示
+`sigsum-verify (sigsum-go module) v0.13.1`。
 
 生产环境必须安装 `age` 和 `sqlite3`，使用专门的离线身份生成公开 recipient：
 
@@ -118,7 +133,8 @@ npm run test:relay-ops
 该命令通过显式明文测试开关覆盖拒绝路径、保留策略、篡改、恢复、健康检查和 SIGTERM，
 不等价于生产 `age` identity、对象存储或异地主机演练。测试机提供 `age` 和 `age-keygen` 时，
 可通过 `CNSHELL_RELAY_AGE_BIN` 与 `CNSHELL_RELAY_AGE_KEYGEN_BIN` 让同一脚本追加真实密文、
-正确/错误 identity 和私钥权限分支。该功能分支仍不能替代二进制供应链验证和异地恢复。
+正确/错误 identity 和私钥权限分支。应优先使用上述 Sigsum 验证目录中的二进制；该功能分支
+仍不能替代生产 identity 和异地恢复。
 
 ## 5. 监控与告警
 
@@ -153,8 +169,8 @@ readiness 检查/失败和授权 WebSocket 总数/活动数。磁盘、备份、
 ## 7. 发布前未完成项
 
 - 当前机器没有 Docker，示例镜像和 Compose 健康检查尚未实际构建运行。
-- 临时 `age` 二进制的本机加密/解密功能演练已通过，但其 Sigsum 供应链证明未验证；尚无
-  生产 identity、加密卷、对象存储或异地主机恢复证据。
+- 官方 `age v1.3.1` 的 Sigsum release 验证和本机加密/解密功能演练已通过；尚无生产
+  identity、加密卷、对象存储或异地主机恢复证据。
 - 正式 DNS/TLS/WSS、邮件验证/投递、代理层限速、监控告警和对象存储尚未部署。
 - 尚未使用两台真实设备跨网络验证观看、控制移交、断网恢复与撤销传播。
 

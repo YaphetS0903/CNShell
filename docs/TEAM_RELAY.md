@@ -48,10 +48,10 @@ CNshell host                         CNshell participant
 token 失效。客户端另有游标恢复和观看/控制 UI 自动测试。
 
 运维演练另行覆盖默认拒绝明文备份、符号链接、限定保留、SHA-256 篡改、拒绝覆盖恢复、
-SQLite 完整性、`/health`、`/ready`、`/metrics` 和 SIGTERM。另使用临时 `age`/`age-keygen`
-完成真实密文、正确 identity 恢复、错误 identity 拒绝和宽权限私钥拒绝。下载归档记录了
-SHA-256，但因环境没有 Sigsum 验证器，该二进制不构成供应链验证，也不把本机演练记录为
-生产加密异地恢复通过。
+SQLite 完整性、`/health`、`/ready`、`/metrics` 和 SIGTERM。`verify:relay-age` 固定官方
+发布者公钥、`sigsum-verify v0.13.1` 和 `sigsum-generic-2025-1`，先验证 proof 再检查清单及
+解包。Sigsum 验证后的官方 v1.3.1 已完成真实密文、正确 identity 恢复、错误 identity 和
+宽权限私钥拒绝；本机演练仍不记录为生产加密异地恢复通过。
 
 服务端独立门禁：
 
@@ -97,9 +97,9 @@ npm run test:relay-ops
 
 1. 正式域名、TLS 证书和只允许 `wss://`/`https://` 的反向代理。
 2. 代理层登录/注册速率限制、邮件投递与邮箱验证、防滥用和告警。
-3. 在加密卷、经受信任供应链获取的生产 `age` identity、异地存储和隔离恢复主机上执行自动
-   备份与恢复演练，并接入日志保留、监控和事故响应。脚本、指标和 runbook 已完成，本机
-   临时二进制功能演练不能替代此项。
+3. 在加密卷、生产 `age` identity、异地存储和隔离恢复主机上执行自动备份与恢复演练，并接入
+   日志保留、监控和事故响应。release 供应链脚本、指标和 runbook 已完成，本机验证与功能
+   演练不能替代目标故障域中的恢复证据。
 4. 至少两台真实设备跨网络完成观看、控制移交、断网恢复和撤销传播验收。
 
 客户端 REST/WebSocket 与观看/控制入口已经接通，但在以上生产条件和真机证据齐备前只用于

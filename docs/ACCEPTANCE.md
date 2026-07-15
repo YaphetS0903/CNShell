@@ -45,7 +45,7 @@
 | 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览、每日计划和 IANA 时区；Rust 验证固定 Schema、步骤/超时/正则边界、每日/每周/Cron、DST 回拨去重、后端权威游标和先持久化后启动的 at-most-once 调度，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
 | 加密同步 | 通过（代码/本机密钥边界） | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步。可选 Touch ID 口令使用设备专属 Data Protection Keychain 与当前指纹集合保护，解锁后不返回前端，手动口令恢复入口始终保留 |
 | Zmodem/Mosh/X11 | 部分 | Zmodem 已与腾讯云 `lrzsz` 完成双向互操作；Mosh 已完成真实公网 UDP 短测；X11 已由本机 OpenSSH 接受真实 `x11-req` 并建立远端 `DISPLAY`。XQuartz GUI、Mosh 漫游/Intel 与对应外部环境仍待验收 |
-| AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI 有界流式响应、可信插件沙箱、本地团队 RBAC/组织导出/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、Prometheus 指标、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI 和 relay 备份恢复运维代码已完成。本机真实 `age` 功能演练通过；正式域名/TLS/WSS/邮件/限速/监控平台、生产 identity 异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
+| AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI 有界流式响应、可信插件沙箱、本地团队 RBAC/组织导出/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、Prometheus 指标、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI 和 relay 备份恢复运维代码已完成。官方 `age v1.3.1` 的 Sigsum 验证和本机功能演练通过；正式域名/TLS/WSS/邮件/限速/监控平台、生产 identity 异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
 
@@ -153,7 +153,7 @@
 | 成员与控制 | 握手恢复服务端权威的已加入成员和当前租约；加入/离开、授权/撤销实时广播。参与者离开后服务端撤销房间访问及其租约；主持端收到租约广播后同步本地逐帧输入校验状态 |
 | UI 与内容边界 | 常驻协作中心支持 SSH 主持、按设备邀请、参与者 xterm 观看、10–300 秒控制移交和关闭。只有匹配本机且未过期的租约开放输入；弹窗隐藏时仍保留有界输出缓冲。房间密钥、设备私钥、账号/设备 token 和密文加解密均不进入 React 状态 |
 | 自动化证据 | 6 个 Rust 游标/队列测试覆盖 ready 前缀、缺口、单次 accepted、未确认重连和输入恢复；6 个 React 测试覆盖建房、邀请、主持输出转发、接受邀请、只读/租约输入、授权/撤销；真实 relay loopback 测试覆盖成员/租约初始快照和参与者离开 |
-| 保留验收边界 | 当前只完成同机 loopback 自动化、临时 `age` 功能演练和运维代码演练，没有正式 DNS/TLS/WSS、邮件、限速、监控平台、生产 identity 异地恢复，也没有两台真实设备跨网络观看、控制和断网恢复证据；因此仅记为代码与 loopback 通过 |
+| 保留验收边界 | 当前只完成同机 loopback 自动化、Sigsum 验证后的 `age` 本机功能演练和运维代码演练，没有正式 DNS/TLS/WSS、邮件、限速、监控平台、生产 identity 异地恢复，也没有两台真实设备跨网络观看、控制和断网恢复证据；因此仅记为代码与 loopback 通过 |
 
 ### 2026-07-16 团队 relay 运维基线增量验收
 
@@ -163,7 +163,8 @@
 | 备份边界 | `VACUUM INTO` 生成在线一致性快照，执行 `quick_check`、`foreign_key_check` 和核心 schema 校验；生产路径要求 `CNSHELL_RELAY_AGE_RECIPIENT` 和 `age`，未配置时失败，不会降级明文。最终载荷与 SHA-256 sidecar 权限为 `0600`，保留策略只匹配严格时间戳文件名 |
 | 恢复边界 | 恢复前校验 sidecar，密文要求独立 identity；拒绝符号链接、未知文件名、运行中 PID、已有目标和损坏/错误 schema，校验完成后才把新数据库安装到目标。服务停机确认是必填开关 |
 | 本机演练 | `/usr/bin/sqlite3` 自动演练覆盖默认明文拒绝、符号链接拒绝、两份保留且不删除诱饵文件、完整往返、拒绝覆盖、篡改拒绝、真实 relay `/health`/`/ready`/`/metrics` 和 SIGTERM 正常退出；可选真实 `age` 分支覆盖密文不暴露 SQLite 头/样例邮箱、正确 identity 恢复、错误 identity 和宽权限 identity 拒绝 |
-| 保留验收边界 | 当前机器没有 Docker；真实 `age` 分支使用临时下载二进制，记录了发布归档 SHA-256，但未验证其 Sigsum 证明。未执行容器构建、生产 identity、加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
+| `age` release 供应链 | Go 1.26.5 darwin/arm64 工具链归档与 `go.dev` 清单 SHA-256 一致，通过 Go module checksum 构建固定 `sigsum-verify v0.13.1`；官方两把 age 发布公钥和内置 `sigsum-generic-2025-1` 策略成功验证 v1.3.1 proof 后才解包。归档 SHA-256 为 `01120ea2cbf0463d4c6bd767f99f3271bbed1cdc8a9aa718a76ba1fe4f01998b`，脚本另验证精确清单、普通可执行文件和版本 |
+| 保留验收边界 | 当前机器没有 Docker；未执行容器构建、生产 identity、加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
 
 ### 2026-07-16 本机可实现规划收口增量验收
 
@@ -173,7 +174,7 @@
 | WebDAV 与 AI | 本机 TCP 夹具验证两者在响应头之后仍可取消、chunked body 采用累计上限；WebDAV 另覆盖 412、507、503 分类和逐块进度，AI 输出限制为 64 KB |
 | 团队目录与历史 | Owner/Admin `workspaceExport` 原子导出只含工作区、成员、设备公钥/指纹和元数据审计，Operator/Viewer 拒绝，符号链接拒绝且秘密字段扫描通过；真实 Keychain 分享在 epoch 轮换后仍允许有效原接收设备解密，撤销与篡改继续拒绝 |
 | Relay 有界性与观测 | 客户端 REST 对未知长度 chunked 响应执行累计 1 MiB 上限；真实 loopback HTTP/WebSocket 集成看到两条活动连接后归零；`/metrics` 没有工作区、设备和房间标签；Relay Clippy `-D warnings` 通过 |
-| 完整短时门禁 | `npm run check` 通过：前端 48 个文件、138 项测试，Rust 205 项测试，Relay 2 项单元测试与 1 项真实 loopback 集成测试，IPC 一致性、ESLint、TypeScript/Vite production build、Relay Clippy 和运维演练全部通过。另启用临时真实 `age` 二进制重跑运维演练通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
+| 完整短时门禁 | `npm run check` 通过：前端 48 个文件、140 项测试，Rust 205 项测试，Relay 2 项单元测试与 1 项真实 loopback 集成测试，IPC 一致性、ESLint、TypeScript/Vite production build、Relay Clippy 和运维演练全部通过。本轮显式注入 Sigsum 验证后的官方 `age v1.3.1`，真实加密分支也属于同一次完整门禁；遵照用户要求未重复 soak、1 GB 或长时测试 |
 | 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、Docker、正式 DNS/TLS/WSS/邮件/限速/监控、生产加密异地恢复和双设备跨网络协作仍未验证 |
 
 | 命令 | 结果（2026-07-12） |
