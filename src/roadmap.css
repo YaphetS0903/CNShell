@@ -288,6 +288,25 @@
   gap: 8px;
 }
 
+.plugin-settings {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.plugin-report {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.plugin-report small,
+.plugin-report p {
+  color: var(--muted);
+}
+
 .recording-status {
   color: var(--muted);
   font-size: 12px;

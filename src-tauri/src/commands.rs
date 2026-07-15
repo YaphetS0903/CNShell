@@ -765,6 +765,11 @@ pub async fn ai_execute(
 }
 
 #[tauri::command]
+pub fn plugin_manifest_inspect(path: String) -> AppResult<PluginPermissionReport> {
+    crate::plugin::inspect_file(&path)
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await

@@ -517,6 +517,34 @@ pub struct AiAssistantResult {
     pub content: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginManifest {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub api_version: u32,
+    pub entrypoint: String,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub network_domains: Vec<String>,
+    pub publisher: Option<String>,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPermissionReport {
+    pub manifest: PluginManifest,
+    pub valid: bool,
+    pub signature_status: String,
+    pub requested_permissions: Vec<String>,
+    pub default_granted_permissions: Vec<String>,
+    pub denied_permissions: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteFile {

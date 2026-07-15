@@ -393,6 +393,28 @@ export interface AiAssistantResult {
   content: string;
 }
 
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  apiVersion: number;
+  entrypoint: string;
+  permissions: string[];
+  networkDomains: string[];
+  publisher: string | null;
+  signature: string | null;
+}
+
+export interface PluginPermissionReport {
+  manifest: PluginManifest;
+  valid: boolean;
+  signatureStatus: string;
+  requestedPermissions: string[];
+  defaultGrantedPermissions: string[];
+  deniedPermissions: string[];
+  warnings: string[];
+}
+
 export interface RemoteFile {
   name: string;
   path: string;

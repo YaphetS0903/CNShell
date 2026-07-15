@@ -13,6 +13,7 @@ import { AutomationSettings } from "./AutomationSettings";
 import { EncryptedSyncSettings } from "./EncryptedSyncSettings";
 import { WebDavSyncSettings } from "./WebDavSyncSettings";
 import { AiSettings } from "./AiSettings";
+import { PluginSettings } from "./PluginSettings";
 import { TerminalPreferencesFields } from "./TerminalPreferencesFields";
 
 export default function SettingsModal() {
@@ -155,6 +156,7 @@ export default function SettingsModal() {
         <EncryptedSyncSettings onError={(message) => setError(message)} />
         <WebDavSyncSettings onError={(message) => setError(message)} />
         <AiSettings onError={(message) => setError(message)} />
+        <PluginSettings onError={(message) => setError(message)} />
         <AdvancedSettings
           connections={connections}
           onChanged={refreshConnections}

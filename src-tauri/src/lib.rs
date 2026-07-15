@@ -13,6 +13,7 @@ mod models;
 mod monitor;
 mod mosh;
 mod openssh;
+mod plugin;
 mod protocols;
 mod python_automation;
 mod rdp;
@@ -231,6 +232,7 @@ pub fn run() {
             commands::ai_provider_delete,
             commands::ai_preview,
             commands::ai_execute,
+            commands::plugin_manifest_inspect,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,
