@@ -62,6 +62,13 @@ const VIEWER_PERMISSIONS: &[&str] = &[
     "terminalView",
 ];
 
+pub(crate) struct TeamAuthorization {
+    pub member_id: String,
+    pub role: String,
+    pub key_epoch: i64,
+    pub local_device_id: Option<String>,
+}
+
 fn permissions(role: &str) -> AppResult<&'static [&'static str]> {
     match role {
         "owner" => Ok(OWNER_PERMISSIONS),
@@ -104,7 +111,7 @@ async fn local_authorization(
     Ok((row.get(0), row.get(1)))
 }
 
-fn require_permission(role: &str, permission: &str) -> AppResult<()> {
+pub(crate) fn require_permission(role: &str, permission: &str) -> AppResult<()> {
     if permissions(role)?.contains(&permission) {
         Ok(())
     } else {
@@ -114,7 +121,30 @@ fn require_permission(role: &str, permission: &str) -> AppResult<()> {
     }
 }
 
-async fn audit(
+pub(crate) async fn authorize(
+    db: &Database,
+    workspace_id: &str,
+    permission: &str,
+) -> AppResult<TeamAuthorization> {
+    if !valid_uuid(workspace_id) {
+        return Err(AppError::Validation("团队工作区 ID 无效".into()));
+    }
+    let row = sqlx::query("SELECT w.local_member_id,m.role,w.key_epoch,w.local_device_id FROM team_workspaces w JOIN team_members m ON m.id=w.local_member_id AND m.workspace_id=w.id WHERE w.id=? AND m.status='active'")
+        .bind(workspace_id)
+        .fetch_optional(&db.pool)
+        .await?
+        .ok_or_else(|| AppError::NotFound(format!("团队工作区 {workspace_id}")))?;
+    let role: String = row.get(1);
+    require_permission(&role, permission)?;
+    Ok(TeamAuthorization {
+        member_id: row.get(0),
+        role,
+        key_epoch: row.get(2),
+        local_device_id: row.get(3),
+    })
+}
+
+pub(crate) async fn audit(
     transaction: &mut Transaction<'_, Sqlite>,
     workspace_id: &str,
     actor_member_id: &str,
@@ -382,6 +412,13 @@ pub async fn remove_member(db: &Database, workspace_id: &str, member_id: &str) -
     }
     let now = Utc::now().to_rfc3339();
     sqlx::query("UPDATE team_members SET status='removed',removed_at=?,updated_at=? WHERE id=? AND workspace_id=?")
+        .bind(&now)
+        .bind(&now)
+        .bind(member_id)
+        .bind(workspace_id)
+        .execute(&mut *transaction)
+        .await?;
+    sqlx::query("UPDATE team_devices SET status='revoked',revoked_at=?,updated_at=? WHERE member_id=? AND workspace_id=? AND status='active'")
         .bind(&now)
         .bind(&now)
         .bind(member_id)

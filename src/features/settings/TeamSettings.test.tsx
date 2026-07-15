@@ -2,10 +2,10 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { TeamAuditEvent, TeamMember, TeamPermissionReport, TeamWorkspace } from "../../types";
+import type { TeamAuditEvent, TeamDevice, TeamMember, TeamPermissionReport, TeamWorkspace } from "../../types";
 import { TeamSettings } from "./TeamSettings";
 
-const dialog = vi.hoisted(() => ({ save: vi.fn() }));
+const dialog = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => dialog);
 
 const workspace: TeamWorkspace = {
@@ -48,14 +48,30 @@ const audit: TeamAuditEvent = {
   targetId: viewer.id,
   createdAt: workspace.createdAt,
 };
+const device: TeamDevice = {
+  id: "55555555-5555-4555-8555-555555555555",
+  workspaceId: workspace.id,
+  memberId: owner.id,
+  name: "Alice Mac",
+  encryptionPublicKey: `x25519:${"a".repeat(43)}`,
+  signingPublicKey: `ed25519:${"b".repeat(43)}`,
+  fingerprint: `sha256:${"c".repeat(64)}`,
+  isLocal: true,
+  status: "active",
+  createdAt: workspace.createdAt,
+  updatedAt: workspace.updatedAt,
+  revokedAt: null,
+};
 
 describe("TeamSettings", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     dialog.save.mockReset();
+    dialog.open.mockReset();
     vi.spyOn(api, "listTeamWorkspaces").mockResolvedValue([workspace]);
     vi.spyOn(api, "getTeamPermissions").mockResolvedValue(permissions);
     vi.spyOn(api, "listTeamMembers").mockResolvedValue([owner, viewer]);
+    vi.spyOn(api, "listTeamDevices").mockResolvedValue([]);
     vi.spyOn(api, "listTeamAudit").mockResolvedValue([audit]);
   });
 
@@ -83,5 +99,28 @@ describe("TeamSettings", () => {
     await user.type(screen.getByLabelText("Owner 名称"), "Chen");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(create).toHaveBeenCalledWith({ name: "Platform", ownerName: "Chen" }));
+  });
+
+  it("exports a credential share only after device selection and confirmation", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "listTeamDevices").mockResolvedValue([device]);
+    vi.spyOn(api, "getTeamPermissions").mockResolvedValue({ ...permissions, permissions: [...permissions.permissions, "shareCreate", "shareManage"] });
+    dialog.save.mockResolvedValue("/tmp/connection.cnshellshare");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const exportShare = vi.spyOn(api, "exportTeamShare").mockResolvedValue();
+    const connection = {
+      id: "66666666-6666-4666-8666-666666666666", folderId: null, protocol: "ssh" as const, name: "Prod", host: "prod.example.com", port: 22, username: "root", authType: "password" as const, privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict" as const, note: "", tags: [], encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, hasCredential: true, createdAt: workspace.createdAt, updatedAt: workspace.updatedAt, lastConnectedAt: null,
+    };
+    render(<TeamSettings connections={[connection]} onError={vi.fn()}/>);
+
+    await user.click(await screen.findByRole("checkbox", { name: "Alice Mac" }));
+    await user.click(screen.getByRole("checkbox", { name: "包含加密凭据" }));
+    await user.click(screen.getByRole("button", { name: "导出分享" }));
+    await waitFor(() => expect(exportShare).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceId: workspace.id,
+      connectionId: connection.id,
+      recipientDeviceIds: [device.id],
+      includeCredential: true,
+    })));
   });
 });

@@ -501,6 +501,41 @@ export interface TeamAuditEvent {
   createdAt: string;
 }
 
+export interface TeamDevice {
+  id: string;
+  workspaceId: string;
+  memberId: string;
+  name: string;
+  encryptionPublicKey: string;
+  signingPublicKey: string;
+  fingerprint: string;
+  isLocal: boolean;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface TeamShareExportInput {
+  workspaceId: string;
+  connectionId: string;
+  recipientDeviceIds: string[];
+  includeCredential: boolean;
+  outputPath: string;
+}
+
+export interface TeamSharePreview {
+  requestId: string;
+  workspaceId: string;
+  senderMemberId: string;
+  connectionName: string;
+  protocol: string;
+  host: string;
+  hasCredential: boolean;
+  keyEpoch: number;
+  expiresAt: string;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;

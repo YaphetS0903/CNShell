@@ -158,7 +158,11 @@ export default function SettingsModal() {
         <WebDavSyncSettings onError={(message) => setError(message)} />
         <AiSettings onError={(message) => setError(message)} />
         <PluginSettings onError={(message) => setError(message)} />
-        <TeamSettings onError={(message) => setError(message)} />
+        <TeamSettings
+          connections={connections}
+          onConnectionImported={refreshConnections}
+          onError={(message) => setError(message)}
+        />
         <AdvancedSettings
           connections={connections}
           onChanged={refreshConnections}

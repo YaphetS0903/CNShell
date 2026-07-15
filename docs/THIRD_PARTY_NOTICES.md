@@ -16,6 +16,8 @@ CNshell 随应用分发以下开源组件的目标代码。完整许可证文本
 | Wasmi | 1.1.0 | MIT OR Apache-2.0 | <https://github.com/wasmi-labs/wasmi> |
 | ed25519-dalek | 2.2.0 | BSD-3-Clause | <https://github.com/dalek-cryptography/curve25519-dalek> |
 | serde_jcs | 0.2.0 | MIT OR Apache-2.0 | <https://github.com/l1h3r/serde_jcs> |
+| x25519-dalek | 2.0.1 | BSD-3-Clause | <https://github.com/dalek-cryptography/curve25519-dalek> |
+| HKDF | 0.12.4 | MIT OR Apache-2.0 | <https://github.com/RustCrypto/KDFs> |
 
 这些组件按各自许可证以“原样”提供，其作者不对 CNshell 作任何担保或背书。
 G-Kermit 的完整对应源码归档随应用位于

@@ -652,6 +652,47 @@ pub struct TeamAuditEvent {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamDevice {
+    pub id: String,
+    pub workspace_id: String,
+    pub member_id: String,
+    pub name: String,
+    pub encryption_public_key: String,
+    pub signing_public_key: String,
+    pub fingerprint: String,
+    pub is_local: bool,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+    pub revoked_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamShareExportInput {
+    pub workspace_id: String,
+    pub connection_id: String,
+    pub recipient_device_ids: Vec<String>,
+    pub include_credential: bool,
+    pub output_path: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamSharePreview {
+    pub request_id: String,
+    pub workspace_id: String,
+    pub sender_member_id: String,
+    pub connection_name: String,
+    pub protocol: String,
+    pub host: String,
+    pub has_credential: bool,
+    pub key_epoch: i64,
+    pub expires_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginAuditEvent {

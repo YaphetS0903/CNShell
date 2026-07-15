@@ -988,6 +988,74 @@ pub async fn team_audit_export(
 }
 
 #[tauri::command]
+pub async fn team_device_list(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<Vec<TeamDevice>> {
+    crate::team_share::list_devices(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_device_ensure(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    name: String,
+) -> AppResult<TeamDevice> {
+    crate::team_share::ensure_local_device(&state.db, &workspace_id, &name).await
+}
+
+#[tauri::command]
+pub async fn team_device_export(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    path: String,
+) -> AppResult<()> {
+    crate::team_share::export_local_device(&state.db, &workspace_id, &path).await
+}
+
+#[tauri::command]
+pub async fn team_device_import(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    path: String,
+) -> AppResult<TeamDevice> {
+    crate::team_share::import_device(&state.db, &workspace_id, &path).await
+}
+
+#[tauri::command]
+pub async fn team_device_revoke(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    device_id: String,
+) -> AppResult<()> {
+    crate::team_share::revoke_device(&state.db, &workspace_id, &device_id).await
+}
+
+#[tauri::command]
+pub async fn team_share_export(
+    state: State<'_, AppState>,
+    input: TeamShareExportInput,
+) -> AppResult<()> {
+    crate::team_share::export_share(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_share_preview(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<TeamSharePreview> {
+    crate::team_share::preview_share(&state.db, &state.team_shares, &path).await
+}
+
+#[tauri::command]
+pub async fn team_share_apply(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<ConnectionProfile> {
+    crate::team_share::apply_share(&state.db, &state.team_shares, &request_id).await
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await

@@ -45,7 +45,7 @@
 | 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览；Rust 验证固定 Schema、步骤/超时/正则边界，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
 | 加密同步 | 通过（代码/本机密钥边界） | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步。可选 Touch ID 口令使用设备专属 Data Protection Keychain 与当前指纹集合保护，解锁后不返回前端，手动口令恢复入口始终保留 |
 | Zmodem/Mosh/X11 | 部分 | Zmodem 已与腾讯云 `lrzsz` 完成双向互操作；Mosh 已完成真实公网 UDP 短测；X11 已由本机 OpenSSH 接受真实 `x11-req` 并建立远端 `DISPLAY`。XQuartz GUI、Mosh 漫游/Intel 与对应外部环境仍待验收 |
-| AI、插件、团队协作 | 部分 | AI 的 BYOK、预览脱敏与手动执行流程已完成。插件已完成用户导入 Ed25519 发布者根、RFC 8785 manifest+WASM 联合签名、命名空间绑定、启用/撤销/篡改失效和无 WASI 限额 Wasmi 沙箱。团队已完成独立 SQLite 工作区/成员/审计表、Owner/Admin/Operator/Viewer 权限矩阵、Owner 不变量、跨工作区 ID 隔离、移除/角色变化推进密钥 epoch 和不含终端正文的原子审计导出。在线账号/邀请、设备密钥 E2E 分享、服务端 RBAC 和多人终端仍需正式服务，不声明完成 |
+| AI、插件、团队协作 | 部分 | AI 的 BYOK、预览脱敏与手动执行流程已完成。插件已完成可信发布者和无 WASI 限额沙箱。团队已完成 SQLite 工作区/成员/设备/审计表、四角色 RBAC、Owner 不变量、跨工作区 ID 隔离、密钥 epoch 和有界审计；设备私钥真实进入 Keychain，离线分享通过 AES-256-GCM 内容密文、每设备 X25519+HKDF 封装及 Ed25519 完整 envelope 签名完成同设备往返，测试验证新 Keychain 凭据、非必要敏感字段排除和篡改拒绝。在线账号/邀请/设备目录同步、服务端 RBAC 和多人终端仍需正式服务，不声明完成 |
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
 

@@ -25,6 +25,7 @@ mod sftp;
 mod ssh;
 mod task;
 mod team;
+mod team_share;
 mod telnet;
 mod touch_id;
 mod tunnel;
@@ -50,6 +51,7 @@ use tauri::{
     Emitter, Manager,
     menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
 };
+use team_share::TeamShareManager;
 use telnet::TelnetManager;
 use tunnel::TunnelManager;
 
@@ -69,6 +71,7 @@ pub struct AppState {
     local_shell: LocalShellManager,
     telnet: TelnetManager,
     serial: SerialManager,
+    team_shares: TeamShareManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -190,6 +193,7 @@ pub fn run() {
                 local_shell: LocalShellManager::default(),
                 telnet: TelnetManager::default(),
                 serial: SerialManager::default(),
+                team_shares: TeamShareManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -284,6 +288,14 @@ pub fn run() {
             commands::team_permission_report,
             commands::team_audit_list,
             commands::team_audit_export,
+            commands::team_device_list,
+            commands::team_device_ensure,
+            commands::team_device_export,
+            commands::team_device_import,
+            commands::team_device_revoke,
+            commands::team_share_export,
+            commands::team_share_preview,
+            commands::team_share_apply,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,
