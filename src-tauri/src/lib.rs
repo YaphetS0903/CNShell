@@ -145,20 +145,22 @@ pub fn run() {
             let db =
                 tauri::async_runtime::block_on(Database::open(&data_dir.join("cnshell.sqlite")))
                     .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+            let tasks = TaskManager::default();
             app.manage(AppState {
-                db,
+                db: db.clone(),
                 sessions: SessionManager::default(),
                 transfers: TransferManager::default(),
                 monitor: MonitorState::default(),
                 mosh: MoshManager::default(),
                 tunnels: TunnelManager::default(),
-                tasks: TaskManager::default(),
+                tasks: tasks.clone(),
                 rdp: RdpManager::default(),
                 logs: SessionLogManager::new(data_dir.join("session-logs"))
                     .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?,
                 batches: BatchManager::default(),
                 external_edits: ExternalEditManager::default(),
             });
+            automation::start_scheduler(handle.clone(), db, tasks);
             app.set_menu(build_menu(app)?)?;
             Ok(())
         })
@@ -197,6 +199,10 @@ pub fn run() {
             commands::protocol_options_save,
             commands::automation_validate,
             commands::automation_start,
+            commands::automation_schedule_list,
+            commands::automation_schedule_save,
+            commands::automation_schedule_delete,
+            commands::automation_schedule_run_now,
             commands::sync_write,
             commands::sync_read,
             commands::touch_id_sync_status,

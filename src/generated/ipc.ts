@@ -279,6 +279,17 @@ export interface AutomationRun {
   results: AutomationStepResult[];
 }
 
+export interface AutomationSchedule {
+  id: string;
+  plan: AutomationPlan;
+  scheduleType: string;
+  expression: string;
+  enabled: boolean;
+  misfirePolicy: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+}
+
 export interface SyncOptions {
   includeHosts: boolean;
   includePrivateKeyPaths: boolean;

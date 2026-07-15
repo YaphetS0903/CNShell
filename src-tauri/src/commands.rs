@@ -514,6 +514,91 @@ pub async fn automation_start(
 }
 
 #[tauri::command]
+pub async fn automation_schedule_list(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<AutomationSchedule>> {
+    Ok(state
+        .db
+        .load_named_state(crate::automation::schedules_key())
+        .await?
+        .unwrap_or_default())
+}
+
+#[tauri::command]
+pub async fn automation_schedule_save(
+    state: State<'_, AppState>,
+    mut schedule: AutomationSchedule,
+) -> AppResult<AutomationSchedule> {
+    crate::automation::validate_schedule(&schedule)?;
+    if schedule.next_run_at.is_none() {
+        schedule.next_run_at = crate::automation::next_run_at(&schedule, chrono::Utc::now())?;
+    }
+    let mut schedules: Vec<AutomationSchedule> = state
+        .db
+        .load_named_state(crate::automation::schedules_key())
+        .await?
+        .unwrap_or_default();
+    if let Some(existing) = schedules.iter_mut().find(|item| item.id == schedule.id) {
+        *existing = schedule.clone();
+    } else {
+        schedules.push(schedule.clone());
+    }
+    state
+        .db
+        .save_named_state(
+            crate::automation::schedules_key(),
+            &serde_json::to_value(&schedules)
+                .map_err(|error| AppError::Internal(error.to_string()))?,
+        )
+        .await?;
+    Ok(schedule)
+}
+
+#[tauri::command]
+pub async fn automation_schedule_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    let mut schedules: Vec<AutomationSchedule> = state
+        .db
+        .load_named_state(crate::automation::schedules_key())
+        .await?
+        .unwrap_or_default();
+    schedules.retain(|item: &AutomationSchedule| item.id != id);
+    state
+        .db
+        .save_named_state(
+            crate::automation::schedules_key(),
+            &serde_json::to_value(&schedules)
+                .map_err(|error| AppError::Internal(error.to_string()))?,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn automation_schedule_run_now(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<BackgroundTask> {
+    let schedules: Vec<AutomationSchedule> = state
+        .db
+        .load_named_state(crate::automation::schedules_key())
+        .await?
+        .unwrap_or_default();
+    let plan = schedules
+        .into_iter()
+        .find(|item| item.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("定时任务 {id}")))?
+        .plan;
+    crate::automation::validate(&plan)?;
+    let db = state.db.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "automation-scheduled", move |cancelled| async move {
+            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
+                .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
 pub async fn sync_write(
     state: State<'_, AppState>,
     folder: String,

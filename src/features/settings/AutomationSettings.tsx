@@ -1,5 +1,5 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { Braces, Play, Plus, Trash2, X } from "lucide-react";
+import { Braces, Clock3, Play, Plus, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { IconButton } from "../../components/IconButton";
 import { api } from "../../lib/api";
@@ -7,6 +7,7 @@ import { errorMessage } from "../../lib/format";
 import type {
   AutomationPlan,
   AutomationRun,
+  AutomationSchedule,
   AutomationStep,
   BackgroundTask,
   ConnectionProfile,
@@ -42,6 +43,13 @@ export function AutomationSettings({
   const [task, setTask] = useState<BackgroundTask | null>(null);
   const [result, setResult] = useState<AutomationRun | null>(null);
   const [running, setRunning] = useState(false);
+  const [schedules, setSchedules] = useState<AutomationSchedule[]>([]);
+  const [scheduleType, setScheduleType] = useState("interval");
+  const [scheduleExpression, setScheduleExpression] = useState("3600");
+  const [misfirePolicy, setMisfirePolicy] = useState("skip");
+  useEffect(() => {
+    void api.listAutomationSchedules().then(setSchedules).catch((error) => onError(errorMessage(error)));
+  }, [onError]);
   useEffect(() => {
     if (!task || ["completed", "failed", "cancelled"].includes(task.status))
       return;
@@ -113,6 +121,39 @@ export function AutomationSettings({
     setTask(null);
     setResult(null);
     await start();
+  };
+  const saveSchedule = async () => {
+    try {
+      await api.validateAutomation(plan);
+      const schedule = await api.saveAutomationSchedule({
+        id: crypto.randomUUID(),
+        plan,
+        scheduleType,
+        expression: scheduleExpression.trim(),
+        enabled: true,
+        misfirePolicy,
+        nextRunAt: null,
+        lastRunAt: null,
+      });
+      setSchedules((current) => [...current, schedule]);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+  const runSchedule = async (schedule: AutomationSchedule) => {
+    try {
+      await api.runAutomationScheduleNow(schedule.id);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+  const deleteSchedule = async (id: string) => {
+    try {
+      await api.deleteAutomationSchedule(id);
+      setSchedules((current) => current.filter((item) => item.id !== id));
+    } catch (error) {
+      onError(errorMessage(error));
+    }
   };
   return (
     <section className="automation-settings" aria-busy={running}>
@@ -307,6 +348,21 @@ export function AutomationSettings({
       <pre className="automation-preview" aria-label="自动化预览">
         {preview}
       </pre>
+      <section className="automation-schedules" aria-label="定时任务">
+        <div className="section-heading">
+          <div>
+            <h3><Clock3 size={16} /> 定时任务</h3>
+            <p>只调度当前受限步骤；应用退出期间不会在后台执行。</p>
+          </div>
+        </div>
+        <div className="automation-meta">
+          <label><span>类型</span><select value={scheduleType} onChange={(event) => setScheduleType(event.target.value)}><option value="interval">固定间隔</option><option value="once">一次执行</option><option value="cron">Cron</option></select></label>
+          <label><span>{scheduleType === "interval" ? "间隔秒数" : scheduleType === "once" ? "RFC3339 时间" : "Cron 表达式"}</span><input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder={scheduleType === "cron" ? "0 0 * * * *" : undefined} /></label>
+          <label><span>错过执行</span><select value={misfirePolicy} onChange={(event) => setMisfirePolicy(event.target.value)}><option value="skip">跳过</option><option value="runOnce">恢复后执行一次</option></select></label>
+          <button className="button secondary" onClick={() => void saveSchedule()}><Clock3 size={14} /> 保存定时任务</button>
+        </div>
+        {schedules.length > 0 && <div className="automation-results" aria-live="polite">{schedules.map((schedule) => <article key={schedule.id}><p><strong>{schedule.plan.name || "未命名计划"}</strong> · {schedule.scheduleType} · {schedule.expression}</p><div className="automation-actions"><button className="button secondary" onClick={() => void runSchedule(schedule)}><Play size={14} /> 立即运行</button><IconButton icon={Trash2} label="删除定时任务" onClick={() => void deleteSchedule(schedule.id)} /></div></article>)}</div>}
+      </section>
       {task && (
         <p className="muted-copy" aria-live="polite">
           任务状态：{task.status}

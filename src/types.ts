@@ -22,6 +22,7 @@ import type {
   ProtocolCapability,
   ConnectionProtocolOptions,
   AutomationPlan,
+  AutomationSchedule,
   AutomationStep,
   AutomationRun,
   AutomationStepResult,
@@ -126,7 +127,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpDisplay, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
+export type { AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpDisplay, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

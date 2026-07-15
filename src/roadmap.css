@@ -115,6 +115,16 @@
   margin: 5px 0;
   background: var(--surface-2);
 }
+
+.automation-schedules {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.automation-schedules .automation-meta {
+  align-items: end;
+}
 .automation-results article.failed {
   border-color: var(--danger);
 }

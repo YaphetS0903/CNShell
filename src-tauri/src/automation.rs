@@ -5,7 +5,9 @@ use crate::{
     ssh,
 };
 use chrono::Utc;
+use cron::Schedule;
 use regex::Regex;
+use std::str::FromStr;
 use std::{
     sync::{
         Arc,
@@ -17,6 +19,182 @@ use uuid::Uuid;
 
 const MAX_STEPS: usize = 50;
 const MAX_TIMEOUT_SECONDS: u64 = 3600;
+const SCHEDULES_KEY: &str = "cnshell.automation.schedules";
+
+pub fn schedules_key() -> &'static str {
+    SCHEDULES_KEY
+}
+
+pub fn validate_schedule(schedule: &crate::models::AutomationSchedule) -> AppResult<()> {
+    if schedule.id.trim().is_empty() {
+        return Err(AppError::Validation("定时任务 ID 不能为空".into()));
+    }
+    validate(&schedule.plan)?;
+    if !["once", "interval", "cron"].contains(&schedule.schedule_type.as_str()) {
+        return Err(AppError::Validation("定时任务类型无效".into()));
+    }
+    if !["skip", "runOnce"].contains(&schedule.misfire_policy.as_str()) {
+        return Err(AppError::Validation("错过执行策略无效".into()));
+    }
+    let expression = schedule.expression.trim();
+    if expression.is_empty() || expression.len() > 128 {
+        return Err(AppError::Validation(
+            "定时任务表达式不能为空且不能超过 128 字符".into(),
+        ));
+    }
+    match schedule.schedule_type.as_str() {
+        "once" => {
+            chrono::DateTime::parse_from_rfc3339(expression)
+                .map_err(|_| AppError::Validation("一次执行时间必须是 RFC3339 时间".into()))?;
+        }
+        "interval" => {
+            let seconds = expression
+                .parse::<u64>()
+                .map_err(|_| AppError::Validation("间隔必须是秒数".into()))?;
+            if !(10..=2_592_000).contains(&seconds) {
+                return Err(AppError::Validation("间隔必须为 10 秒至 30 天".into()));
+            }
+        }
+        "cron" => {
+            Schedule::from_str(expression)
+                .map_err(|error| AppError::Validation(format!("Cron 表达式无效：{error}")))?;
+        }
+        _ => unreachable!(),
+    }
+    Ok(())
+}
+
+pub fn next_run_at(
+    schedule: &crate::models::AutomationSchedule,
+    after: chrono::DateTime<Utc>,
+) -> AppResult<Option<String>> {
+    if !schedule.enabled {
+        return Ok(None);
+    }
+    match schedule.schedule_type.as_str() {
+        "once" => {
+            let at = chrono::DateTime::parse_from_rfc3339(schedule.expression.trim())
+                .map_err(|_| AppError::Validation("一次执行时间必须是 RFC3339 时间".into()))?
+                .with_timezone(&Utc);
+            Ok((at > after).then(|| at.to_rfc3339()))
+        }
+        "interval" => {
+            let seconds: i64 = schedule
+                .expression
+                .trim()
+                .parse()
+                .map_err(|_| AppError::Validation("间隔必须是秒数".into()))?;
+            let base = schedule
+                .last_run_at
+                .as_deref()
+                .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                .map(|value| value.with_timezone(&Utc))
+                .unwrap_or(after);
+            Ok(Some(
+                (base + chrono::Duration::seconds(seconds)).to_rfc3339(),
+            ))
+        }
+        "cron" => {
+            let parsed = Schedule::from_str(schedule.expression.trim())
+                .map_err(|error| AppError::Validation(format!("Cron 表达式无效：{error}")))?;
+            Ok(parsed.after(&after).next().map(|value| value.to_rfc3339()))
+        }
+        _ => Err(AppError::Validation("定时任务类型无效".into())),
+    }
+}
+
+pub fn start_scheduler(app: tauri::AppHandle, db: Database, tasks: crate::task::TaskManager) {
+    tauri::async_runtime::spawn(async move {
+        let mut ticker = tokio::time::interval(Duration::from_secs(15));
+        loop {
+            ticker.tick().await;
+            let now = Utc::now();
+            let mut schedules = match db
+                .load_named_state::<Vec<crate::models::AutomationSchedule>>(SCHEDULES_KEY)
+                .await
+            {
+                Ok(Some(value)) => value,
+                Ok(None) => continue,
+                Err(_) => continue,
+            };
+            let mut changed = false;
+            for schedule in &mut schedules {
+                if !schedule.enabled {
+                    continue;
+                }
+                let due = schedule
+                    .next_run_at
+                    .as_deref()
+                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                    .map(|value| {
+                        let scheduled_at = value.with_timezone(&Utc);
+                        if scheduled_at > now {
+                            return false;
+                        }
+                        if schedule.misfire_policy != "skip" {
+                            return true;
+                        }
+                        let grace = match schedule.schedule_type.as_str() {
+                            "interval" => schedule
+                                .expression
+                                .parse::<u64>()
+                                .map(Duration::from_secs)
+                                .unwrap_or(Duration::from_secs(15)),
+                            "cron" => Duration::from_secs(120),
+                            _ => Duration::from_secs(30),
+                        };
+                        now.signed_duration_since(scheduled_at)
+                            .to_std()
+                            .map(|delay| delay <= grace)
+                            .unwrap_or(false)
+                    })
+                    .unwrap_or(false);
+                if !due {
+                    if schedule
+                        .next_run_at
+                        .as_deref()
+                        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+                        .map(|value| value.with_timezone(&Utc) <= now)
+                        .unwrap_or(false)
+                    {
+                        schedule.last_run_at = Some(now.to_rfc3339());
+                        if schedule.schedule_type == "once" {
+                            schedule.enabled = false;
+                            schedule.next_run_at = None;
+                        } else {
+                            schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
+                        }
+                        changed = true;
+                    }
+                    continue;
+                }
+                let plan = schedule.plan.clone();
+                schedule.last_run_at = Some(now.to_rfc3339());
+                if schedule.schedule_type == "once" {
+                    schedule.enabled = false;
+                    schedule.next_run_at = None;
+                } else {
+                    schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
+                }
+                changed = true;
+                let db_for_run = db.clone();
+                tasks.spawn(
+                    app.clone(),
+                    "automation-scheduled",
+                    move |cancelled| async move {
+                        serde_json::to_value(run(db_for_run, plan, cancelled).await?)
+                            .map_err(|error| AppError::Internal(error.to_string()))
+                    },
+                );
+            }
+            if changed {
+                if let Ok(value) = serde_json::to_value(&schedules) {
+                    let _ = db.save_named_state(SCHEDULES_KEY, &value).await;
+                }
+            }
+        }
+    });
+}
 
 pub fn validate(plan: &AutomationPlan) -> AppResult<()> {
     if plan.id.trim().is_empty()
@@ -371,5 +549,36 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn validates_schedule_types_and_calculates_next_runs() {
+        let mut schedule = crate::models::AutomationSchedule {
+            id: "schedule".into(),
+            plan: plan(AutomationStep {
+                id: "step".into(),
+                kind: "command".into(),
+                command: Some("true".into()),
+                pattern: None,
+                timeout_seconds: Some(30),
+                action: None,
+                direction: None,
+                local_path: None,
+                remote_path: None,
+            }),
+            schedule_type: "interval".into(),
+            expression: "60".into(),
+            enabled: true,
+            misfire_policy: "skip".into(),
+            next_run_at: None,
+            last_run_at: None,
+        };
+        assert!(validate_schedule(&schedule).is_ok());
+        assert!(next_run_at(&schedule, Utc::now()).unwrap().is_some());
+        schedule.schedule_type = "cron".into();
+        schedule.expression = "0 0 * * * *".into();
+        assert!(validate_schedule(&schedule).is_ok());
+        schedule.expression = "not cron".into();
+        assert!(validate_schedule(&schedule).is_err());
     }
 }

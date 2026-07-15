@@ -4,6 +4,7 @@ import { open as openExternal } from "@tauri-apps/plugin-shell";
 import type {
   AppSettings,
   AutomationPlan,
+  AutomationSchedule,
   BatchExecution,
   BackgroundTask,
   ConnectionProfile,
@@ -129,6 +130,10 @@ export const api = {
   async saveProtocolOptions(options:ConnectionProtocolOptions):Promise<ConnectionProtocolOptions>{return invoke("protocol_options_save",{options});},
   async validateAutomation(plan:AutomationPlan):Promise<AutomationPlan>{return invoke("automation_validate",{plan});},
   async startAutomation(plan:AutomationPlan):Promise<BackgroundTask>{return invoke("automation_start",{plan});},
+  async listAutomationSchedules():Promise<AutomationSchedule[]>{return isTauri()?invoke("automation_schedule_list"):[];},
+  async saveAutomationSchedule(schedule:AutomationSchedule):Promise<AutomationSchedule>{return invoke("automation_schedule_save",{schedule});},
+  async deleteAutomationSchedule(id:string):Promise<void>{return invoke("automation_schedule_delete",{id});},
+  async runAutomationScheduleNow(id:string):Promise<BackgroundTask>{return invoke("automation_schedule_run_now",{id});},
   async writeEncryptedSync(folder:string,passphrase:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write",{folder,passphrase,options});},
   async readEncryptedSync(folder:string,passphrase:string):Promise<SyncResult>{return invoke("sync_read",{folder,passphrase});},
   async touchIdSyncStatus(folder:string):Promise<TouchIdSyncStatus>{return isTauri()?invoke("touch_id_sync_status",{folder}):{supported:false,saved:false,message:"Touch ID 需要运行 CNshell 桌面版"};},

@@ -369,6 +369,24 @@ pub struct AutomationRun {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AutomationSchedule {
+    pub id: String,
+    pub plan: AutomationPlan,
+    pub schedule_type: String,
+    pub expression: String,
+    pub enabled: bool,
+    #[serde(default = "default_misfire_policy")]
+    pub misfire_policy: String,
+    pub next_run_at: Option<String>,
+    pub last_run_at: Option<String>,
+}
+
+fn default_misfire_policy() -> String {
+    "skip".into()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SyncOptions {
     pub include_hosts: bool,
     pub include_private_key_paths: bool,
