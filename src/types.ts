@@ -29,6 +29,9 @@ import type {
   PythonAutomationManifest,
   PythonAutomationPreview,
   PythonAutomationRequest,
+  SaveWebDavProfileInput,
+  WebDavProfile,
+  WebDavSyncProgress,
   SyncOptions,
   SyncResult,
   ProxyProfile as GeneratedProxyProfile,
@@ -130,7 +133,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
+export type { AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput, WebDavProfile, WebDavSyncProgress };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

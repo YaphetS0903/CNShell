@@ -644,6 +644,86 @@ pub async fn sync_read(
 }
 
 #[tauri::command]
+pub async fn webdav_profile_list(state: State<'_, AppState>) -> AppResult<Vec<WebDavProfile>> {
+    crate::webdav::profiles(&state.db).await
+}
+
+#[tauri::command]
+pub async fn webdav_profile_save(
+    state: State<'_, AppState>,
+    input: SaveWebDavProfileInput,
+) -> AppResult<WebDavProfile> {
+    crate::webdav::save_profile(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn webdav_profile_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::webdav::delete_profile(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn webdav_sync_write_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    passphrase: String,
+    options: SyncOptions,
+) -> AppResult<BackgroundTask> {
+    if passphrase.len() < 8 {
+        return Err(AppError::Validation("同步口令至少需要 8 位".into()));
+    }
+    let db = state.db.clone();
+    let progress_app = app.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "webdav-sync-write", move |cancelled| async move {
+            let passphrase = zeroize::Zeroizing::new(passphrase);
+            serde_json::to_value(
+                crate::webdav::write(
+                    &progress_app,
+                    &db,
+                    &profile_id,
+                    passphrase.as_str(),
+                    &options,
+                    cancelled,
+                )
+                .await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
+pub async fn webdav_sync_read_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    profile_id: String,
+    passphrase: String,
+) -> AppResult<BackgroundTask> {
+    if passphrase.len() < 8 {
+        return Err(AppError::Validation("同步口令至少需要 8 位".into()));
+    }
+    let db = state.db.clone();
+    let progress_app = app.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "webdav-sync-read", move |cancelled| async move {
+            let passphrase = zeroize::Zeroizing::new(passphrase);
+            serde_json::to_value(
+                crate::webdav::read(
+                    &progress_app,
+                    &db,
+                    &profile_id,
+                    passphrase.as_str(),
+                    cancelled,
+                )
+                .await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await

@@ -11,6 +11,7 @@ import { OpenSshTools } from "./OpenSshTools";
 import { ProtocolSettings } from "./ProtocolSettings";
 import { AutomationSettings } from "./AutomationSettings";
 import { EncryptedSyncSettings } from "./EncryptedSyncSettings";
+import { WebDavSyncSettings } from "./WebDavSyncSettings";
 import { TerminalPreferencesFields } from "./TerminalPreferencesFields";
 
 export default function SettingsModal() {
@@ -151,6 +152,7 @@ export default function SettingsModal() {
           onError={(message) => setError(message)}
         />
         <EncryptedSyncSettings onError={(message) => setError(message)} />
+        <WebDavSyncSettings onError={(message) => setError(message)} />
         <AdvancedSettings
           connections={connections}
           onChanged={refreshConnections}

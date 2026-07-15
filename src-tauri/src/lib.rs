@@ -21,6 +21,7 @@ mod ssh;
 mod task;
 mod touch_id;
 mod tunnel;
+mod webdav;
 mod x11;
 mod zmodem;
 
@@ -162,6 +163,9 @@ pub fn run() {
                 external_edits: ExternalEditManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
+            let startup_db = app.state::<AppState>().db.clone();
+            let startup_tasks = app.state::<AppState>().tasks.clone();
+            webdav::start_startup_sync(handle.clone(), startup_db, startup_tasks);
             app.set_menu(build_menu(app)?)?;
             Ok(())
         })
@@ -213,6 +217,11 @@ pub fn run() {
             commands::touch_id_sync_delete,
             commands::sync_write_touch_id,
             commands::sync_read_touch_id,
+            commands::webdav_profile_list,
+            commands::webdav_profile_save,
+            commands::webdav_profile_delete,
+            commands::webdav_sync_write_start,
+            commands::webdav_sync_read_start,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,

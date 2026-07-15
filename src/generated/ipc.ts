@@ -324,6 +324,35 @@ export interface SyncResult {
   encrypted: boolean;
 }
 
+export interface WebDavProfile {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  hasCredential: boolean;
+  syncOnStartup: boolean;
+  hasSyncPassphrase: boolean;
+  syncOptions: SyncOptions;
+}
+
+export interface SaveWebDavProfileInput {
+  id: string;
+  name: string;
+  url: string;
+  username: string;
+  password?: string | null;
+  syncOnStartup: boolean;
+  syncOptions: SyncOptions;
+  syncPassphrase?: string | null;
+}
+
+export interface WebDavSyncProgress {
+  profileId: string;
+  phase: string;
+  transferredBytes: number;
+  totalBytes: number;
+}
+
 export interface RemoteFile {
   name: string;
   path: string;

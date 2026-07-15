@@ -177,6 +177,52 @@
   padding-top: 16px;
 }
 
+.webdav-sync {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.webdav-profile-list {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.webdav-profile-list button {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+
+.webdav-profile-list button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.webdav-profile-list small {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.webdav-startup {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+
+.webdav-startup small {
+  color: var(--muted);
+}
+
 .recording-status {
   color: var(--muted);
   font-size: 12px;

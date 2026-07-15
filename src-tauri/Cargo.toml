@@ -44,6 +44,8 @@ rand = "0.8"
 regex = "1"
 cron = "0.15"
 rustpython-parser = "0.4.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "stream"] }
+tempfile = "3"
 zmodem2 = "0.7.1"
 portable-pty = "0.9"
 zeroize = "1"
@@ -57,6 +59,3 @@ security-framework = { version = "3.7", features = ["OSX_10_15"] }
 
 [patch.crates-io]
 ssh2 = { path = "vendor/ssh2" }
-
-[dev-dependencies]
-tempfile = "3"

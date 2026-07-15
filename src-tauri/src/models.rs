@@ -413,7 +413,7 @@ fn default_misfire_policy() -> String {
     "skip".into()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncOptions {
     pub include_hosts: bool,
@@ -428,6 +428,43 @@ pub struct SyncResult {
     pub conflict_copy: Option<String>,
     pub connection_count: usize,
     pub encrypted: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebDavProfile {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    pub has_credential: bool,
+    pub sync_on_startup: bool,
+    pub has_sync_passphrase: bool,
+    pub sync_options: SyncOptions,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveWebDavProfileInput {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub username: String,
+    pub password: Option<String>,
+    #[serde(default)]
+    pub sync_on_startup: bool,
+    #[serde(default)]
+    pub sync_options: SyncOptions,
+    pub sync_passphrase: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebDavSyncProgress {
+    pub profile_id: String,
+    pub phase: String,
+    pub transferred_bytes: u64,
+    pub total_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]

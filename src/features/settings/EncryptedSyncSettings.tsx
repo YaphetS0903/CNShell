@@ -134,11 +134,10 @@ export function EncryptedSyncSettings({
         <div>
           <h3>
             <CloudCog size={16} />
-            可选加密同步
+            本地目录加密同步
           </h3>
           <p>
-            选择 iCloud Drive、WebDAV 或 Git 的本地文件夹；CNshell
-            不连接第三方账号。
+            选择 iCloud Drive、WebDAV 挂载点或 Git 检出目录。
           </p>
         </div>
       </div>
