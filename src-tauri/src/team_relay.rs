@@ -3,8 +3,9 @@ use crate::{
     error::{AppError, AppResult},
     models::{
         AcceptTeamRelayInvitationInput, CreateTeamRelayInvitationInput, SaveTeamRelayProfileInput,
-        TeamDevice, TeamRelayAccountInput, TeamRelayInvitation, TeamRelayProfile,
-        TeamRelayWorkspaceBinding, TeamWorkspace, UpdateTeamRelayMemberInput,
+        TeamControlLease, TeamDevice, TeamRelayAccountInput, TeamRelayInvitation, TeamRelayProfile,
+        TeamRelayTerminalInvitation, TeamRelayWorkspaceBinding, TeamTerminalInvitation,
+        TeamTerminalRoom, TeamWorkspace, UpdateTeamRelayMemberInput,
     },
     team, team_share,
 };
@@ -283,6 +284,63 @@ struct UpdateMemberRequest<'a> {
     status: &'a str,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateRoomRequest<'a> {
+    room_id: &'a str,
+    key_epoch: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoomResponse {
+    id: String,
+    workspace_id: String,
+    host_member_id: String,
+    host_device_id: String,
+    key_epoch: i64,
+    status: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RouteRoomInvitationRequest<'a> {
+    invitation: &'a TeamTerminalInvitation,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RoutedRoomInvitationResponse {
+    room_id: String,
+    invitation: TeamTerminalInvitation,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GrantControlRequest<'a> {
+    device_id: &'a str,
+    duration_seconds: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ControlLeaseResponse {
+    lease_id: String,
+    member_id: String,
+    device_id: String,
+    generation: u64,
+    expires_at: String,
+}
+
+pub(crate) struct RelayDeviceContext {
+    pub base_url: String,
+    pub workspace_id: String,
+    pub member_id: String,
+    pub device_id: String,
+    pub token: Zeroizing<String>,
+    pub expires_at: String,
+}
+
 struct RelayApi {
     base_url: Url,
     client: Client,
@@ -454,6 +512,106 @@ impl RelayApi {
                 .delete(
                     self.endpoint(&format!("v1/workspaces/{workspace_id}/devices/{device_id}"))?,
                 )
+                .bearer_auth(device_token),
+        )
+        .await
+    }
+
+    async fn create_room(
+        &self,
+        device_token: &str,
+        input: &CreateRoomRequest<'_>,
+    ) -> Result<RoomResponse, RelayFailure> {
+        send_json(
+            self.client
+                .post(self.endpoint("v1/terminal/rooms")?)
+                .bearer_auth(device_token)
+                .json(input),
+        )
+        .await
+    }
+
+    async fn route_room_invitation(
+        &self,
+        room_id: &str,
+        device_token: &str,
+        invitation: &TeamTerminalInvitation,
+    ) -> Result<(), RelayFailure> {
+        send_empty(
+            self.client
+                .post(self.endpoint(&format!("v1/terminal/rooms/{room_id}/invitation"))?)
+                .bearer_auth(device_token)
+                .json(&RouteRoomInvitationRequest { invitation }),
+        )
+        .await
+    }
+
+    async fn room_invitations(
+        &self,
+        device_token: &str,
+    ) -> Result<Vec<RoutedRoomInvitationResponse>, RelayFailure> {
+        send_json(
+            self.client
+                .get(self.endpoint("v1/terminal/invitations")?)
+                .bearer_auth(device_token),
+        )
+        .await
+    }
+
+    async fn join_room(
+        &self,
+        room_id: &str,
+        device_token: &str,
+    ) -> Result<RoomResponse, RelayFailure> {
+        send_json(
+            self.client
+                .post(self.endpoint(&format!("v1/terminal/rooms/{room_id}/join"))?)
+                .bearer_auth(device_token),
+        )
+        .await
+    }
+
+    async fn leave_room(&self, room_id: &str, device_token: &str) -> Result<(), RelayFailure> {
+        send_empty(
+            self.client
+                .delete(self.endpoint(&format!("v1/terminal/rooms/{room_id}/participants/me"))?)
+                .bearer_auth(device_token),
+        )
+        .await
+    }
+
+    async fn grant_control(
+        &self,
+        room_id: &str,
+        device_id: &str,
+        duration_seconds: u64,
+        device_token: &str,
+    ) -> Result<ControlLeaseResponse, RelayFailure> {
+        send_json(
+            self.client
+                .post(self.endpoint(&format!("v1/terminal/rooms/{room_id}/control"))?)
+                .bearer_auth(device_token)
+                .json(&GrantControlRequest {
+                    device_id,
+                    duration_seconds,
+                }),
+        )
+        .await
+    }
+
+    async fn revoke_control(&self, room_id: &str, device_token: &str) -> Result<(), RelayFailure> {
+        send_empty(
+            self.client
+                .delete(self.endpoint(&format!("v1/terminal/rooms/{room_id}/control"))?)
+                .bearer_auth(device_token),
+        )
+        .await
+    }
+
+    async fn close_room(&self, room_id: &str, device_token: &str) -> Result<(), RelayFailure> {
+        send_empty(
+            self.client
+                .delete(self.endpoint(&format!("v1/terminal/rooms/{room_id}"))?)
                 .bearer_auth(device_token),
         )
         .await
@@ -1116,6 +1274,213 @@ pub async fn revoke_device(
         .await
         .map_err(RelayFailure::into_app)?;
     sync_workspace(db, workspace_id).await
+}
+
+pub(crate) async fn device_context(
+    db: &Database,
+    workspace_id: &str,
+) -> AppResult<RelayDeviceContext> {
+    let binding = stored_binding(db, workspace_id).await?;
+    let profile = stored_profile(db, &binding.profile_id).await?;
+    let device = local_device(db, workspace_id).await?;
+    let api = RelayApi::new(&profile.base_url)?;
+    let session = ensure_device_session(db, &api, &binding, &device.id).await?;
+    if session.workspace_id != workspace_id
+        || session.member_id != device.member_id
+        || session.device_id != device.id
+    {
+        return Err(AppError::Remote("在线团队设备会话与本机身份不匹配".into()));
+    }
+    Ok(RelayDeviceContext {
+        base_url: profile.base_url,
+        workspace_id: workspace_id.into(),
+        member_id: device.member_id,
+        device_id: device.id,
+        token: Zeroizing::new(session.token.clone()),
+        expires_at: session.expires_at.clone(),
+    })
+}
+
+pub(crate) async fn terminal_create_room(
+    db: &Database,
+    room: &TeamTerminalRoom,
+) -> AppResult<RelayDeviceContext> {
+    let context = device_context(db, &room.workspace_id).await?;
+    let response = RelayApi::new(&context.base_url)?
+        .create_room(
+            &context.token,
+            &CreateRoomRequest {
+                room_id: &room.id,
+                key_epoch: room.key_epoch,
+            },
+        )
+        .await
+        .map_err(RelayFailure::into_app)?;
+    validate_room_response(&response, room, &context)?;
+    Ok(context)
+}
+
+pub(crate) async fn terminal_route_invitation(
+    db: &Database,
+    invitation: &TeamTerminalInvitation,
+) -> AppResult<()> {
+    let context = device_context(db, &invitation.workspace_id).await?;
+    if invitation.host_member_id != context.member_id
+        || invitation.host_device_id != context.device_id
+    {
+        return Err(AppError::PermissionDenied(
+            "只有当前在线主持设备可以路由房间邀请".into(),
+        ));
+    }
+    RelayApi::new(&context.base_url)?
+        .route_room_invitation(&invitation.room_id, &context.token, invitation)
+        .await
+        .map_err(RelayFailure::into_app)
+}
+
+pub async fn terminal_invitations(
+    db: &Database,
+    workspace_id: &str,
+) -> AppResult<Vec<TeamRelayTerminalInvitation>> {
+    let context = device_context(db, workspace_id).await?;
+    let invitations = RelayApi::new(&context.base_url)?
+        .room_invitations(&context.token)
+        .await
+        .map_err(RelayFailure::into_app)?;
+    if invitations.len() > 256 {
+        return Err(AppError::Remote(
+            "团队服务返回的待处理房间邀请超过 256 条上限".into(),
+        ));
+    }
+    invitations
+        .into_iter()
+        .map(|routed| {
+            if routed.room_id != routed.invitation.room_id
+                || routed.invitation.workspace_id != workspace_id
+                || routed.invitation.recipient_member_id != context.member_id
+                || routed.invitation.recipient_device_id != context.device_id
+            {
+                return Err(AppError::Remote(
+                    "团队服务返回了不属于当前工作区或设备的房间邀请".into(),
+                ));
+            }
+            Ok(TeamRelayTerminalInvitation {
+                room_id: routed.room_id,
+                invitation: routed.invitation,
+            })
+        })
+        .collect()
+}
+
+pub(crate) async fn terminal_join_room(
+    db: &Database,
+    invitation: &TeamTerminalInvitation,
+) -> AppResult<RelayDeviceContext> {
+    let context = device_context(db, &invitation.workspace_id).await?;
+    let response = RelayApi::new(&context.base_url)?
+        .join_room(&invitation.room_id, &context.token)
+        .await
+        .map_err(RelayFailure::into_app)?;
+    if response.id != invitation.room_id
+        || response.workspace_id != invitation.workspace_id
+        || response.host_member_id != invitation.host_member_id
+        || response.host_device_id != invitation.host_device_id
+        || response.key_epoch != invitation.key_epoch
+        || response.status != "active"
+    {
+        return Err(AppError::Remote(
+            "团队服务加入房间响应与端到端邀请不匹配".into(),
+        ));
+    }
+    Ok(context)
+}
+
+pub(crate) async fn terminal_leave_room(
+    db: &Database,
+    workspace_id: &str,
+    room_id: &str,
+) -> AppResult<()> {
+    let context = device_context(db, workspace_id).await?;
+    RelayApi::new(&context.base_url)?
+        .leave_room(room_id, &context.token)
+        .await
+        .map_err(RelayFailure::into_app)
+}
+
+pub(crate) async fn terminal_grant_control(
+    db: &Database,
+    workspace_id: &str,
+    room_id: &str,
+    device_id: &str,
+    duration_seconds: u64,
+) -> AppResult<TeamControlLease> {
+    validate_uuid(room_id, "在线团队房间 ID")?;
+    validate_uuid(device_id, "在线团队设备 ID")?;
+    let context = device_context(db, workspace_id).await?;
+    let response = RelayApi::new(&context.base_url)?
+        .grant_control(room_id, device_id, duration_seconds, &context.token)
+        .await
+        .map_err(RelayFailure::into_app)?;
+    let lease = TeamControlLease {
+        id: response.lease_id,
+        member_id: response.member_id,
+        device_id: response.device_id,
+        generation: response.generation,
+        expires_at: response.expires_at,
+    };
+    if lease.device_id != device_id
+        || lease.generation == 0
+        || uuid::Uuid::parse_str(&lease.id).is_err()
+        || DateTime::parse_from_rfc3339(&lease.expires_at).is_err()
+    {
+        return Err(AppError::Remote(
+            "团队服务返回的控制租约身份或时间无效".into(),
+        ));
+    }
+    Ok(lease)
+}
+
+pub(crate) async fn terminal_revoke_control(
+    db: &Database,
+    workspace_id: &str,
+    room_id: &str,
+) -> AppResult<()> {
+    let context = device_context(db, workspace_id).await?;
+    RelayApi::new(&context.base_url)?
+        .revoke_control(room_id, &context.token)
+        .await
+        .map_err(RelayFailure::into_app)
+}
+
+pub(crate) async fn terminal_close_room(
+    db: &Database,
+    workspace_id: &str,
+    room_id: &str,
+) -> AppResult<()> {
+    let context = device_context(db, workspace_id).await?;
+    RelayApi::new(&context.base_url)?
+        .close_room(room_id, &context.token)
+        .await
+        .map_err(RelayFailure::into_app)
+}
+
+fn validate_room_response(
+    response: &RoomResponse,
+    room: &TeamTerminalRoom,
+    context: &RelayDeviceContext,
+) -> AppResult<()> {
+    if response.id != room.id
+        || response.workspace_id != room.workspace_id
+        || response.host_member_id != context.member_id
+        || response.host_device_id != context.device_id
+        || response.key_epoch != room.key_epoch
+        || response.status != "active"
+    {
+        return Err(AppError::Remote(
+            "团队服务创建房间响应与本机主持身份不匹配".into(),
+        ));
+    }
+    Ok(())
 }
 
 async fn binding_view(db: &Database, workspace_id: &str) -> AppResult<TeamRelayWorkspaceBinding> {

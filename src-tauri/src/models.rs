@@ -740,7 +740,7 @@ pub struct TeamSharePreview {
     pub expires_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamTerminalParticipant {
     pub member_id: String,
@@ -749,7 +749,7 @@ pub struct TeamTerminalParticipant {
     pub joined_at: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamControlLease {
     pub id: String,
@@ -916,6 +916,40 @@ pub struct UpdateTeamRelayMemberInput {
     pub member_id: String,
     pub role: String,
     pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayTerminalInvitation {
+    pub room_id: String,
+    pub invitation: TeamTerminalInvitation,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayTerminalSession {
+    pub room_id: String,
+    pub workspace_id: String,
+    pub mode: String,
+    pub terminal_session_id: Option<String>,
+    pub local_member_id: String,
+    pub local_device_id: String,
+    pub status: String,
+    pub last_error: Option<String>,
+    pub last_output_sequence: u64,
+    pub participants: Vec<TeamTerminalParticipant>,
+    pub control_lease: Option<TeamControlLease>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayTerminalEvent {
+    pub room_id: String,
+    pub kind: String,
+    pub session: TeamRelayTerminalSession,
+    pub sequence: Option<u64>,
+    pub data_base64: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

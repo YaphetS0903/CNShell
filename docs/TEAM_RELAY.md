@@ -39,8 +39,9 @@ CNshell host                         CNshell participant
 ## 自动化证据
 
 `services/team-relay/tests/relay_flow.rs` 使用真实 HTTP 和 WebSocket loopback 启动两个账号与两台
-设备，覆盖注册、邀请、服务端 RBAC、设备 challenge、房间加入、签名密文、断线补帧、控制
-租约、输入定向、重复拒绝、成员移除、epoch 推进和 token 失效。
+设备，覆盖注册、邀请、服务端 RBAC、设备 challenge、房间加入、签名密文、断线补帧、成员
+与租约握手恢复、控制输入定向、重复拒绝、参与者离开、租约撤销、成员移除、epoch 推进和
+token 失效。客户端另有游标恢复和观看/控制 UI 自动测试。
 
 服务端独立门禁：
 
@@ -64,6 +65,15 @@ cargo test --manifest-path services/team-relay/Cargo.toml
   ID 和 Keychain 私钥重试。服务端只对同账号、同成员和完全相同设备公钥进行幂等恢复。
 - 快照落库前校验数量、UUID、角色、状态、公钥格式、组合指纹，并固定比对本机既有公钥，
   异常快照不能替换与 Keychain 私钥配对的本机身份。
+- 在线终端为每个活动房间维护一个受管 WebSocket；设备 token 到期前自动刷新并重连，`ready`
+  游标用于丢弃服务端已经提交的待发帧并拒绝序号缺口。加密和入队按房间串行，待发队列限制
+  512 帧/4 MiB，关闭信号独立于帧队列。
+- 主持端只转发绑定 SSH 会话的原始输出；参与端收到补帧后在 Rust 中验签、解密和检查严格
+  序号，再把明文事件交给 xterm。输入只有本机设备持有未过期控制租约时可用，仍由 Rust
+  加密签名后发送；relay 不获得明文。
+- WebSocket 在初始 `ready` 后发送服务端权威的已加入成员和当前控制租约快照，并在加入、
+  离开、授权或撤销后广播更新。参与者主动离开会撤销其租约和房间访问，主持端关闭会终止
+  所有 socket。
 
 真实 loopback 客户端测试使用两个独立 SQLite/Keychain 身份完成账号注册、工作区发布、邀请
 接受、角色和 epoch 同步，并删除设备 token 验证 challenge 自动刷新；同时检查客户端 SQLite
@@ -77,4 +87,6 @@ cargo test --manifest-path services/team-relay/Cargo.toml
 2. 代理层登录/注册速率限制、邮件投递与邮箱验证、防滥用和告警。
 3. 加密卷、自动备份、恢复演练、日志保留、监控和事故响应。
 4. 至少两台真实设备跨网络完成观看、控制移交、断网恢复和撤销传播验收。
-5. 客户端多人终端房间 REST/WebSocket、观看与控制 UI 接入；在完成前在线终端入口保持关闭。
+
+客户端 REST/WebSocket 与观看/控制入口已经接通，但在以上生产条件和真机证据齐备前只用于
+loopback 或用户自行部署的测试 relay，不标记为正式在线团队服务。

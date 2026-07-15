@@ -1217,6 +1217,401 @@ pub async fn team_relay_device_revoke(
 }
 
 #[tauri::command]
+pub fn team_relay_terminal_session_list(
+    state: State<'_, AppState>,
+) -> Vec<TeamRelayTerminalSession> {
+    state.relay_terminal.list()
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_room_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    workspace_id: String,
+    session_id: String,
+) -> AppResult<TeamRelayTerminalSession> {
+    state.sessions.get(&session_id)?;
+    let room = state
+        .collaboration
+        .start(&state.db, &workspace_id, &session_id)
+        .await?;
+    let context = match crate::team_relay::terminal_create_room(&state.db, &room).await {
+        Ok(context) => context,
+        Err(error) => {
+            let _ = state.collaboration.close(&state.db, &room.id).await;
+            return Err(error);
+        }
+    };
+    let connected = state.relay_terminal.connect(
+        app.clone(),
+        state.db.clone(),
+        state.collaboration.clone(),
+        state.sessions.clone(),
+        crate::team_relay_terminal::ConnectRoomInput {
+            room_id: room.id.clone(),
+            workspace_id: room.workspace_id.clone(),
+            mode: "host".into(),
+            terminal_session_id: Some(session_id),
+            local_member_id: context.member_id,
+            local_device_id: context.device_id,
+            after_sequence: 0,
+            participants: room.participants.clone(),
+            control_lease: room.control_lease.clone(),
+        },
+    );
+    let connected = match connected {
+        Ok(connected) => connected,
+        Err(error) => {
+            let _ =
+                crate::team_relay::terminal_close_room(&state.db, &workspace_id, &room.id).await;
+            let _ = state.collaboration.close(&state.db, &room.id).await;
+            return Err(error);
+        }
+    };
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &workspace_id,
+        "relay-terminal-room-started",
+        "terminalRoom",
+        &room.id,
+    )
+    .await
+    {
+        let _ = state.relay_terminal.close(&room.id);
+        let _ = crate::team_relay::terminal_close_room(&state.db, &workspace_id, &room.id).await;
+        let _ = state.collaboration.close(&state.db, &room.id).await;
+        return Err(error);
+    }
+    Ok(connected)
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_room_invite(
+    state: State<'_, AppState>,
+    room_id: String,
+    device_ids: Vec<String>,
+) -> AppResult<Vec<TeamTerminalInvitation>> {
+    let unique = device_ids
+        .into_iter()
+        .collect::<std::collections::HashSet<_>>();
+    if unique.is_empty() || unique.len() > 63 {
+        return Err(AppError::Validation(
+            "在线团队终端每次必须选择 1 至 63 台接收设备".into(),
+        ));
+    }
+    let mut invitations = Vec::with_capacity(unique.len());
+    for device_id in unique {
+        let invitation = state
+            .collaboration
+            .create_invitation(&state.db, &room_id, &device_id)
+            .await?;
+        crate::team_relay::terminal_route_invitation(&state.db, &invitation).await?;
+        invitations.push(invitation);
+    }
+    let room = state.collaboration.status(&room_id)?;
+    crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "relay-terminal-invitations-routed",
+        "terminalRoom",
+        &room_id,
+    )
+    .await?;
+    Ok(invitations)
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_invitation_list(
+    state: State<'_, AppState>,
+    workspace_id: String,
+) -> AppResult<Vec<TeamRelayTerminalInvitation>> {
+    crate::team_relay::terminal_invitations(&state.db, &workspace_id).await
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_invitation_accept(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    invitation: TeamTerminalInvitation,
+) -> AppResult<TeamRelayTerminalSession> {
+    let client = state
+        .collaboration
+        .accept_invitation(&state.db, invitation.clone())
+        .await?;
+    let context = match crate::team_relay::terminal_join_room(&state.db, &invitation).await {
+        Ok(context) => context,
+        Err(error) => {
+            let _ = state.collaboration.close_client(&client.room_id);
+            return Err(error);
+        }
+    };
+    let members = match crate::team::list_members(&state.db, &client.workspace_id).await {
+        Ok(members) => members,
+        Err(error) => {
+            let _ = crate::team_relay::terminal_leave_room(
+                &state.db,
+                &client.workspace_id,
+                &client.room_id,
+            )
+            .await;
+            let _ = state.collaboration.close_client(&client.room_id);
+            return Err(error);
+        }
+    };
+    let role_for = |member_id: &str| {
+        members
+            .iter()
+            .find(|member| member.id == member_id)
+            .map(|member| member.role.clone())
+            .ok_or_else(|| AppError::PermissionDenied("房间成员已不在当前工作区".into()))
+    };
+    let host_role = match role_for(&client.host_member_id) {
+        Ok(role) => role,
+        Err(error) => {
+            let _ = crate::team_relay::terminal_leave_room(
+                &state.db,
+                &client.workspace_id,
+                &client.room_id,
+            )
+            .await;
+            let _ = state.collaboration.close_client(&client.room_id);
+            return Err(error);
+        }
+    };
+    let local_role = match role_for(&client.local_member_id) {
+        Ok(role) => role,
+        Err(error) => {
+            let _ = crate::team_relay::terminal_leave_room(
+                &state.db,
+                &client.workspace_id,
+                &client.room_id,
+            )
+            .await;
+            let _ = state.collaboration.close_client(&client.room_id);
+            return Err(error);
+        }
+    };
+    let joined_at = chrono::Utc::now().to_rfc3339();
+    let participants = vec![
+        TeamTerminalParticipant {
+            member_id: client.host_member_id.clone(),
+            device_id: client.host_device_id.clone(),
+            role: host_role,
+            joined_at: joined_at.clone(),
+        },
+        TeamTerminalParticipant {
+            member_id: client.local_member_id.clone(),
+            device_id: client.local_device_id.clone(),
+            role: local_role,
+            joined_at,
+        },
+    ];
+    let connected = state.relay_terminal.connect(
+        app,
+        state.db.clone(),
+        state.collaboration.clone(),
+        state.sessions.clone(),
+        crate::team_relay_terminal::ConnectRoomInput {
+            room_id: client.room_id.clone(),
+            workspace_id: client.workspace_id.clone(),
+            mode: "participant".into(),
+            terminal_session_id: None,
+            local_member_id: context.member_id,
+            local_device_id: context.device_id,
+            after_sequence: client.next_output_sequence.saturating_sub(1),
+            participants,
+            control_lease: None,
+        },
+    );
+    let connected = match connected {
+        Ok(connected) => connected,
+        Err(error) => {
+            let _ = crate::team_relay::terminal_leave_room(
+                &state.db,
+                &client.workspace_id,
+                &client.room_id,
+            )
+            .await;
+            let _ = state.collaboration.close_client(&client.room_id);
+            return Err(error);
+        }
+    };
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &client.workspace_id,
+        "relay-terminal-invitation-accepted",
+        "terminalRoom",
+        &client.room_id,
+    )
+    .await
+    {
+        let _ = state.relay_terminal.close(&client.room_id);
+        let _ = crate::team_relay::terminal_leave_room(
+            &state.db,
+            &client.workspace_id,
+            &client.room_id,
+        )
+        .await;
+        let _ = state.collaboration.close_client(&client.room_id);
+        return Err(error);
+    }
+    Ok(connected)
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_output_publish(
+    state: State<'_, AppState>,
+    room_id: String,
+    data_base64: String,
+) -> AppResult<()> {
+    if data_base64.len() > 128 * 1024 {
+        return Err(AppError::Validation(
+            "在线团队终端输出帧编码超过限制".into(),
+        ));
+    }
+    let bytes = STANDARD
+        .decode(data_base64)
+        .map_err(|_| AppError::Validation("在线团队终端输出 Base64 无效".into()))?;
+    state
+        .relay_terminal
+        .encrypt_and_enqueue_output(&state.db, &state.collaboration, &room_id, &bytes)
+        .await
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_input_send(
+    state: State<'_, AppState>,
+    room_id: String,
+    lease_id: String,
+    lease_generation: u64,
+    data_base64: String,
+) -> AppResult<()> {
+    if data_base64.len() > 128 * 1024 {
+        return Err(AppError::Validation(
+            "在线团队终端输入帧编码超过限制".into(),
+        ));
+    }
+    let session = state.relay_terminal.status(&room_id)?;
+    let lease = session
+        .control_lease
+        .as_ref()
+        .ok_or_else(|| AppError::PermissionDenied("当前没有在线终端控制权".into()))?;
+    if session.mode != "participant"
+        || lease.id != lease_id
+        || lease.generation != lease_generation
+        || lease.device_id != session.local_device_id
+        || chrono::DateTime::parse_from_rfc3339(&lease.expires_at)
+            .map(|expires| expires.with_timezone(&chrono::Utc) <= chrono::Utc::now())
+            .unwrap_or(true)
+    {
+        return Err(AppError::PermissionDenied(
+            "在线终端控制租约无效、已过期或不属于本机".into(),
+        ));
+    }
+    let bytes = STANDARD
+        .decode(data_base64)
+        .map_err(|_| AppError::Validation("在线团队终端输入 Base64 无效".into()))?;
+    state
+        .relay_terminal
+        .encrypt_and_enqueue_input(
+            &state.db,
+            &state.collaboration,
+            &room_id,
+            &lease_id,
+            lease_generation,
+            &bytes,
+        )
+        .await
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_control_grant(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    room_id: String,
+    device_id: String,
+    duration_seconds: u64,
+) -> AppResult<TeamRelayTerminalSession> {
+    let session = state.relay_terminal.status(&room_id)?;
+    if session.mode != "host" {
+        return Err(AppError::PermissionDenied(
+            "只有在线房间主持端可以授予控制权".into(),
+        ));
+    }
+    let lease = crate::team_relay::terminal_grant_control(
+        &state.db,
+        &session.workspace_id,
+        &room_id,
+        &device_id,
+        duration_seconds,
+    )
+    .await?;
+    let room = match state
+        .collaboration
+        .apply_control_lease(&state.db, &room_id, lease)
+        .await
+    {
+        Ok(room) => room,
+        Err(error) => {
+            let _ = crate::team_relay::terminal_revoke_control(
+                &state.db,
+                &session.workspace_id,
+                &room_id,
+            )
+            .await;
+            return Err(error);
+        }
+    };
+    state.relay_terminal.update_host_control(&app, &room)
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_control_revoke(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamRelayTerminalSession> {
+    let session = state.relay_terminal.status(&room_id)?;
+    if session.mode != "host" {
+        return Err(AppError::PermissionDenied(
+            "只有在线房间主持端可以撤销控制权".into(),
+        ));
+    }
+    crate::team_relay::terminal_revoke_control(&state.db, &session.workspace_id, &room_id).await?;
+    let room = state
+        .collaboration
+        .revoke_control(&state.db, &room_id)
+        .await?;
+    state.relay_terminal.update_host_control(&app, &room)
+}
+
+#[tauri::command]
+pub async fn team_relay_terminal_room_close(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamRelayTerminalSession> {
+    let session = state.relay_terminal.status(&room_id)?;
+    if session.mode == "host" {
+        crate::team_relay::terminal_close_room(&state.db, &session.workspace_id, &room_id).await?;
+        state.collaboration.close(&state.db, &room_id).await?;
+    } else {
+        let _ = crate::team_relay::terminal_leave_room(&state.db, &session.workspace_id, &room_id)
+            .await;
+        state.collaboration.close_client(&room_id)?;
+    }
+    let closed = state.relay_terminal.close(&room_id)?;
+    crate::team::record_local_audit(
+        &state.db,
+        &session.workspace_id,
+        "relay-terminal-room-closed",
+        "terminalRoom",
+        &room_id,
+    )
+    .await?;
+    Ok(closed)
+}
+
+#[tauri::command]
 pub async fn team_terminal_room_start(
     state: State<'_, AppState>,
     workspace_id: String,
@@ -1697,6 +2092,22 @@ pub async fn terminal_resize(
 
 #[tauri::command]
 pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    let online_rooms = state
+        .relay_terminal
+        .list()
+        .into_iter()
+        .filter(|room| {
+            room.mode == "host" && room.terminal_session_id.as_deref() == Some(&session_id)
+        })
+        .collect::<Vec<_>>();
+    for room in online_rooms {
+        let _ = state.relay_terminal.close(&room.room_id);
+        let db = state.db.clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = crate::team_relay::terminal_close_room(&db, &room.workspace_id, &room.room_id)
+                .await;
+        });
+    }
     let collaboration_rooms = state.collaboration.close_terminal(&session_id);
     let result = if state.local_shell.contains(&session_id) {
         state.local_shell.close(&session_id)

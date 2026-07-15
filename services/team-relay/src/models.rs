@@ -228,7 +228,7 @@ pub struct GrantControlInput {
     pub duration_seconds: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ControlLeaseOutput {
     pub lease_id: String,
@@ -238,18 +238,51 @@ pub struct ControlLeaseOutput {
     pub expires_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalParticipantOutput {
+    pub member_id: String,
+    pub device_id: String,
+    pub role: String,
+    pub joined_at: String,
+}
+
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
 pub enum ClientSocketMessage {
     Frame { frame: TeamTerminalEncryptedFrame },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum ServerSocketMessage {
+    Ready {
+        latest_output_sequence: u64,
+        next_input_sequence: u64,
+    },
+    Accepted {
+        direction: String,
+        sequence: u64,
+    },
     Frame {
         frame: Box<TeamTerminalEncryptedFrame>,
     },
+    Control {
+        lease: Option<ControlLeaseOutput>,
+    },
+    Participants {
+        participants: Vec<TerminalParticipantOutput>,
+    },
+    Closed,
     Error {
         code: String,
         message: String,

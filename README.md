@@ -52,6 +52,12 @@ DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要
 - 浅色、深色和高对比主题，终端字体、字号、光标与配色偏好
 - 脱敏诊断导出；默认不上传遥测、终端内容、连接资料或崩溃信息
 
+### 团队与扩展
+
+- Ed25519 签名 WASM 插件、逐项权限确认、无 WASI 沙箱与有界宿主接口
+- 在线团队工作区、设备身份、端到端加密连接文件分享和只转发密文的自托管 relay
+- 在线多人终端：默认只读观看、按设备邀请、断线补帧和 10–300 秒单设备控制权移交
+
 ## 安全与隐私
 
 - 密码、私钥口令和代理密码保存在 macOS Keychain，不写入 SQLite 或诊断文件。
@@ -68,7 +74,7 @@ DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要
 - Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver 真机矩阵仍待扩大。
 - Zmodem 已完成 `lrzsz` 双向互操作，Mosh 已完成真实公网 UDP 短测，X11 已完成真实 SSH request；Mosh 漫游/Intel 与 XQuartz GUI 仍待对应环境验收。
 - FIDO2 硬件密钥和 Touch ID 本地同步口令保护已完成代码接入；实体安全密钥与系统生物识别弹窗仍需对应真机人工验收。
-- 团队 relay 的账号、Keychain 会话、工作区发布/邀请/同步及服务端代码已完成双账号 loopback；多人终端房间 WebSocket、正式域名/TLS/WSS/邮件/运维与真实跨设备会话尚未完成，因此在线终端入口保持关闭。
+- 团队 relay 的账号、Keychain 会话、工作区发布/邀请/同步、多人终端 WebSocket 与观看/控制入口已完成双账号双设备 loopback。正式域名/TLS/WSS、邮件验证、限速、监控备份和真实跨设备网络会话仍未完成；当前入口只适用于 loopback 或用户自行部署的测试 relay，不代表生产团队服务。
 
 完整验收范围与未覆盖环境见 [验收记录](docs/ACCEPTANCE.md)。
 

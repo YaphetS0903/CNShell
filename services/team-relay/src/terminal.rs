@@ -3,7 +3,7 @@ use crate::{
     models::{
         ClientSocketMessage, ControlLeaseOutput, CreateRoomInput, GrantControlInput, RoomView,
         RouteRoomInvitationInput, RoutedRoomInvitation, ServerSocketMessage,
-        TeamTerminalEncryptedFrame, TeamTerminalInvitation,
+        TeamTerminalEncryptedFrame, TeamTerminalInvitation, TerminalParticipantOutput,
     },
     store::{DeviceAuth, RelayStore, audit, require_device_permission, validate_uuid},
 };
@@ -30,6 +30,7 @@ const MAX_ROOM_PARTICIPANTS: i64 = 64;
 struct BroadcastFrame {
     json: String,
     direction: String,
+    sequence: Option<u64>,
     host_device_id: String,
 }
 
@@ -267,6 +268,7 @@ impl TerminalRelay {
         )
         .await?;
         transaction.commit().await?;
+        let _ = self.broadcast_participants(room_id, &host_device_id).await;
         Ok(RoomView {
             id: room_id.into(),
             workspace_id,
@@ -275,6 +277,51 @@ impl TerminalRelay {
             key_epoch,
             status,
         })
+    }
+
+    pub async fn leave_room(&self, auth: &DeviceAuth, room_id: &str) -> RelayResult<()> {
+        validate_uuid(room_id, "房间 ID")?;
+        let room = self.authorize_room(auth, room_id).await?;
+        if room.host_device_id == auth.device_id {
+            return Err(RelayError::Validation(
+                "主持设备必须关闭房间，不能以参与者身份离开".into(),
+            ));
+        }
+        let now = Utc::now().to_rfc3339();
+        let mut transaction = self.store.pool.begin().await?;
+        let removed = sqlx::query("UPDATE room_participants SET removed_at=? WHERE room_id=? AND device_id=? AND member_id=? AND removed_at IS NULL")
+            .bind(&now)
+            .bind(room_id)
+            .bind(&auth.device_id)
+            .bind(&auth.member_id)
+            .execute(&mut *transaction)
+            .await?;
+        if removed.rows_affected() != 1 {
+            return Err(RelayError::NotFound("活动房间参与记录不存在".into()));
+        }
+        let revoked =
+            sqlx::query("DELETE FROM room_control_leases WHERE room_id=? AND device_id=?")
+                .bind(room_id)
+                .bind(&auth.device_id)
+                .execute(&mut *transaction)
+                .await?;
+        audit(
+            &mut transaction,
+            &auth.workspace_id,
+            &auth.member_id,
+            "terminal-room-left",
+            "terminalRoom",
+            room_id,
+        )
+        .await?;
+        transaction.commit().await?;
+        let _ = self
+            .broadcast_participants(room_id, &room.host_device_id)
+            .await;
+        if revoked.rows_affected() > 0 {
+            self.broadcast_control(room_id, &room.host_device_id, None)?;
+        }
+        Ok(())
     }
 
     pub async fn grant_control(
@@ -328,13 +375,15 @@ impl TerminalRelay {
         )
         .await?;
         transaction.commit().await?;
-        Ok(ControlLeaseOutput {
+        let output = ControlLeaseOutput {
             lease_id,
             member_id,
             device_id: input.device_id,
             generation: generation as u64,
             expires_at: expires_at.to_rfc3339(),
-        })
+        };
+        self.broadcast_control(room_id, &auth.device_id, Some(output.clone()))?;
+        Ok(output)
     }
 
     pub async fn revoke_control(&self, auth: &DeviceAuth, room_id: &str) -> RelayResult<()> {
@@ -354,6 +403,7 @@ impl TerminalRelay {
         )
         .await?;
         transaction.commit().await?;
+        self.broadcast_control(room_id, &auth.device_id, None)?;
         Ok(())
     }
 
@@ -386,6 +436,14 @@ impl TerminalRelay {
         )
         .await?;
         transaction.commit().await?;
+        if let Ok(payload) = serde_json::to_string(&ServerSocketMessage::Closed) {
+            let _ = self.sender(room_id).send(BroadcastFrame {
+                json: payload,
+                direction: "control".into(),
+                sequence: None,
+                host_device_id: auth.device_id.clone(),
+            });
+        }
         self.hubs.lock().remove(room_id);
         Ok(())
     }
@@ -429,34 +487,37 @@ impl TerminalRelay {
         Ok(room)
     }
 
-    pub async fn replay(
+    async fn replay(
         &self,
         auth: &DeviceAuth,
         room_id: &str,
         after_sequence: u64,
+        up_to_sequence: u64,
     ) -> RelayResult<Vec<TeamTerminalEncryptedFrame>> {
         self.authorize_room(auth, room_id).await?;
-        let latest: i64 =
-            sqlx::query_scalar("SELECT next_output_sequence-1 FROM terminal_rooms WHERE id=?")
-                .bind(room_id)
-                .fetch_one(&self.store.pool)
-                .await?;
-        if after_sequence > latest as u64 {
+        if after_sequence > up_to_sequence {
             return Err(RelayError::Validation(
                 "客户端确认序号超过房间最新输出".into(),
             ));
         }
-        if after_sequence == latest as u64 {
+        if after_sequence == up_to_sequence {
             return Ok(Vec::new());
         }
-        let rows = sqlx::query("SELECT sequence,envelope_json FROM relay_frames WHERE room_id=? AND sequence>? ORDER BY sequence LIMIT ?")
+        if up_to_sequence.saturating_sub(after_sequence) > MAX_REPLAY_FRAMES as u64 {
+            return Err(RelayError::Unavailable(
+                "终端断线重放窗口已过期，请重新加入".into(),
+            ));
+        }
+        let rows = sqlx::query("SELECT sequence,envelope_json FROM relay_frames WHERE room_id=? AND sequence>? AND sequence<=? ORDER BY sequence LIMIT ?")
             .bind(room_id)
             .bind(after_sequence as i64)
+            .bind(up_to_sequence as i64)
             .bind(MAX_REPLAY_FRAMES)
             .fetch_all(&self.store.pool)
             .await?;
         let first = rows.first().map(|row| row.get::<i64, _>(0) as u64);
-        if first != Some(after_sequence.saturating_add(1)) {
+        let last = rows.last().map(|row| row.get::<i64, _>(0) as u64);
+        if first != Some(after_sequence.saturating_add(1)) || last != Some(up_to_sequence) {
             return Err(RelayError::Unavailable(
                 "终端断线重放窗口已过期，请重新加入".into(),
             ));
@@ -582,6 +643,7 @@ impl TerminalRelay {
         let broadcast = BroadcastFrame {
             json: socket_json,
             direction: frame.direction,
+            sequence: Some(frame.sequence),
             host_device_id: room.host_device_id,
         };
         let _ = self.sender(&frame.room_id).send(broadcast);
@@ -593,6 +655,73 @@ impl TerminalRelay {
         hubs.entry(room_id.into())
             .or_insert_with(|| broadcast::channel(1024).0)
             .clone()
+    }
+
+    fn broadcast_control(
+        &self,
+        room_id: &str,
+        host_device_id: &str,
+        lease: Option<ControlLeaseOutput>,
+    ) -> RelayResult<()> {
+        let payload = serde_json::to_string(&ServerSocketMessage::Control { lease })
+            .map_err(|_| RelayError::Internal)?;
+        let _ = self.sender(room_id).send(BroadcastFrame {
+            json: payload,
+            direction: "control".into(),
+            sequence: None,
+            host_device_id: host_device_id.into(),
+        });
+        Ok(())
+    }
+
+    async fn room_participants(
+        &self,
+        room_id: &str,
+    ) -> RelayResult<Vec<TerminalParticipantOutput>> {
+        let rows = sqlx::query("SELECT p.member_id,p.device_id,m.role,p.joined_at FROM room_participants p JOIN terminal_rooms r ON r.id=p.room_id JOIN members m ON m.id=p.member_id AND m.workspace_id=r.workspace_id JOIN devices d ON d.id=p.device_id AND d.member_id=p.member_id AND d.workspace_id=r.workspace_id WHERE p.room_id=? AND p.removed_at IS NULL AND r.status='active' AND m.status='active' AND d.status='active' ORDER BY p.joined_at,p.device_id")
+            .bind(room_id)
+            .fetch_all(&self.store.pool)
+            .await?;
+        if rows.len() > MAX_ROOM_PARTICIPANTS as usize {
+            return Err(RelayError::Internal);
+        }
+        Ok(rows
+            .into_iter()
+            .map(|row| TerminalParticipantOutput {
+                member_id: row.get(0),
+                device_id: row.get(1),
+                role: row.get(2),
+                joined_at: row.get(3),
+            })
+            .collect())
+    }
+
+    async fn current_control(&self, room_id: &str) -> RelayResult<Option<ControlLeaseOutput>> {
+        let row = sqlx::query("SELECT lease_id,member_id,device_id,generation,expires_at FROM room_control_leases WHERE room_id=? AND expires_at>?")
+            .bind(room_id)
+            .bind(Utc::now().to_rfc3339())
+            .fetch_optional(&self.store.pool)
+            .await?;
+        Ok(row.map(|row| ControlLeaseOutput {
+            lease_id: row.get(0),
+            member_id: row.get(1),
+            device_id: row.get(2),
+            generation: row.get::<i64, _>(3) as u64,
+            expires_at: row.get(4),
+        }))
+    }
+
+    async fn broadcast_participants(&self, room_id: &str, host_device_id: &str) -> RelayResult<()> {
+        let participants = self.room_participants(room_id).await?;
+        let payload = serde_json::to_string(&ServerSocketMessage::Participants { participants })
+            .map_err(|_| RelayError::Internal)?;
+        let _ = self.sender(room_id).send(BroadcastFrame {
+            json: payload,
+            direction: "participants".into(),
+            sequence: None,
+            host_device_id: host_device_id.into(),
+        });
+        Ok(())
     }
 
     pub async fn handle_socket(
@@ -611,7 +740,21 @@ impl TerminalRelay {
         let sender = self.sender(&room_id);
         let mut receiver = sender.subscribe();
         let (mut sink, mut stream) = socket.split();
-        match self.replay(&auth, &room_id, after_sequence).await {
+        let latest_output_sequence: i64 = match sqlx::query_scalar(
+            "SELECT next_output_sequence-1 FROM terminal_rooms WHERE id=? AND status='active'",
+        )
+        .bind(&room_id)
+        .fetch_one(&self.store.pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        let replay_cutoff = latest_output_sequence as u64;
+        match self
+            .replay(&auth, &room_id, after_sequence, replay_cutoff)
+            .await
+        {
             Ok(frames) => {
                 for frame in frames {
                     let Ok(payload) = serde_json::to_string(&ServerSocketMessage::Frame {
@@ -630,6 +773,48 @@ impl TerminalRelay {
                 return;
             }
         }
+        let next_input_sequence: i64 = match sqlx::query_scalar(
+            "SELECT next_input_sequence FROM room_participants WHERE room_id=? AND device_id=? AND removed_at IS NULL",
+        )
+        .bind(&room_id)
+        .bind(&auth.device_id)
+        .fetch_one(&self.store.pool)
+        .await
+        {
+            Ok(value) => value,
+            Err(_) => return,
+        };
+        let Ok(ready) = serde_json::to_string(&ServerSocketMessage::Ready {
+            latest_output_sequence: replay_cutoff,
+            next_input_sequence: next_input_sequence as u64,
+        }) else {
+            return;
+        };
+        if sink.send(Message::Text(ready.into())).await.is_err() {
+            return;
+        }
+        let participants = match self.room_participants(&room_id).await {
+            Ok(participants) => participants,
+            Err(_) => return,
+        };
+        let Ok(participants) =
+            serde_json::to_string(&ServerSocketMessage::Participants { participants })
+        else {
+            return;
+        };
+        if sink.send(Message::Text(participants.into())).await.is_err() {
+            return;
+        }
+        let lease = match self.current_control(&room_id).await {
+            Ok(lease) => lease,
+            Err(_) => return,
+        };
+        let Ok(control) = serde_json::to_string(&ServerSocketMessage::Control { lease }) else {
+            return;
+        };
+        if sink.send(Message::Text(control.into())).await.is_err() {
+            return;
+        }
         loop {
             tokio::select! {
                 incoming = stream.next() => {
@@ -646,16 +831,31 @@ impl TerminalRelay {
                             let parsed = serde_json::from_str::<ClientSocketMessage>(&text)
                                 .map_err(|_| RelayError::Validation("WebSocket 消息格式无效".into()));
                             let result = match parsed {
-                                Ok(ClientSocketMessage::Frame { frame }) => self.process_frame(&current, frame).await.map(|_| ()),
+                                Ok(ClientSocketMessage::Frame { frame }) => {
+                                    let direction = frame.direction.clone();
+                                    let sequence = frame.sequence;
+                                    self.process_frame(&current, frame).await.map(|_| (direction, sequence))
+                                },
                                 Err(error) => Err(error),
                             };
-                            if let Err(error) = result
-                                && sink.send(Message::Text(socket_error(&error).into())).await.is_err()
-                            {
-                                break;
+                            match result {
+                                Ok((direction, sequence)) => {
+                                    let Ok(accepted) = serde_json::to_string(&ServerSocketMessage::Accepted { direction, sequence }) else { break; };
+                                    if sink.send(Message::Text(accepted.into())).await.is_err() { break; }
+                                }
+                                Err(error) => {
+                                    if sink.send(Message::Text(socket_error(&error).into())).await.is_err() { break; }
+                                }
                             }
                         }
                         Message::Ping(value) => {
+                            let current = match self.store.authenticate_device(&token).await {
+                                Ok(value) => value,
+                                Err(_) => break,
+                            };
+                            if self.authorize_room(&current, &room_id).await.is_err() {
+                                break;
+                            }
                             if sink.send(Message::Pong(value)).await.is_err() { break; }
                         }
                         Message::Close(_) => break,
@@ -673,6 +873,11 @@ impl TerminalRelay {
                         Err(_) => break,
                     };
                     if self.authorize_room(&current, &room_id).await.is_err() { break; }
+                    if frame.direction == "output"
+                        && frame.sequence.is_some_and(|sequence| sequence <= replay_cutoff)
+                    {
+                        continue;
+                    }
                     if frame.direction == "input" && current.device_id != frame.host_device_id {
                         continue;
                     }

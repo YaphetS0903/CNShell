@@ -436,6 +436,25 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
 
     let mut host_socket = connect_socket(&server, &room.id, &host_session.token, 0).await;
     let mut recipient_socket = connect_socket(&server, &room.id, &refreshed_session.token, 0).await;
+    let host_ready = receive_json(&mut host_socket).await;
+    let recipient_ready = receive_json(&mut recipient_socket).await;
+    assert_eq!(host_ready["type"], "ready");
+    assert_eq!(host_ready["latestOutputSequence"], 0);
+    assert_eq!(recipient_ready["type"], "ready");
+    assert_eq!(recipient_ready["nextInputSequence"], 1);
+    let host_participants = receive_json(&mut host_socket).await;
+    let host_initial_control = receive_json(&mut host_socket).await;
+    let recipient_participants = receive_json(&mut recipient_socket).await;
+    let recipient_initial_control = receive_json(&mut recipient_socket).await;
+    assert_eq!(host_participants["type"], "participants");
+    assert_eq!(
+        host_participants["participants"].as_array().unwrap().len(),
+        2
+    );
+    assert_eq!(host_initial_control["type"], "control");
+    assert!(host_initial_control["lease"].is_null());
+    assert_eq!(recipient_participants["type"], "participants");
+    assert_eq!(recipient_initial_control["type"], "control");
     let first_output = signed_frame(
         &room,
         &host_session,
@@ -457,6 +476,10 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         receive_json(&mut recipient_socket).await["frame"]["sequence"],
         1
     );
+    let accepted = receive_json(&mut host_socket).await;
+    assert_eq!(accepted["type"], "accepted");
+    assert_eq!(accepted["direction"], "output");
+    assert_eq!(accepted["sequence"], 1);
     assert_eq!(receive_json(&mut host_socket).await["frame"]["sequence"], 1);
 
     recipient_socket.close(None).await.unwrap();
@@ -477,12 +500,23 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         ))
         .await
         .unwrap();
+    assert_eq!(receive_json(&mut host_socket).await["type"], "accepted");
     assert_eq!(receive_json(&mut host_socket).await["frame"]["sequence"], 2);
     let mut recipient_socket = connect_socket(&server, &room.id, &refreshed_session.token, 1).await;
     assert_eq!(
         receive_json(&mut recipient_socket).await["frame"]["sequence"],
         2
     );
+    let replay_ready = receive_json(&mut recipient_socket).await;
+    assert_eq!(replay_ready["type"], "ready");
+    assert_eq!(replay_ready["latestOutputSequence"], 2);
+    assert_eq!(
+        receive_json(&mut recipient_socket).await["type"],
+        "participants"
+    );
+    let reconnect_control = receive_json(&mut recipient_socket).await;
+    assert_eq!(reconnect_control["type"], "control");
+    assert!(reconnect_control["lease"].is_null());
 
     let lease: ControlLeaseOutput = client
         .post(format!(
@@ -502,6 +536,21 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         .json()
         .await
         .unwrap();
+    let host_control = receive_json(&mut host_socket).await;
+    let recipient_control = receive_json(&mut recipient_socket).await;
+    assert_eq!(host_control["type"], "control");
+    assert_eq!(host_control["lease"]["leaseId"], lease.lease_id);
+    assert_eq!(recipient_control["type"], "control");
+    recipient_socket.close(None).await.unwrap();
+    let mut recipient_socket = connect_socket(&server, &room.id, &refreshed_session.token, 2).await;
+    assert_eq!(receive_json(&mut recipient_socket).await["type"], "ready");
+    assert_eq!(
+        receive_json(&mut recipient_socket).await["type"],
+        "participants"
+    );
+    let restored_control = receive_json(&mut recipient_socket).await;
+    assert_eq!(restored_control["type"], "control");
+    assert_eq!(restored_control["lease"]["leaseId"], lease.lease_id);
     let input = signed_frame(
         &room,
         &refreshed_session,
@@ -522,14 +571,10 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
     let host_input = receive_json(&mut host_socket).await;
     assert_eq!(host_input["frame"]["direction"], "input");
     assert_eq!(host_input["frame"]["sequence"], 1);
-    assert!(
-        tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            recipient_socket.next()
-        )
-        .await
-        .is_err()
-    );
+    let input_accepted = receive_json(&mut recipient_socket).await;
+    assert_eq!(input_accepted["type"], "accepted");
+    assert_eq!(input_accepted["direction"], "input");
+    assert_eq!(input_accepted["sequence"], 1);
 
     let duplicate = host_input["frame"].clone();
     recipient_socket
@@ -543,6 +588,44 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
     let rejection = receive_json(&mut recipient_socket).await;
     assert_eq!(rejection["type"], "error");
     assert_eq!(rejection["code"], "conflict");
+
+    client
+        .delete(format!(
+            "{}/v1/terminal/rooms/{}/participants/me",
+            server.base_url, room.id
+        ))
+        .header("Authorization", bearer(&refreshed_session.token))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    let leave_participants = receive_json(&mut host_socket).await;
+    assert_eq!(leave_participants["type"], "participants");
+    assert_eq!(
+        leave_participants["participants"].as_array().unwrap().len(),
+        1
+    );
+    let leave_control = receive_json(&mut host_socket).await;
+    assert_eq!(leave_control["type"], "control");
+    assert!(leave_control["lease"].is_null());
+    let reconnect_after_leave = connect_async(
+        format!(
+            "{}/v1/terminal/ws/{}?afterSequence=2",
+            server.ws_url, room.id
+        )
+        .into_client_request()
+        .map(|mut request| {
+            request.headers_mut().insert(
+                "Authorization",
+                bearer(&refreshed_session.token).parse().unwrap(),
+            );
+            request
+        })
+        .unwrap(),
+    )
+    .await;
+    assert!(reconnect_after_leave.is_err());
 
     let removal = client
         .patch(format!(
@@ -586,6 +669,11 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         .await
         .unwrap();
     assert!(audit.iter().any(|event| event.action == "member-updated"));
+    assert!(
+        audit
+            .iter()
+            .any(|event| event.action == "terminal-room-left")
+    );
     let audit_json = serde_json::to_string(&audit).unwrap();
     assert!(!audit_json.contains("ciphertext"));
     assert!(!audit_json.contains("terminal-secret"));

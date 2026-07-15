@@ -10,6 +10,7 @@ import {
   Highlighter,
   History,
   MoreHorizontal,
+  RadioTower,
   RefreshCw,
   Rows2,
   Search,
@@ -29,7 +30,8 @@ import type { ConnectionProfile, TerminalSession } from "../../types";
 
 const isInteractiveTerminal = (
   session: TerminalSession | undefined,
-): session is TerminalSession => Boolean(session && session.sessionType !== "rdp");
+): session is TerminalSession =>
+  Boolean(session && session.sessionType !== "rdp");
 import { clampPanelSize, resizeFromKeyboard } from "../../lib/layout";
 import { RdpWorkspace } from "../rdp/RdpWorkspace";
 import "./TerminalWorkspace.css";
@@ -54,8 +56,12 @@ import { GlobalTerminalSearch } from "./GlobalTerminalSearch";
 import { PasteHistoryDialog, PasteSafetyDialog } from "./PasteSafetyDialog";
 import { pasteRisk } from "./terminal-safety";
 import { errorMessage } from "../../lib/format";
-import { resolveTerminalPreferences, withTerminalFontSize } from "./terminal-preferences";
+import {
+  resolveTerminalPreferences,
+  withTerminalFontSize,
+} from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
+import { TeamTerminalCenter } from "./TeamTerminalCenter";
 
 export default function TerminalWorkspace({
   connect,
@@ -91,6 +97,7 @@ export default function TerminalWorkspace({
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pasteHistoryOpen, setPasteHistoryOpen] = useState(false);
+  const [teamTerminalOpen, setTeamTerminalOpen] = useState(false);
   const [pasteRequest, setPasteRequest] = useState<{
     sessionId: string;
     text: string;
@@ -153,10 +160,14 @@ export default function TerminalWorkspace({
         workspaceRuntime.terminalActivity.delete(id);
         setActivityVersion((value) => value + 1);
       }
-      if(session?.sessionType==="rdp"&&(session.status==="online"||session.status==="reconnecting"))void api.rdpFocus(id).catch((reason)=>setError(errorMessage(reason)));
+      if (
+        session?.sessionType === "rdp" &&
+        (session.status === "online" || session.status === "reconnecting")
+      )
+        void api.rdpFocus(id).catch((reason) => setError(errorMessage(reason)));
       setActiveSession(id);
     },
-    [setActiveSession,setError],
+    [setActiveSession, setError],
   );
   const split = async (session: TerminalSession, direction: SplitDirection) => {
     if (session.sessionType === "rdp") return;
@@ -239,7 +250,25 @@ export default function TerminalWorkspace({
         event.preventDefault();
         refs.get(activeSessionId)?.current?.clear();
       }
-      if(event.metaKey&&activeSessionId&&["=","+","-","0"].includes(event.key)){const session=sessions.find((item)=>item.id===activeSessionId);if(isInteractiveTerminal(session)){event.preventDefault();const current=resolveTerminalPreferences(settings,session.connectionId).fontSize;const next=event.key==="0"?13:current+(event.key==="-"?-1:1);void saveSettings(withTerminalFontSize(settings,session.connectionId,next)).catch((reason)=>setError(errorMessage(reason)));}}
+      if (
+        event.metaKey &&
+        activeSessionId &&
+        ["=", "+", "-", "0"].includes(event.key)
+      ) {
+        const session = sessions.find((item) => item.id === activeSessionId);
+        if (isInteractiveTerminal(session)) {
+          event.preventDefault();
+          const current = resolveTerminalPreferences(
+            settings,
+            session.connectionId,
+          ).fontSize;
+          const next =
+            event.key === "0" ? 13 : current + (event.key === "-" ? -1 : 1);
+          void saveSettings(
+            withTerminalFontSize(settings, session.connectionId, next),
+          ).catch((reason) => setError(errorMessage(reason)));
+        }
+      }
       if (event.metaKey && event.key.toLowerCase() === "w" && activeSessionId) {
         const session = sessions.find((item) => item.id === activeSessionId);
         if (
@@ -369,34 +398,49 @@ export default function TerminalWorkspace({
   }, [activeSessionId]);
   if (!sessions.length)
     return (
-      <main className="welcome-workspace">
-        <div className="welcome-mark">
-          <Command size={42} />
-        </div>
-        <span className="eyebrow">欢迎使用 CNshell</span>
-        <h2>从左侧选择一台服务器</h2>
-        <p>
-          双击连接即可打开安全的 SSH
-          终端。文件、传输与监控会自动绑定到当前会话。
-        </p>
-        <div className="shortcut-row">
-          <kbd>⌘N</kbd>
-          <span>新建连接</span>
-          <kbd>⌘T</kbd>
-          <span>打开终端</span>
-          <kbd>⌘?</kbd>
-          <span>查看帮助</span>
-        </div>
-      </main>
+      <>
+        <main className="welcome-workspace">
+          <div className="welcome-mark">
+            <Command size={42} />
+          </div>
+          <span className="eyebrow">欢迎使用 CNshell</span>
+          <h2>从左侧选择一台服务器</h2>
+          <p>
+            双击连接即可打开安全的 SSH
+            终端。文件、传输与监控会自动绑定到当前会话。
+          </p>
+          <button
+            className="button secondary welcome-team-terminal"
+            onClick={() => setTeamTerminalOpen(true)}
+          >
+            <RadioTower size={14} />
+            在线团队终端
+          </button>
+          <div className="shortcut-row">
+            <kbd>⌘N</kbd>
+            <span>新建连接</span>
+            <kbd>⌘T</kbd>
+            <span>打开终端</span>
+            <kbd>⌘?</kbd>
+            <span>查看帮助</span>
+          </div>
+        </main>
+        <TeamTerminalCenter
+          open={teamTerminalOpen}
+          onClose={() => setTeamTerminalOpen(false)}
+          sessions={sessions}
+          activeSessionId={activeSessionId}
+          onError={setError}
+        />
+      </>
     );
   const active =
     sessions.find((item) => item.id === activeSessionId) ?? sessions[0];
-  const effectiveLayout =
-    isInteractiveTerminal(active)
-      ? terminalLayout && layoutSessions(terminalLayout).includes(active.id)
-        ? terminalLayout
-        : leaf(active.id)
-      : null;
+  const effectiveLayout = isInteractiveTerminal(active)
+    ? terminalLayout && layoutSessions(terminalLayout).includes(active.id)
+      ? terminalLayout
+      : leaf(active.id)
+    : null;
   const rects = effectiveLayout ? layoutRects(effectiveLayout) : [];
   const rectBySession = new Map(rects.map((rect) => [rect.sessionId, rect]));
   const visibleIds = new Set(rectBySession.keys());
@@ -507,18 +551,37 @@ export default function TerminalWorkspace({
         ))}
         <div className="tab-spacer" />
         <IconButton
+          icon={RadioTower}
+          label="在线团队终端"
+          active={teamTerminalOpen}
+          onClick={() => setTeamTerminalOpen(true)}
+        />
+        <IconButton
           icon={Users}
           label="多主机执行"
           onClick={() => setBatchDialogOpen(true)}
         />
         {isInteractiveTerminal(active) && (
-          <IconButton icon={ClipboardList} label="粘贴历史" onClick={() => setPasteHistoryOpen(true)} />
+          <IconButton
+            icon={ClipboardList}
+            label="粘贴历史"
+            onClick={() => setPasteHistoryOpen(true)}
+          />
         )}
         {isInteractiveTerminal(active) && (
-          <IconButton icon={Clock3} label="行时间戳" active={showTimestamps} onClick={() => setShowTimestamps(!showTimestamps)} />
+          <IconButton
+            icon={Clock3}
+            label="行时间戳"
+            active={showTimestamps}
+            onClick={() => setShowTimestamps(!showTimestamps)}
+          />
         )}
         {isInteractiveTerminal(active) && (
-          <IconButton icon={Search} label="跨标签搜索" onClick={() => setGlobalSearchOpen(true)} />
+          <IconButton
+            icon={Search}
+            label="跨标签搜索"
+            onClick={() => setGlobalSearchOpen(true)}
+          />
         )}
         {isInteractiveTerminal(active) && (
           <IconButton
@@ -552,8 +615,16 @@ export default function TerminalWorkspace({
         {active.sessionType === "rdp" ? (
           <RdpWorkspace
             session={active}
-            onFocus={() => void api.rdpFocus(active.id).catch((reason)=>setError(errorMessage(reason)))}
-            onHide={() => void api.rdpHide(active.id).catch((reason)=>setError(errorMessage(reason)))}
+            onFocus={() =>
+              void api
+                .rdpFocus(active.id)
+                .catch((reason) => setError(errorMessage(reason)))
+            }
+            onHide={() =>
+              void api
+                .rdpHide(active.id)
+                .catch((reason) => setError(errorMessage(reason)))
+            }
             onReconnect={() => void reconnect(active)}
             onClose={() => void close(active.id)}
           />
@@ -633,7 +704,11 @@ export default function TerminalWorkspace({
                   />
                 )}
               </div>
-              {copyMode && <div className="copy-mode-badge">Copy Mode · ↑↓ 选择行 · Return 复制 · Esc 退出</div>}
+              {copyMode && (
+                <div className="copy-mode-badge">
+                  Copy Mode · ↑↓ 选择行 · Return 复制 · Esc 退出
+                </div>
+              )}
               {bottomOpen && (
                 <div
                   className="panel-resizer horizontal"
@@ -764,7 +839,24 @@ export default function TerminalWorkspace({
                     aria-labelledby={`tool-tab-${activePanel}`}
                     className="panel-content"
                   >
-                    {activePanel === "files" && (active.sessionType === "serial" ? <SerialTransferPanel session={active} onError={setError}/> : ["local","telnet"].includes(active.sessionType) ? <div className="empty-files"><Files size={28}/><span>{active.sessionType === "telnet" ? "Telnet 会话不提供远程文件面板" : "本地 Shell 使用终端命令访问本机文件"}</span></div> : <FileManager key={active.id} session={active} />)}{" "}
+                    {activePanel === "files" &&
+                      (active.sessionType === "serial" ? (
+                        <SerialTransferPanel
+                          session={active}
+                          onError={setError}
+                        />
+                      ) : ["local", "telnet"].includes(active.sessionType) ? (
+                        <div className="empty-files">
+                          <Files size={28} />
+                          <span>
+                            {active.sessionType === "telnet"
+                              ? "Telnet 会话不提供远程文件面板"
+                              : "本地 Shell 使用终端命令访问本机文件"}
+                          </span>
+                        </div>
+                      ) : (
+                        <FileManager key={active.id} session={active} />
+                      ))}{" "}
                     {activePanel === "commands" && (
                       <CommandPanel session={active} onError={setError} />
                     )}{" "}
@@ -802,14 +894,52 @@ export default function TerminalWorkspace({
         />
       )}
       {pasteRequest && (
-        <PasteSafetyDialog text={pasteRequest.text} onClose={() => setPasteRequest(null)} onConfirm={() => { refs.get(pasteRequest.sessionId)?.current?.paste(pasteRequest.text); setPasteRequest(null); }} />
+        <PasteSafetyDialog
+          text={pasteRequest.text}
+          onClose={() => setPasteRequest(null)}
+          onConfirm={() => {
+            refs.get(pasteRequest.sessionId)?.current?.paste(pasteRequest.text);
+            setPasteRequest(null);
+          }}
+        />
       )}
       {pasteHistoryOpen && (
-        <PasteHistoryDialog items={workspaceRuntime.pasteHistory} onClose={() => setPasteHistoryOpen(false)} onClear={() => { workspaceRuntime.pasteHistory = []; setActivityVersion(activityVersion + 1); }} onSelect={(text) => { setPasteHistoryOpen(false); const request = { sessionId: active.id, text }; const risk = pasteRisk(text); if (risk.multiline || risk.highRisk) setPasteRequest(request); else refs.get(active.id)?.current?.paste(text); }} />
+        <PasteHistoryDialog
+          items={workspaceRuntime.pasteHistory}
+          onClose={() => setPasteHistoryOpen(false)}
+          onClear={() => {
+            workspaceRuntime.pasteHistory = [];
+            setActivityVersion(activityVersion + 1);
+          }}
+          onSelect={(text) => {
+            setPasteHistoryOpen(false);
+            const request = { sessionId: active.id, text };
+            const risk = pasteRisk(text);
+            if (risk.multiline || risk.highRisk) setPasteRequest(request);
+            else refs.get(active.id)?.current?.paste(text);
+          }}
+        />
       )}
       {globalSearchOpen && (
-        <GlobalTerminalSearch sessions={sessions.filter((item) => isInteractiveTerminal(item))} onClose={() => setGlobalSearchOpen(false)} onSelect={(sessionId, line) => { selectSession(sessionId); requestAnimationFrame(() => refs.get(sessionId)?.current?.selectLine(line)); setGlobalSearchOpen(false); }} />
+        <GlobalTerminalSearch
+          sessions={sessions.filter((item) => isInteractiveTerminal(item))}
+          onClose={() => setGlobalSearchOpen(false)}
+          onSelect={(sessionId, line) => {
+            selectSession(sessionId);
+            requestAnimationFrame(() =>
+              refs.get(sessionId)?.current?.selectLine(line),
+            );
+            setGlobalSearchOpen(false);
+          }}
+        />
       )}
+      <TeamTerminalCenter
+        open={teamTerminalOpen}
+        onClose={() => setTeamTerminalOpen(false)}
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onError={setError}
+      />
     </main>
   );
 }

@@ -65,6 +65,10 @@ pub fn router(store: RelayStore) -> Router {
             post(route_room_invitation),
         )
         .route("/v1/terminal/rooms/{room_id}/join", post(join_room))
+        .route(
+            "/v1/terminal/rooms/{room_id}/participants/me",
+            delete(leave_room),
+        )
         .route("/v1/terminal/rooms/{room_id}", delete(close_room))
         .route(
             "/v1/terminal/rooms/{room_id}/control",
@@ -314,6 +318,19 @@ async fn join_room(
         .authenticate_device(bearer_token(&headers)?)
         .await?;
     Ok(Json(state.terminal.join_room(&auth, &room_id).await?))
+}
+
+async fn leave_room(
+    State(state): State<RelayState>,
+    Path(room_id): Path<String>,
+    headers: HeaderMap,
+) -> RelayResult<StatusCode> {
+    let auth = state
+        .store
+        .authenticate_device(bearer_token(&headers)?)
+        .await?;
+    state.terminal.leave_room(&auth, &room_id).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn grant_control(

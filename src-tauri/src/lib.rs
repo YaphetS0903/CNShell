@@ -27,6 +27,7 @@ mod ssh;
 mod task;
 mod team;
 mod team_relay;
+mod team_relay_terminal;
 mod team_share;
 mod telnet;
 mod touch_id;
@@ -55,6 +56,7 @@ use tauri::{
     Emitter, Manager,
     menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
 };
+use team_relay_terminal::TeamRelayTerminalManager;
 use team_share::TeamShareManager;
 use telnet::TelnetManager;
 use tunnel::TunnelManager;
@@ -78,6 +80,7 @@ pub struct AppState {
     serial: SerialManager,
     team_shares: TeamShareManager,
     collaboration: CollaborationManager,
+    relay_terminal: TeamRelayTerminalManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -202,6 +205,7 @@ pub fn run() {
                 serial: SerialManager::default(),
                 team_shares: TeamShareManager::default(),
                 collaboration: CollaborationManager::default(),
+                relay_terminal: TeamRelayTerminalManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -223,6 +227,7 @@ pub fn run() {
                 window.state::<AppState>().telnet.close_all();
                 window.state::<AppState>().serial.close_all();
                 window.state::<AppState>().collaboration.close_all();
+                window.state::<AppState>().relay_terminal.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -322,6 +327,16 @@ pub fn run() {
             commands::team_relay_invitation_accept,
             commands::team_relay_member_update,
             commands::team_relay_device_revoke,
+            commands::team_relay_terminal_session_list,
+            commands::team_relay_terminal_room_start,
+            commands::team_relay_terminal_room_invite,
+            commands::team_relay_terminal_invitation_list,
+            commands::team_relay_terminal_invitation_accept,
+            commands::team_relay_terminal_output_publish,
+            commands::team_relay_terminal_input_send,
+            commands::team_relay_terminal_control_grant,
+            commands::team_relay_terminal_control_revoke,
+            commands::team_relay_terminal_room_close,
             commands::team_terminal_room_start,
             commands::team_terminal_room_join,
             commands::team_terminal_invitation_create,

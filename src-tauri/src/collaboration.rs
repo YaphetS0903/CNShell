@@ -1287,6 +1287,84 @@ impl CollaborationManager {
         Ok(room.snapshot())
     }
 
+    pub async fn apply_control_lease(
+        &self,
+        db: &Database,
+        room_id: &str,
+        lease: TeamControlLease,
+    ) -> AppResult<TeamTerminalRoom> {
+        if uuid::Uuid::parse_str(&lease.id).is_err() || lease.generation == 0 {
+            return Err(AppError::Validation(
+                "在线团队终端控制租约 ID 或 generation 无效".into(),
+            ));
+        }
+        let expires_at = DateTime::parse_from_rfc3339(&lease.expires_at)
+            .map_err(|_| AppError::Validation("在线团队终端控制租约到期时间无效".into()))?
+            .with_timezone(&Utc);
+        let remaining = expires_at - Utc::now();
+        if remaining <= ChronoDuration::zero() || remaining > ChronoDuration::minutes(5) {
+            return Err(AppError::Validation(
+                "在线团队终端控制租约已过期或超过 5 分钟".into(),
+            ));
+        }
+        let workspace_id = {
+            let rooms = self.rooms.lock();
+            rooms
+                .get(room_id)
+                .ok_or_else(|| AppError::NotFound(format!("团队终端房间 {room_id}")))?
+                .workspace_id
+                .clone()
+        };
+        let authorization = team::authorize(db, &workspace_id, "shareManage").await?;
+        let (member_id, role) = device_member_role(db, &workspace_id, &lease.device_id).await?;
+        if member_id != lease.member_id {
+            return Err(AppError::PermissionDenied(
+                "在线控制租约设备不属于声明成员".into(),
+            ));
+        }
+        team::require_permission(&role, "terminalControl")?;
+        let mut rooms = self.rooms.lock();
+        let room = rooms
+            .get_mut(room_id)
+            .ok_or_else(|| AppError::NotFound(format!("团队终端房间 {room_id}")))?;
+        validate_host(room, &authorization)?;
+        let participant = room
+            .participants
+            .get(&lease.device_id)
+            .ok_or_else(|| AppError::PermissionDenied("控制设备尚未加入房间".into()))?;
+        if participant.participant.member_id != lease.member_id {
+            return Err(AppError::PermissionDenied(
+                "在线控制租约参与设备归属不匹配".into(),
+            ));
+        }
+        if lease.generation < room.lease_generation {
+            return Err(AppError::Validation(
+                "在线控制租约 generation 已回滚".into(),
+            ));
+        }
+        if lease.generation == room.lease_generation {
+            if room
+                .control_lease
+                .as_ref()
+                .is_some_and(|current| current.lease == lease)
+            {
+                return Ok(room.snapshot());
+            }
+            return Err(AppError::Validation(
+                "在线控制租约 generation 重复但内容不一致".into(),
+            ));
+        }
+        room.lease_generation = lease.generation;
+        room.control_lease = Some(LeaseState {
+            lease,
+            expires_at: Instant::now()
+                + remaining
+                    .to_std()
+                    .map_err(|_| AppError::Validation("在线控制租约时长无效".into()))?,
+        });
+        Ok(room.snapshot())
+    }
+
     pub async fn remove_participant(
         &self,
         db: &Database,

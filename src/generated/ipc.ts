@@ -722,6 +722,34 @@ export interface UpdateTeamRelayMemberInput {
   status: string;
 }
 
+export interface TeamRelayTerminalInvitation {
+  roomId: string;
+  invitation: TeamTerminalInvitation;
+}
+
+export interface TeamRelayTerminalSession {
+  roomId: string;
+  workspaceId: string;
+  mode: string;
+  terminalSessionId: string | null;
+  localMemberId: string;
+  localDeviceId: string;
+  status: string;
+  lastError: string | null;
+  lastOutputSequence: number;
+  participants: TeamTerminalParticipant[];
+  controlLease: TeamControlLease | null;
+  createdAt: string;
+}
+
+export interface TeamRelayTerminalEvent {
+  roomId: string;
+  kind: string;
+  session: TeamRelayTerminalSession;
+  sequence: number | null;
+  dataBase64: string | null;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;
