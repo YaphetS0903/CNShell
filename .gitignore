@@ -2,6 +2,7 @@ node_modules/
 .npm-cache/
 dist/
 src-tauri/target/
+services/*/target/
 .DS_Store
 *.log
 coverage/

@@ -10,12 +10,22 @@ React WebView 仅负责展示与输入，通过由 Rust 模型生成的 TypeScri
 - `src-tauri/src/backup.rs`：非敏感备份或 Argon2id/AES-256-GCM 加密凭据备份。
 - `src-tauri/src/task.rs`：诊断、归档和预览共用的可取消后台任务模型。
 - `src-tauri/src/rdp.rs`：进程隔离的内置 FreeRDP SDL sidecar 适配。
+- `src-tauri/src/collaboration.rs`：团队终端房间、端到端邀请/帧加密、控制租约和本机补帧状态机。
+- `services/team-relay`：独立在线账号、设备会话、服务端 RBAC/epoch/撤销和仅密文 WebSocket relay。
 
 SFTP、监控、传输、压缩和预览优先租用同一连接配置下的空闲已认证 Transport；并发繁忙时池自动创建附加 Transport，配置、代理或主机身份变化时使旧池失效。终端 PTY 与隧道使用不可复用的独占 Transport，避免 `libssh2::Session` 互斥锁让交互输入被后台 Channel 阻塞。
 
 连接诊断、压缩/解压和远端预览通过统一后台任务模型立即返回任务 ID，再以事件发送状态；传输使用可持久化的专用队列。SQLite 使用 WAL，数据库只保存 Keychain 引用。密码、私钥口令、代理密码和 security-scoped Bookmark 均由连接专属 Keychain 条目管理。
 
 RDP 不进入 SSH Transport Pool。Rust 优先启动应用资源目录内签名的 universal FreeRDP sidecar，密码仅写入子进程 stdin，sidecar 退出通过终端状态事件反馈给共享标签工作区。环境变量和系统 FreeRDP 检测仅用于开发覆盖，不属于用户安装流程。
+
+## 团队 Relay
+
+团队终端使用客户端生成的随机房间密钥。主持端以 X25519/HKDF/AES-GCM 分设备封装密钥，
+输入输出 envelope 由实际发送设备 Ed25519 签名；relay 不获得内容密钥。独立 relay 只保存
+账号、成员/设备公钥、服务端角色、epoch、短期 token 哈希、控制租约、路由元数据和有界
+密文补帧。每个 WebSocket 帧都会重新读取设备、成员、角色、epoch 和租约，成员移除或设备
+撤销会使旧 token 与旧房间立即失效。服务部署与客户端在线接入边界见 `docs/TEAM_RELAY.md`。
 ## Mosh 终端
 
 Mosh 会话先复用 CNshell 的 SSH 认证、代理和主机指纹校验启动远端 `mosh-server`，随后由 Rust `MoshManager` 在原生 PTY 中托管应用内 `mosh-client`。UDP 客户端使用连接配置中的公网主机名或地址，避免云主机 NAT 环境把 SSH 服务端的内网网卡地址误作目标。一次性 `MOSH_KEY` 仅通过子进程环境变量传递，不写入参数、数据库、日志或前端事件；终端输出继续走统一的 `terminal-output` IPC，SFTP 与监控使用相同连接资料建立独立 SSH 通道。

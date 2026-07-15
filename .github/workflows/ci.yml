@@ -24,12 +24,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: |
+            src-tauri
+            services/team-relay
       - run: npm ci
       - run: npm run lint
       - run: npm run test
       - run: npm run build
       - run: cargo test --manifest-path src-tauri/Cargo.toml
+      - run: cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path services/team-relay/Cargo.toml
       - run: npm audit --audit-level=moderate
 
   desktop-ui:

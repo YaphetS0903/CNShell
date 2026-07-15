@@ -16,11 +16,13 @@
     "test:protocol": "./scripts/protocol-test.sh",
     "test:pty-fixture": "./scripts/pty-fixture-test.sh",
     "test:soak": "./scripts/soak-test.sh",
+    "test:relay": "cargo test --manifest-path services/team-relay/Cargo.toml",
+    "check:relay": "cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings && npm run test:relay",
     "generate:ipc": "node scripts/generate-ipc-types.mjs",
     "check:ipc": "node scripts/generate-ipc-types.mjs --check",
     "lint": "npm run check:ipc && eslint . --max-warnings=0",
     "tauri": "tauri",
-    "check": "npm run lint && npm run test && npm run build && cargo test --manifest-path src-tauri/Cargo.toml"
+    "check": "npm run lint && npm run test && npm run build && cargo test --manifest-path src-tauri/Cargo.toml && npm run check:relay"
   },
   "dependencies": {
     "@codemirror/lang-css": "^6.3.1",

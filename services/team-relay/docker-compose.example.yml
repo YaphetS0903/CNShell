@@ -1,0 +1,22 @@
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    environment:
+      CNSHELL_RELAY_DATABASE_URL: sqlite:///data/relay.sqlite?mode=rwc
+      CNSHELL_RELAY_BIND: 0.0.0.0:8787
+      CNSHELL_RELAY_BEHIND_TLS_PROXY: "1"
+      RUST_LOG: cnshell_team_relay=info,tower_http=info
+    ports:
+      - 127.0.0.1:8787:8787
+    volumes:
+      - relay-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  relay-data:
+
