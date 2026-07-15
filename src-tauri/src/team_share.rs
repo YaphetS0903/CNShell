@@ -173,7 +173,7 @@ fn key_account(device_id: &str, kind: &str) -> String {
     format!("device:{device_id}:{kind}")
 }
 
-fn save_private_key(device_id: &str, kind: &str, bytes: &[u8; 32]) -> AppResult<()> {
+pub(crate) fn save_private_key(device_id: &str, kind: &str, bytes: &[u8; 32]) -> AppResult<()> {
     let _access = keychain_access();
     let mut encoded = URL_SAFE_NO_PAD.encode(bytes);
     let result = keyring::Entry::new(KEYCHAIN_SERVICE, &key_account(device_id, kind))
@@ -184,7 +184,7 @@ fn save_private_key(device_id: &str, kind: &str, bytes: &[u8; 32]) -> AppResult<
     result
 }
 
-fn load_private_key(device_id: &str, kind: &str) -> AppResult<[u8; 32]> {
+pub(crate) fn load_private_key(device_id: &str, kind: &str) -> AppResult<[u8; 32]> {
     let _access = keychain_access();
     let mut value = keyring::Entry::new(KEYCHAIN_SERVICE, &key_account(device_id, kind))
         .map_err(|error| AppError::Storage(format!("创建设备 Keychain 项失败：{error}")))?
@@ -199,7 +199,7 @@ fn load_private_key(device_id: &str, kind: &str) -> AppResult<[u8; 32]> {
         .map_err(|_| AppError::Storage("Keychain 中的设备私钥长度无效".into()))
 }
 
-fn delete_private_keys(device_id: &str) {
+pub(crate) fn delete_private_keys(device_id: &str) {
     let _access = keychain_access();
     for kind in ["x25519", "ed25519"] {
         if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, &key_account(device_id, kind)) {
@@ -208,11 +208,11 @@ fn delete_private_keys(device_id: &str) {
     }
 }
 
-fn encode_key(prefix: &str, bytes: &[u8; 32]) -> String {
+pub(crate) fn encode_key(prefix: &str, bytes: &[u8; 32]) -> String {
     format!("{prefix}:{}", URL_SAFE_NO_PAD.encode(bytes))
 }
 
-fn device_fingerprint(encryption_key: &[u8; 32], signing_key: &[u8; 32]) -> String {
+pub(crate) fn device_fingerprint(encryption_key: &[u8; 32], signing_key: &[u8; 32]) -> String {
     let mut digest = Sha256::new();
     digest.update(b"cnshell-team-device-v1\0");
     digest.update(encryption_key);
@@ -220,7 +220,7 @@ fn device_fingerprint(encryption_key: &[u8; 32], signing_key: &[u8; 32]) -> Stri
     format!("sha256:{:x}", digest.finalize())
 }
 
-fn decode_key(value: &str, prefix: &str) -> AppResult<[u8; 32]> {
+pub(crate) fn decode_key(value: &str, prefix: &str) -> AppResult<[u8; 32]> {
     let encoded = value
         .strip_prefix(&format!("{prefix}:"))
         .ok_or_else(|| AppError::Validation(format!("密钥必须使用 {prefix}:<base64url> 格式")))?;
@@ -232,7 +232,7 @@ fn decode_key(value: &str, prefix: &str) -> AppResult<[u8; 32]> {
         .map_err(|_| AppError::Validation("设备公钥必须为 32 字节".into()))
 }
 
-fn validated_device_keys(device: &TeamDevice) -> AppResult<([u8; 32], [u8; 32])> {
+pub(crate) fn validated_device_keys(device: &TeamDevice) -> AppResult<([u8; 32], [u8; 32])> {
     let encryption = decode_key(&device.encryption_public_key, "x25519")?;
     let signing = decode_key(&device.signing_public_key, "ed25519")?;
     if device.fingerprint != device_fingerprint(&encryption, &signing) {

@@ -610,6 +610,55 @@ export interface TeamTerminalFrame {
   dataBase64: string;
 }
 
+export interface TeamTerminalInvitation {
+  schemaVersion: number;
+  roomId: string;
+  workspaceId: string;
+  keyEpoch: number;
+  hostMemberId: string;
+  hostDeviceId: string;
+  recipientMemberId: string;
+  recipientDeviceId: string;
+  ephemeralPublicKey: string;
+  keyNonce: string;
+  wrappedRoomKey: string;
+  replayFromSequence: number;
+  nextInputSequence: number;
+  createdAt: string;
+  expiresAt: string;
+  signature: string | null;
+}
+
+export interface TeamTerminalEncryptedFrame {
+  schemaVersion: number;
+  workspaceId: string;
+  roomId: string;
+  keyEpoch: number;
+  senderMemberId: string;
+  senderDeviceId: string;
+  direction: string;
+  kind: string;
+  sequence: number;
+  leaseId: string | null;
+  leaseGeneration: number;
+  nonce: string;
+  ciphertext: string;
+  signature: string | null;
+}
+
+export interface TeamTerminalClientRoom {
+  roomId: string;
+  workspaceId: string;
+  keyEpoch: number;
+  hostMemberId: string;
+  hostDeviceId: string;
+  localMemberId: string;
+  localDeviceId: string;
+  nextOutputSequence: number;
+  nextInputSequence: number;
+  status: string;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;

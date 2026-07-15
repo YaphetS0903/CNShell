@@ -785,6 +785,61 @@ pub struct TeamTerminalFrame {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TeamTerminalInvitation {
+    pub schema_version: u32,
+    pub room_id: String,
+    pub workspace_id: String,
+    pub key_epoch: i64,
+    pub host_member_id: String,
+    pub host_device_id: String,
+    pub recipient_member_id: String,
+    pub recipient_device_id: String,
+    pub ephemeral_public_key: String,
+    pub key_nonce: String,
+    pub wrapped_room_key: String,
+    pub replay_from_sequence: u64,
+    pub next_input_sequence: u64,
+    pub created_at: String,
+    pub expires_at: String,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TeamTerminalEncryptedFrame {
+    pub schema_version: u32,
+    pub workspace_id: String,
+    pub room_id: String,
+    pub key_epoch: i64,
+    pub sender_member_id: String,
+    pub sender_device_id: String,
+    pub direction: String,
+    pub kind: String,
+    pub sequence: u64,
+    pub lease_id: Option<String>,
+    pub lease_generation: u64,
+    pub nonce: String,
+    pub ciphertext: String,
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamTerminalClientRoom {
+    pub room_id: String,
+    pub workspace_id: String,
+    pub key_epoch: i64,
+    pub host_member_id: String,
+    pub host_device_id: String,
+    pub local_member_id: String,
+    pub local_device_id: String,
+    pub next_output_sequence: u64,
+    pub next_input_sequence: u64,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginAuditEvent {
     pub id: String,

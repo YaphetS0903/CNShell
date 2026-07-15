@@ -1170,6 +1170,51 @@ pub async fn team_terminal_room_join(
 }
 
 #[tauri::command]
+pub async fn team_terminal_invitation_create(
+    state: State<'_, AppState>,
+    room_id: String,
+    recipient_device_id: String,
+) -> AppResult<TeamTerminalInvitation> {
+    let invitation = state
+        .collaboration
+        .create_invitation(&state.db, &room_id, &recipient_device_id)
+        .await?;
+    crate::team::record_local_audit(
+        &state.db,
+        &invitation.workspace_id,
+        "terminal-invitation-created",
+        "device",
+        &recipient_device_id,
+    )
+    .await?;
+    Ok(invitation)
+}
+
+#[tauri::command]
+pub async fn team_terminal_invitation_accept(
+    state: State<'_, AppState>,
+    invitation: TeamTerminalInvitation,
+) -> AppResult<TeamTerminalClientRoom> {
+    let room = state
+        .collaboration
+        .accept_invitation(&state.db, invitation)
+        .await?;
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "terminal-invitation-accepted",
+        "terminalRoom",
+        &room.room_id,
+    )
+    .await
+    {
+        let _ = state.collaboration.close_client(&room.room_id);
+        return Err(error);
+    }
+    Ok(room)
+}
+
+#[tauri::command]
 pub async fn team_terminal_output_publish(
     state: State<'_, AppState>,
     room_id: String,
@@ -1185,6 +1230,45 @@ pub async fn team_terminal_output_publish(
         .collaboration
         .publish_output(&state.db, &room_id, &bytes)
         .await
+}
+
+#[tauri::command]
+pub async fn team_terminal_output_encrypt(
+    state: State<'_, AppState>,
+    room_id: String,
+    data_base64: String,
+) -> AppResult<TeamTerminalEncryptedFrame> {
+    if data_base64.len() > 128 * 1024 {
+        return Err(AppError::Validation("团队终端输出帧编码超过限制".into()));
+    }
+    let bytes = STANDARD
+        .decode(data_base64)
+        .map_err(|_| AppError::Validation("团队终端输出帧 Base64 无效".into()))?;
+    state
+        .collaboration
+        .publish_encrypted_output(&state.db, &room_id, &bytes)
+        .await
+}
+
+#[tauri::command]
+pub async fn team_terminal_output_replay(
+    state: State<'_, AppState>,
+    room_id: String,
+    recipient_device_id: String,
+    after_sequence: u64,
+) -> AppResult<Vec<TeamTerminalEncryptedFrame>> {
+    state
+        .collaboration
+        .replay_output(&state.db, &room_id, &recipient_device_id, after_sequence)
+        .await
+}
+
+#[tauri::command]
+pub async fn team_terminal_output_decrypt(
+    state: State<'_, AppState>,
+    frame: TeamTerminalEncryptedFrame,
+) -> AppResult<TeamTerminalFrame> {
+    state.collaboration.decrypt_output(&state.db, frame).await
 }
 
 #[tauri::command]
@@ -1240,6 +1324,38 @@ pub async fn team_terminal_control_input(
 }
 
 #[tauri::command]
+pub async fn team_terminal_control_input_encrypt(
+    state: State<'_, AppState>,
+    room_id: String,
+    lease_id: String,
+    lease_generation: u64,
+    data_base64: String,
+) -> AppResult<TeamTerminalEncryptedFrame> {
+    if data_base64.len() > 128 * 1024 {
+        return Err(AppError::Validation("团队终端输入帧编码超过限制".into()));
+    }
+    let bytes = STANDARD
+        .decode(data_base64)
+        .map_err(|_| AppError::Validation("团队终端输入帧 Base64 无效".into()))?;
+    state
+        .collaboration
+        .encrypt_input(&state.db, &room_id, &lease_id, lease_generation, &bytes)
+        .await
+}
+
+#[tauri::command]
+pub async fn team_terminal_control_input_receive(
+    state: State<'_, AppState>,
+    frame: TeamTerminalEncryptedFrame,
+) -> AppResult<()> {
+    let (session_id, data) = state
+        .collaboration
+        .receive_encrypted_input(&state.db, frame)
+        .await?;
+    crate::ssh::terminal_input(state.sessions.clone(), session_id, data).await
+}
+
+#[tauri::command]
 pub async fn team_terminal_control_revoke(
     state: State<'_, AppState>,
     room_id: String,
@@ -1265,6 +1381,22 @@ pub fn team_terminal_room_status(
     room_id: String,
 ) -> AppResult<TeamTerminalRoom> {
     state.collaboration.status(&room_id)
+}
+
+#[tauri::command]
+pub fn team_terminal_client_status(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamTerminalClientRoom> {
+    state.collaboration.client_status(&room_id)
+}
+
+#[tauri::command]
+pub fn team_terminal_client_close(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamTerminalClientRoom> {
+    state.collaboration.close_client(&room_id)
 }
 
 #[tauri::command]
