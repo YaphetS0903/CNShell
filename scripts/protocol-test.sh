@@ -16,6 +16,8 @@ trap cleanup EXIT
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/host_key"
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/client_key"
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/wrong_key"
+ssh-keygen -q -t ed25519 -N '' -f "$TMP/user_ca"
+ssh-keygen -q -s "$TMP/user_ca" -I cnshell-certificate-test -n "$USER_NAME" -V -1m:+5m "$TMP/client_key.pub"
 cp "$TMP/client_key.pub" "$TMP/authorized_keys"
 chmod 600 "$TMP/authorized_keys"
 
@@ -24,6 +26,7 @@ chmod 600 "$TMP/authorized_keys"
   -h "$TMP/host_key" \
   -o "PidFile=$TMP/sshd.pid" \
   -o "AuthorizedKeysFile=$TMP/authorized_keys" \
+  -o "TrustedUserCAKeys=$TMP/user_ca.pub" \
   -o StrictModes=no \
   -o PasswordAuthentication=no \
   -o KbdInteractiveAuthentication=no \
@@ -49,6 +52,7 @@ nc -z 127.0.0.1 "$PASSWORD_PORT"
 CNSHELL_TEST_SSH_PORT="$PORT" \
 CNSHELL_TEST_SSH_KEY="$TMP/client_key" \
 CNSHELL_TEST_SSH_BAD_KEY="$TMP/wrong_key" \
+CNSHELL_TEST_SSH_CERT="$TMP/client_key-cert.pub" \
 CNSHELL_TEST_SSH_USER="$USER_NAME" \
 CNSHELL_TEST_PASSWORD_SSH_PORT="$PASSWORD_PORT" \
 cargo test --manifest-path "$ROOT/src-tauri/Cargo.toml" "${CNSHELL_PROTOCOL_FILTER:-live_ssh_}" -- --nocapture --test-threads=1

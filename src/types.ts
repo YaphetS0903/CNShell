@@ -29,6 +29,7 @@ import type {
   SyncResult,
   ProxyProfile as GeneratedProxyProfile,
   RdpPreflight,
+  SshCertificateInfo,
   SessionLogStatus,
   RemoteFile as GeneratedRemoteFile,
   SaveConnectionInput as GeneratedSaveConnectionInput,
@@ -43,7 +44,7 @@ import type {
 } from "./generated/ipc";
 
 export type Protocol = "ssh" | "rdp";
-export type AuthType = "password" | "privateKey" | "sshAgent";
+export type AuthType = "password" | "privateKey" | "sshCertificate" | "sshAgent";
 export type HostKeyPolicy = "strict" | "acceptNew";
 export type SessionStatus = "connecting" | "online" | "reconnecting" | "failed" | "closed";
 export type ProxyType = "socks5" | "http" | "sshJump";
@@ -59,11 +60,12 @@ export type ConnectionProfile = Omit<GeneratedConnectionProfile, "protocol" | "a
   hostKeyPolicy: HostKeyPolicy;
 };
 
-export type SaveConnectionInput = Omit<GeneratedSaveConnectionInput, "folderId" | "protocol" | "authType" | "privateKeyPath" | "hostKeyPolicy" | "startupCommand" | "proxyId"> & {
+export type SaveConnectionInput = Omit<GeneratedSaveConnectionInput, "folderId" | "protocol" | "authType" | "privateKeyPath" | "certificatePath" | "hostKeyPolicy" | "startupCommand" | "proxyId"> & {
   folderId: string | null;
   protocol: Protocol;
   authType: AuthType;
   privateKeyPath: string | null;
+  certificatePath: string | null;
   hostKeyPolicy: HostKeyPolicy;
   startupCommand: string | null;
   proxyId: string | null;
@@ -113,7 +115,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpPreflight, SessionLogStatus, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
+export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

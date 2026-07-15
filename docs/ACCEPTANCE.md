@@ -55,6 +55,15 @@
 | 腾讯云互操作短测 | Ubuntu 24.04 x86_64 的 `mosh-server` 完成 SSH 握手，修复云主机 NAT 内网地址误用后，内置客户端使用连接配置公网地址建立 UDP 会话、接收输入并正常退出；未重复长测，临时服务端会话已清理 |
 | 保留验收边界 | Wi-Fi/IP 切换、30 秒断网恢复、Intel 真机运行和自动化屏幕 resize 捕获仍待对应环境；当前不声明这些场景通过 |
 
+### 2026-07-15 SSH Certificate 增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 数据与文件授权 | `0005_ssh_certificate.sql` 历史迁移通过；私钥与证书使用独立 Keychain Bookmark，连接复制、永久删除、备份字段和旧数据默认值均纳入同一生命周期 |
+| 元数据与有效期 | OpenSSH 用户证书类型、CA、Key ID、序列号、主体和 UTC 有效期解析通过；主机证书、格式错误、过期和尚未生效均拒绝认证 |
+| 真实协议 | 本机临时 OpenSSH `sshd` 使用 Ed25519 CA 与 `TrustedUserCAKeys`，CNshell/libssh2 通过短期用户证书真实认证并执行固定命令；夹具退出清理 CA、密钥、证书与服务进程 |
+| 自动化门禁 | Rust 118 项、前端 100 项、lint、TypeScript/Vite production build 与 diff 检查通过 |
+
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |

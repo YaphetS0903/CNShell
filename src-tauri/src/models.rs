@@ -23,6 +23,7 @@ pub struct ConnectionProfile {
     pub username: String,
     pub auth_type: String,
     pub private_key_path: Option<String>,
+    pub certificate_path: Option<String>,
     pub host_key_policy: String,
     pub note: String,
     #[sqlx(skip)]
@@ -51,6 +52,7 @@ pub struct SaveConnectionInput {
     pub username: String,
     pub auth_type: String,
     pub private_key_path: Option<String>,
+    pub certificate_path: Option<String>,
     pub host_key_policy: String,
     pub note: String,
     pub tags: Vec<String>,
@@ -142,6 +144,21 @@ pub struct ConnectionDiagnostic {
     pub fingerprint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub algorithm: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SshCertificateInfo {
+    pub path: String,
+    pub certificate_type: String,
+    pub key_id: String,
+    pub serial: String,
+    pub signing_ca: String,
+    pub valid_from: String,
+    pub valid_to: String,
+    pub principals: Vec<String>,
+    pub valid_now: bool,
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Serialize)]

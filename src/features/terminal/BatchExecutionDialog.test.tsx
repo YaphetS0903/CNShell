@@ -6,7 +6,7 @@ import { useAppStore } from "../../store/app-store";
 import type { BatchExecution,ConnectionProfile,TerminalSession } from "../../types";
 import { BatchExecutionDialog } from "./BatchExecutionDialog";
 
-const connection=(index:number):ConnectionProfile=>({id:`connection-${index}`,folderId:null,protocol:"ssh",name:`主机 ${index}`,host:`10.0.0.${index}`,port:22,username:"root",authType:"sshAgent",privateKeyPath:null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:false,createdAt:"",updatedAt:"",lastConnectedAt:null});
+const connection=(index:number):ConnectionProfile=>({id:`connection-${index}`,folderId:null,protocol:"ssh",name:`主机 ${index}`,host:`10.0.0.${index}`,port:22,username:"root",authType:"sshAgent",privateKeyPath:null, certificatePath: null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:false,createdAt:"",updatedAt:"",lastConnectedAt:null});
 const execution:BatchExecution={id:"batch-1",command:"uname -a",status:"failed",createdAt:"",targets:[{connectionId:"connection-1",name:"主机 1",status:"completed",stdout:"Linux",stderr:"",exitCode:0,durationMs:12,error:null},{connectionId:"connection-2",name:"主机 2",status:"failed",stdout:"",stderr:"denied",exitCode:1,durationMs:18,error:null}]};
 
 describe("BatchExecutionDialog",()=>{

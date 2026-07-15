@@ -314,6 +314,7 @@ mod tests {
             username: "user".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],

@@ -4,6 +4,7 @@
 - **首次指纹**：在云控制台执行 `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256` 核对。
 - **指纹变化**：不要直接接受；先确认服务器是否重装或密钥轮换。
 - **认证失败**：检查 Keychain 条目、私钥权限、SSH Agent 身份和服务端认证策略。
+- **SSH Certificate 无效**：确认选择的是 `*-cert.pub` 用户证书及其对应私钥，证书当前已生效且未过期，主体包含登录用户名，服务端 `TrustedUserCAKeys` 信任签发 CA；CNshell 不会自动放宽这些检查。
 - **SFTP 不可用**：确认服务端启用 SFTP subsystem，且用户具有目录权限。
 - **监控为空**：非 Linux 系统或 `/proc` 不可用时会降级，终端仍可使用。
 - **RDP 组件缺失或损坏**：重新从完整 DMG 安装 CNshell；不要单独移动或删除应用包 `Contents/Resources/freerdp` 中的文件。

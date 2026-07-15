@@ -548,6 +548,36 @@ pub fn authenticate(
                 .userauth_pubkey_file(&profile.username, None, access.path(), secret.as_deref())
                 .map_err(|error| AppError::Authentication(error.to_string()))?;
         }
+        "sshCertificate" => {
+            let private_fallback = profile
+                .private_key_path
+                .as_deref()
+                .ok_or_else(|| AppError::Authentication("未选择证书对应的私钥".into()))?;
+            let certificate_fallback = profile
+                .certificate_path
+                .as_deref()
+                .ok_or_else(|| AppError::Authentication("未选择 SSH Certificate".into()))?;
+            let private_access = crate::bookmark::access(&profile.id, Path::new(private_fallback))?;
+            let certificate_access =
+                crate::bookmark::access_certificate(&profile.id, Path::new(certificate_fallback))?;
+            let info = crate::certificate::inspect(certificate_access.path())?;
+            if !info.valid_now {
+                return Err(AppError::Authentication(match info.status.as_str() {
+                    "expired" => "SSH Certificate 已过期".into(),
+                    "notYetValid" => "SSH Certificate 尚未生效".into(),
+                    _ => "SSH Certificate 当前无效".into(),
+                }));
+            }
+            connected
+                .session
+                .userauth_pubkey_file(
+                    &profile.username,
+                    Some(certificate_access.path()),
+                    private_access.path(),
+                    secret.as_deref(),
+                )
+                .map_err(|error| AppError::Authentication(error.to_string()))?;
+        }
         "sshAgent" => {
             let mut agent = connected
                 .session
@@ -1978,6 +2008,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -2053,6 +2084,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -2079,6 +2111,7 @@ mod tests {
             username: profile.username.clone(),
             auth_type: profile.auth_type.clone(),
             private_key_path: profile.private_key_path.clone(),
+            certificate_path: profile.certificate_path.clone(),
             host_key_policy: profile.host_key_policy.clone(),
             note: profile.note.clone(),
             tags: profile.tags.clone(),
@@ -2467,6 +2500,56 @@ mod tests {
             Err(AppError::HostKeyChanged { .. })
         ));
     }
+
+    #[tokio::test]
+    async fn live_ssh_certificate_authentication_and_command() {
+        let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let key = std::env::var("CNSHELL_TEST_SSH_KEY").expect("CNSHELL_TEST_SSH_KEY");
+        let certificate = std::env::var("CNSHELL_TEST_SSH_CERT").expect("CNSHELL_TEST_SSH_CERT");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("CNSHELL_TEST_SSH_USER");
+        let profile = ConnectionProfile {
+            id: format!("certificate-auth-{}", Uuid::new_v4()),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "certificate auth".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username,
+            auth_type: "sshCertificate".into(),
+            private_key_path: Some(key),
+            certificate_path: Some(certificate),
+            host_key_policy: "acceptNew".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            has_credential: false,
+            created_at: String::new(),
+            updated_at: String::new(),
+            last_connected_at: None,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("certificate.sqlite"))
+            .await
+            .unwrap();
+        let connected = verified_connection(&db, &profile, false).await.unwrap();
+        let mut channel = connected.session.channel_session().unwrap();
+        channel.exec("printf CNSHELL_CERTIFICATE_OK").unwrap();
+        let mut output = String::new();
+        channel.read_to_string(&mut output).unwrap();
+        channel.wait_close().unwrap();
+        assert_eq!(output, "CNSHELL_CERTIFICATE_OK");
+        let info =
+            crate::certificate::inspect(Path::new(profile.certificate_path.as_deref().unwrap()))
+                .unwrap();
+        assert!(info.valid_now);
+        assert_eq!(info.key_id, "cnshell-certificate-test");
+        assert!(info.principals.contains(&profile.username));
+    }
     #[tokio::test]
     async fn live_ssh_password_authentication_and_rejection() {
         let Ok(port) = std::env::var("CNSHELL_TEST_PASSWORD_SSH_PORT") else {
@@ -2491,6 +2574,7 @@ mod tests {
             username: "cnshell".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -2555,6 +2639,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -2645,6 +2730,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -2814,6 +2900,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -2863,6 +2950,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -2938,6 +3026,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -3003,6 +3092,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some("/missing/fallback/private-key".into()),
+            certificate_path: None,
             host_key_policy: "acceptNew".into(),
             note: "".into(),
             tags: vec![],
@@ -3041,6 +3131,7 @@ mod tests {
             username,
             auth_type: "privateKey".into(),
             private_key_path: Some(key),
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],

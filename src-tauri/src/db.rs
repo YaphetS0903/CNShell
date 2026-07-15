@@ -38,13 +38,13 @@ impl Database {
     }
 
     pub async fn list_connections(&self) -> AppResult<Vec<ConnectionProfile>> {
-        let rows = sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
+        let rows = sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, certificate_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE deleted_at IS NULL ORDER BY name COLLATE NOCASE")
             .fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(connection_from_row).collect())
     }
 
     pub async fn deleted_connections(&self) -> AppResult<Vec<ConnectionProfile>> {
-        let rows=sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetch_all(&self.pool).await?;
+        let rows=sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, certificate_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(connection_from_row).collect())
     }
 
@@ -104,8 +104,8 @@ impl Database {
                     .fetch_optional(&mut *transaction)
                     .await?;
             let created = existing.unwrap_or_else(|| now.clone());
-            sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
-                .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_|"[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&mut *transaction).await?;
+            sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
+                .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.certificate_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_|"[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&mut *transaction).await?;
         }
         transaction.commit().await?;
         Ok(())
@@ -150,8 +150,8 @@ impl Database {
                 .fetch_optional(&self.pool)
                 .await?;
         let created = existing.unwrap_or_else(|| now.clone());
-        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
-            .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&self.pool).await?;
+        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL) ON CONFLICT(id) DO UPDATE SET folder_id=excluded.folder_id,protocol=excluded.protocol,name=excluded.name,host=excluded.host,port=excluded.port,username=excluded.username,auth_type=excluded.auth_type,credential_ref=CASE WHEN excluded.protocol='ssh' AND excluded.auth_type='sshAgent' THEN NULL WHEN connections.auth_type!=excluded.auth_type THEN excluded.credential_ref ELSE COALESCE(excluded.credential_ref,connections.credential_ref) END,private_key_path=excluded.private_key_path,certificate_path=excluded.certificate_path,host_key_policy=excluded.host_key_policy,note=excluded.note,tags=excluded.tags,encoding=excluded.encoding,startup_command=excluded.startup_command,proxy_id=excluded.proxy_id,environment=excluded.environment,updated_at=excluded.updated_at,deleted_at=NULL")
+            .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.certificate_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&created).bind(&now).execute(&self.pool).await?;
         self.get_connection(&input.id).await
     }
 
@@ -162,8 +162,8 @@ impl Database {
     ) -> AppResult<ConnectionProfile> {
         validate_connection(input)?;
         let now = Utc::now().to_rfc3339();
-        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)")
-            .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&now).bind(&now).execute(&self.pool).await?;
+        sqlx::query("INSERT INTO connections (id,folder_id,protocol,name,host,port,username,auth_type,credential_ref,private_key_path,certificate_path,host_key_policy,note,tags,encoding,startup_command,proxy_id,environment,created_at,updated_at,deleted_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL)")
+            .bind(&input.id).bind(&input.folder_id).bind(&input.protocol).bind(&input.name).bind(&input.host).bind(input.port).bind(&input.username).bind(&input.auth_type).bind(credential_ref).bind(&input.private_key_path).bind(&input.certificate_path).bind(&input.host_key_policy).bind(&input.note).bind(serde_json::to_string(&input.tags).unwrap_or_else(|_| "[]".into())).bind(&input.encoding).bind(&input.startup_command).bind(&input.proxy_id).bind(serde_json::to_string(&input.environment).unwrap_or_else(|_|"{}".into())).bind(&now).bind(&now).execute(&self.pool).await?;
         self.get_connection(&input.id).await
     }
 
@@ -592,6 +592,7 @@ fn connection_from_row(row: SqliteRow) -> ConnectionProfile {
         username: row.get("username"),
         auth_type: row.get("auth_type"),
         private_key_path: row.get("private_key_path"),
+        certificate_path: row.get("certificate_path"),
         host_key_policy: row.get("host_key_policy"),
         note: row.get("note"),
         tags: serde_json::from_str(row.get::<String, _>("tags").as_str()).unwrap_or_default(),
@@ -648,6 +649,10 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
             .as_ref()
             .is_some_and(|value| value.len() > 16 * 1024)
         || input
+            .certificate_path
+            .as_ref()
+            .is_some_and(|value| value.len() > 16 * 1024)
+        || input
             .credential
             .as_ref()
             .is_some_and(|value| value.len() > 16 * 1024)
@@ -675,13 +680,22 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
         return Err(AppError::Validation("不支持的协议".into()));
     }
     if input.protocol == "ssh"
-        && !["password", "privateKey", "sshAgent"].contains(&input.auth_type.as_str())
+        && !["password", "privateKey", "sshCertificate", "sshAgent"]
+            .contains(&input.auth_type.as_str())
     {
         return Err(AppError::Validation("SSH 认证方式无效".into()));
     }
     if input.auth_type == "privateKey" && input.private_key_path.as_deref().unwrap_or("").is_empty()
     {
         return Err(AppError::Validation("私钥认证必须选择私钥文件".into()));
+    }
+    if input.auth_type == "sshCertificate"
+        && (input.private_key_path.as_deref().unwrap_or("").is_empty()
+            || input.certificate_path.as_deref().unwrap_or("").is_empty())
+    {
+        return Err(AppError::Validation(
+            "SSH Certificate 认证必须同时选择私钥与证书文件".into(),
+        ));
     }
     if !["strict", "acceptNew"].contains(&input.host_key_policy.as_str()) {
         return Err(AppError::Validation("主机密钥策略无效".into()));
@@ -806,6 +820,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -835,6 +850,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -865,6 +881,43 @@ mod tests {
         assert!(validate_proxy(&jump).is_err());
         jump.jump_connection_id = Some("connection".into());
         assert!(validate_proxy(&jump).is_ok());
+    }
+    #[tokio::test]
+    async fn ssh_certificate_fields_validate_and_round_trip() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("certificate-fields.sqlite"))
+            .await
+            .unwrap();
+        let mut input = SaveConnectionInput {
+            id: "certificate".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "Certificate".into(),
+            host: "example.test".into(),
+            port: 22,
+            username: "deploy".into(),
+            auth_type: "sshCertificate".into(),
+            private_key_path: Some("/tmp/id_ed25519".into()),
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        assert!(validate_connection(&input).is_err());
+        input.certificate_path = Some("/tmp/id_ed25519-cert.pub".into());
+        validate_connection(&input).unwrap();
+        db.save_connection(&input, None).await.unwrap();
+        let saved = db.get_connection("certificate").await.unwrap();
+        assert_eq!(saved.auth_type, "sshCertificate");
+        assert_eq!(
+            saved.certificate_path.as_deref(),
+            Some("/tmp/id_ed25519-cert.pub")
+        );
     }
     #[test]
     fn sensitive_history_is_detected() {
@@ -898,6 +951,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "x".repeat(64 * 1024 + 1),
             tags: vec![],
@@ -937,6 +991,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -967,6 +1022,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec!["test".into()],
@@ -997,6 +1053,7 @@ mod tests {
             username: "root".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1036,6 +1093,7 @@ mod tests {
             username: "root".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1076,6 +1134,7 @@ mod tests {
             username: "root".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1116,6 +1175,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1149,6 +1209,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1191,6 +1252,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1275,6 +1337,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1367,6 +1430,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -1421,6 +1485,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],

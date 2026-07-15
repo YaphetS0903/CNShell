@@ -24,6 +24,8 @@ struct ExportConnection {
     username: String,
     auth_type: String,
     private_key_path: Option<String>,
+    #[serde(default)]
+    certificate_path: Option<String>,
     host_key_policy: String,
     note: String,
     tags: Vec<String>,
@@ -52,6 +54,7 @@ impl ExportConnection {
             username: profile.username,
             auth_type: profile.auth_type,
             private_key_path: profile.private_key_path,
+            certificate_path: profile.certificate_path,
             host_key_policy: profile.host_key_policy,
             note: profile.note,
             tags: profile.tags,
@@ -74,6 +77,7 @@ impl ExportConnection {
             username: self.username,
             auth_type: self.auth_type,
             private_key_path: self.private_key_path,
+            certificate_path: self.certificate_path,
             host_key_policy: self.host_key_policy,
             note: self.note,
             tags: self.tags,
@@ -146,6 +150,7 @@ pub async fn sync_write(
                 ExportConnection::from_profile(profile, options.include_credentials)?;
             if !options.include_private_key_paths {
                 exported.private_key_path = None;
+                exported.certificate_path = None;
             }
             connections.push(exported);
         }
@@ -382,6 +387,7 @@ async fn import_file(
             username: connection.username.clone(),
             auth_type: connection.auth_type.clone(),
             private_key_path: connection.private_key_path.clone(),
+            certificate_path: connection.certificate_path.clone(),
             host_key_policy: connection.host_key_policy.clone(),
             note: connection.note.clone(),
             tags: connection.tags.clone(),
@@ -471,6 +477,7 @@ mod tests {
             username: "operator".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "encrypted".into(),
             tags: vec!["production".into()],
@@ -530,6 +537,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: Some("/secret/key".into()),
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -598,6 +606,7 @@ mod tests {
                 username: "root".into(),
                 auth_type: "sshAgent".into(),
                 private_key_path: None,
+                certificate_path: None,
                 host_key_policy: "strict".into(),
                 note: "".into(),
                 tags: vec![],
@@ -644,6 +653,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],
@@ -684,6 +694,7 @@ mod tests {
             username: "root".into(),
             auth_type: "password".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "".into(),
             tags: vec![],

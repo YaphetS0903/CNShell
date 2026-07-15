@@ -3,7 +3,7 @@ import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, ShieldCh
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, Folder, ProxyProfile, SaveConnectionInput } from "../../types";
+import type { AuthType, Folder, ProxyProfile, SaveConnectionInput, SshCertificateInfo } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -12,13 +12,14 @@ import { TerminalPreferencesFields } from "../settings/TerminalPreferencesFields
 export function ConnectionEditor() {
   const { connectionEditorOpen, editingConnection, closeConnectionEditor, refreshConnections, setError, settings, saveSettings } = useAppStore();
   const initial = useMemo<SaveConnectionInput>(() => editingConnection ? { ...editingConnection, credential: "" } : {
-    id: crypto.randomUUID(), folderId: null, protocol: "ssh", name: "", host: "", port: 22, username: "root", authType: "password", privateKeyPath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, credential: ""
+    id: crypto.randomUUID(), folderId: null, protocol: "ssh", name: "", host: "", port: 22, username: "root", authType: "password", privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, credential: ""
   }, [editingConnection]);
   const [form, setForm] = useState(initial);
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
   const [proxies, setProxies] = useState<ProxyProfile[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
+  const [certificateInfo, setCertificateInfo] = useState<SshCertificateInfo | null>(null);
   const [overrideEnabled,setOverrideEnabled]=useState(false);
   const [terminalOverride,setTerminalOverride]=useState(settings.terminal);
   useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
@@ -26,6 +27,7 @@ export function ConnectionEditor() {
     if (!connectionEditorOpen) return;
     setForm(initial);
     setShowSecret(false);
+    setCertificateInfo(null);
     const override=settings.terminalOverrides[initial.id];
     setOverrideEnabled(Boolean(override));
     setTerminalOverride(override??settings.terminal);
@@ -49,11 +51,26 @@ export function ConnectionEditor() {
       setError(errorMessage(error));
     }
   };
+  const chooseCertificate = async () => {
+    if (!api.isDesktop()) {
+      setError("选择 SSH Certificate 需要运行 CNshell 桌面版");
+      return;
+    }
+    try {
+      const selected = await open({ multiple: false, directory: false });
+      if (!selected) return;
+      const info = await api.inspectSshCertificate(selected);
+      change("certificatePath", selected);
+      setCertificateInfo(info);
+    } catch (error) {
+      setError(errorMessage(error));
+    }
+  };
   return <Modal title={editingConnection ? "编辑连接" : "新建连接"} onClose={closeConnectionEditor} wide>
     <form onSubmit={submit} className="connection-form">
       <div className="form-section-title"><span><ShieldCheck size={17}/>常规</span><small>连接资料仅保存在这台 Mac</small></div>
       <div className="form-grid">
-        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as "ssh"|"rdp";setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,proxyId:null,startupCommand:null,environment:{}}:{...current,protocol,port:22}); }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option></select></label>
+        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as "ssh"|"rdp";setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:{...current,protocol,port:22});setCertificateInfo(null); }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option></select></label>
         <label><span>名称</span><input required autoFocus value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="生产服务器" /></label>
         <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>
         <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>
@@ -63,9 +80,10 @@ export function ConnectionEditor() {
       {form.protocol === "ssh" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>认证</span><small>密码与私钥口令写入 macOS Keychain</small></div>
         <div className="form-grid">
-          <label><span>认证方式</span><select value={form.authType} onChange={(event) => {const authType=event.target.value as AuthType;setForm((current)=>({...current,authType,credential:"",privateKeyPath:authType==="privateKey"?current.privateKeyPath:null}));}}><option value="password">密码</option><option value="privateKey">私钥</option><option value="sshAgent">SSH Agent</option></select></label>
+          <label><span>认证方式</span><select value={form.authType} onChange={(event) => {const authType=event.target.value as AuthType;const usesKey=authType==="privateKey"||authType==="sshCertificate";setForm((current)=>({...current,authType,credential:"",privateKeyPath:usesKey?current.privateKeyPath:null,certificatePath:authType==="sshCertificate"?current.certificatePath:null}));if(authType!=="sshCertificate")setCertificateInfo(null);}}><option value="password">密码</option><option value="privateKey">私钥</option><option value="sshCertificate">SSH Certificate</option><option value="sshAgent">SSH Agent</option></select></label>
           {form.authType !== "sshAgent" && <label><span>{form.authType === "password" ? "密码" : "私钥口令"}</span><div className="password-field"><input type={showSecret ? "text" : "password"} value={form.credential ?? ""} onChange={(event) => change("credential", event.target.value)} placeholder={editingConnection?.hasCredential ? "留空以保留已保存凭据" : ""} autoComplete="new-password"/><button type="button" onClick={() => setShowSecret(!showSecret)} aria-label={showSecret ? "隐藏密码" : "显示密码"}>{showSecret ? <EyeOff size={16}/> : <Eye size={16}/>}</button></div></label>}
-          {form.authType === "privateKey" && <div className="span-2 field-group"><label htmlFor="private-key-path">私钥路径</label><div className="private-key-field"><input id="private-key-path" required value={form.privateKeyPath ?? ""} onChange={(event) => change("privateKeyPath", event.target.value)} placeholder="/Users/me/.ssh/id_ed25519" /><button type="button" className="button secondary" onClick={() => void choosePrivateKey()}><FolderOpen size={15}/>选择…</button></div><small>可选择 OpenSSH 私钥，也可直接输入绝对路径。</small></div>}
+          {(form.authType === "privateKey" || form.authType === "sshCertificate") && <div className="span-2 field-group"><label htmlFor="private-key-path">私钥路径</label><div className="private-key-field"><input id="private-key-path" required value={form.privateKeyPath ?? ""} onChange={(event) => change("privateKeyPath", event.target.value)} placeholder="/Users/me/.ssh/id_ed25519" /><button type="button" className="button secondary" aria-label="选择私钥" onClick={() => void choosePrivateKey()}><FolderOpen size={15}/>选择…</button></div><small>可选择 OpenSSH 私钥，也可直接输入绝对路径。</small></div>}
+          {form.authType === "sshCertificate" && <div className="span-2 field-group"><label htmlFor="certificate-path">证书路径</label><div className="private-key-field"><input id="certificate-path" required value={form.certificatePath ?? ""} onChange={(event) => {change("certificatePath",event.target.value);setCertificateInfo(null);}} placeholder="/Users/me/.ssh/id_ed25519-cert.pub" /><button type="button" className="button secondary" aria-label="选择证书" onClick={() => void chooseCertificate()}><FolderOpen size={15}/>选择…</button></div><small>只接受 OpenSSH 用户证书；连接时会再次检查有效期。</small>{certificateInfo&&<dl className={`certificate-info ${certificateInfo.validNow?"":"warning"}`}><div><dt>Key ID</dt><dd>{certificateInfo.keyId||"未设置"}</dd></div><div><dt>序列号</dt><dd>{certificateInfo.serial}</dd></div><div><dt>签发 CA</dt><dd>{certificateInfo.signingCa}</dd></div><div><dt>有效期</dt><dd>{certificateInfo.validFrom} 至 {certificateInfo.validTo}</dd></div><div><dt>主体</dt><dd>{certificateInfo.principals.length?certificateInfo.principals.join(", "):"未限制"}</dd></div><div><dt>状态</dt><dd>{certificateInfo.status==="valid"?"有效":certificateInfo.status==="expired"?"已过期":"尚未生效"}</dd></div></dl>}</div>}
           <label><span>主机密钥策略</span><select value={form.hostKeyPolicy} onChange={(event) => change("hostKeyPolicy", event.target.value as "strict"|"acceptNew")}><option value="strict">首次人工核对（推荐）</option><option value="acceptNew">自动信任首次密钥（有风险）</option></select></label>
           <label><span>终端编码</span><select value={form.encoding} onChange={(event) => change("encoding", event.target.value)}><option>UTF-8</option></select></label>
           <label><span>代理 / 跳板机</span><select value={form.proxyId ?? ""} onChange={(event) => change("proxyId", event.target.value || null)}><option value="">直接连接</option>{proxies.map((proxy) => <option key={proxy.id} value={proxy.id}>{proxy.name} · {proxy.type}</option>)}</select></label>

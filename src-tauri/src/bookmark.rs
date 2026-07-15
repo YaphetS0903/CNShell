@@ -8,33 +8,65 @@ pub fn bookmark_ref(connection_id: &str) -> String {
     format!("private-key-bookmark:{connection_id}")
 }
 
+pub fn certificate_bookmark_ref(connection_id: &str) -> String {
+    format!("ssh-certificate-bookmark:{connection_id}")
+}
+
 pub fn save(connection_id: &str, path: &Path) -> AppResult<()> {
+    save_value(&bookmark_ref(connection_id), path, "私钥")
+}
+
+pub fn save_certificate(connection_id: &str, path: &Path) -> AppResult<()> {
+    save_value(
+        &certificate_bookmark_ref(connection_id),
+        path,
+        "SSH Certificate",
+    )
+}
+
+fn save_value(reference: &str, path: &Path, label: &str) -> AppResult<()> {
     if !path.is_absolute() || !path.is_file() {
-        return Err(AppError::Validation(
-            "私钥必须是存在的本地绝对文件路径".into(),
-        ));
+        return Err(AppError::Validation(format!(
+            "{label}必须是存在的本地绝对文件路径"
+        )));
     }
-    let encoded = STANDARD.encode(create(path)?);
-    keyring::Entry::new(KEYCHAIN_SERVICE, &bookmark_ref(connection_id))
+    let encoded = STANDARD.encode(create(path, label)?);
+    keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&encoded)
-        .map_err(|error| AppError::Storage(format!("私钥 Bookmark 保存失败：{error}")))
+        .map_err(|error| AppError::Storage(format!("{label} Bookmark 保存失败：{error}")))
 }
 
 pub fn load(connection_id: &str) -> AppResult<Option<String>> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &bookmark_ref(connection_id))
+    load_value(&bookmark_ref(connection_id), "私钥")
+}
+
+pub fn load_certificate(connection_id: &str) -> AppResult<Option<String>> {
+    load_value(&certificate_bookmark_ref(connection_id), "SSH Certificate")
+}
+
+fn load_value(reference: &str, label: &str) -> AppResult<Option<String>> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?;
     match entry.get_password() {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(AppError::Storage(format!(
-            "私钥 Bookmark 读取失败：{error}"
+            "{label} Bookmark 读取失败：{error}"
         ))),
     }
 }
 
 pub fn restore(connection_id: &str, previous: Option<&str>) {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &bookmark_ref(connection_id));
+    restore_value(&bookmark_ref(connection_id), previous);
+}
+
+pub fn restore_certificate(connection_id: &str, previous: Option<&str>) {
+    restore_value(&certificate_bookmark_ref(connection_id), previous);
+}
+
+fn restore_value(reference: &str, previous: Option<&str>) {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, reference);
     if let Ok(entry) = entry {
         if let Some(value) = previous {
             let _ = entry.set_password(value);
@@ -45,22 +77,46 @@ pub fn restore(connection_id: &str, previous: Option<&str>) {
 }
 
 pub fn copy(source_id: &str, destination_id: &str) -> AppResult<()> {
-    let Some(value) = load(source_id)? else {
+    copy_value(
+        &bookmark_ref(source_id),
+        &bookmark_ref(destination_id),
+        "私钥",
+    )
+}
+
+pub fn copy_certificate(source_id: &str, destination_id: &str) -> AppResult<()> {
+    copy_value(
+        &certificate_bookmark_ref(source_id),
+        &certificate_bookmark_ref(destination_id),
+        "SSH Certificate",
+    )
+}
+
+fn copy_value(source: &str, destination: &str, label: &str) -> AppResult<()> {
+    let Some(value) = load_value(source, label)? else {
         return Ok(());
     };
-    keyring::Entry::new(KEYCHAIN_SERVICE, &bookmark_ref(destination_id))
+    keyring::Entry::new(KEYCHAIN_SERVICE, destination)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&value)
-        .map_err(|error| AppError::Storage(format!("私钥 Bookmark 复制失败：{error}")))
+        .map_err(|error| AppError::Storage(format!("{label} Bookmark 复制失败：{error}")))
 }
 
 pub fn delete(connection_id: &str) -> AppResult<()> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &bookmark_ref(connection_id))
+    delete_value(&bookmark_ref(connection_id), "私钥")
+}
+
+pub fn delete_certificate(connection_id: &str) -> AppResult<()> {
+    delete_value(&certificate_bookmark_ref(connection_id), "SSH Certificate")
+}
+
+fn delete_value(reference: &str, label: &str) -> AppResult<()> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(AppError::Storage(format!(
-            "私钥 Bookmark 清理失败：{error}"
+            "{label} Bookmark 清理失败：{error}"
         ))),
     }
 }
@@ -90,7 +146,23 @@ impl Drop for PrivateKeyAccess {
 }
 
 pub fn access(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
-    let Some(encoded) = load(connection_id)? else {
+    access_value(load(connection_id)?, fallback, "私钥")
+}
+
+pub fn access_certificate(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
+    access_value(
+        load_certificate(connection_id)?,
+        fallback,
+        "SSH Certificate",
+    )
+}
+
+fn access_value(
+    encoded: Option<String>,
+    fallback: &Path,
+    label: &str,
+) -> AppResult<PrivateKeyAccess> {
+    let Some(encoded) = encoded else {
         return Ok(PrivateKeyAccess {
             path: fallback.to_path_buf(),
             #[cfg(target_os = "macos")]
@@ -100,12 +172,12 @@ pub fn access(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAcces
     };
     let bytes = STANDARD
         .decode(encoded)
-        .map_err(|_| AppError::Storage("私钥 Bookmark 数据损坏，请重新选择私钥".into()))?;
-    resolve(&bytes)
+        .map_err(|_| AppError::Storage(format!("{label} Bookmark 数据损坏，请重新选择")))?;
+    resolve(&bytes, label)
 }
 
 #[cfg(target_os = "macos")]
-fn create(path: &Path) -> AppResult<Vec<u8>> {
+fn create(path: &Path, label: &str) -> AppResult<Vec<u8>> {
     use objc2_foundation::{NSString, NSURL, NSURLBookmarkCreationOptions};
     let path = NSString::from_str(&path.to_string_lossy());
     let url = NSURL::fileURLWithPath(&path);
@@ -115,16 +187,16 @@ fn create(path: &Path) -> AppResult<Vec<u8>> {
         options, None, None,
     )
     .map(|data| data.to_vec())
-    .map_err(|error| AppError::Storage(format!("无法创建私钥安全 Bookmark：{error}")))
+    .map_err(|error| AppError::Storage(format!("无法创建{label}安全 Bookmark：{error}")))
 }
 
 #[cfg(not(target_os = "macos"))]
-fn create(path: &Path) -> AppResult<Vec<u8>> {
+fn create(path: &Path, _label: &str) -> AppResult<Vec<u8>> {
     Ok(path.to_string_lossy().as_bytes().to_vec())
 }
 
 #[cfg(target_os = "macos")]
-fn resolve(bytes: &[u8]) -> AppResult<PrivateKeyAccess> {
+fn resolve(bytes: &[u8], label: &str) -> AppResult<PrivateKeyAccess> {
     use objc2::runtime::Bool;
     use objc2_foundation::{NSData, NSURL, NSURLBookmarkResolutionOptions};
     let data = NSData::with_bytes(bytes);
@@ -137,17 +209,17 @@ fn resolve(bytes: &[u8]) -> AppResult<PrivateKeyAccess> {
         )
     }
     .map_err(|error| {
-        AppError::Storage(format!("私钥 Bookmark 无法解析，请重新选择私钥：{error}"))
+        AppError::Storage(format!("{label} Bookmark 无法解析，请重新选择：{error}"))
     })?;
     if bool::from(stale) {
-        return Err(AppError::Storage(
-            "私钥 Bookmark 已过期，请重新选择私钥".into(),
-        ));
+        return Err(AppError::Storage(format!(
+            "{label} Bookmark 已过期，请重新选择"
+        )));
     }
     let path = url
         .path()
         .map(|path| PathBuf::from(path.to_string()))
-        .ok_or_else(|| AppError::Storage("私钥 Bookmark 没有有效路径，请重新选择私钥".into()))?;
+        .ok_or_else(|| AppError::Storage(format!("{label} Bookmark 没有有效路径，请重新选择")))?;
     let scoped = unsafe { url.startAccessingSecurityScopedResource() };
     Ok(PrivateKeyAccess {
         path,
@@ -157,9 +229,9 @@ fn resolve(bytes: &[u8]) -> AppResult<PrivateKeyAccess> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn resolve(bytes: &[u8]) -> AppResult<PrivateKeyAccess> {
+fn resolve(bytes: &[u8], label: &str) -> AppResult<PrivateKeyAccess> {
     let path = String::from_utf8(bytes.to_vec())
-        .map_err(|_| AppError::Storage("私钥 Bookmark 数据损坏".into()))?;
+        .map_err(|_| AppError::Storage(format!("{label} Bookmark 数据损坏")))?;
     Ok(PrivateKeyAccess {
         path: PathBuf::from(path),
         scoped: false,
@@ -184,8 +256,8 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("id_ed25519");
         std::fs::write(&key, b"private-key-fixture").unwrap();
-        let bookmark = create(&key).unwrap();
-        let access = resolve(&bookmark).unwrap();
+        let bookmark = create(&key, "私钥").unwrap();
+        let access = resolve(&bookmark, "私钥").unwrap();
         assert_eq!(
             access.path().canonicalize().unwrap(),
             key.canonicalize().unwrap()

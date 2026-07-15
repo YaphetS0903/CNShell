@@ -2,6 +2,7 @@ mod automation;
 mod backup;
 mod batch;
 mod bookmark;
+mod certificate;
 mod commands;
 mod db;
 mod diagnostics;
@@ -175,6 +176,7 @@ pub fn run() {
             commands::connection_purge,
             commands::connection_test_start,
             commands::connection_trust_host,
+            commands::ssh_certificate_inspect,
             commands::openssh_import,
             commands::openssh_generate_key,
             commands::openssh_deploy_key,

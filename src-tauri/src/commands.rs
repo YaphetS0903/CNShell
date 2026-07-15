@@ -47,6 +47,11 @@ pub async fn connection_move(
 }
 
 #[tauri::command]
+pub async fn ssh_certificate_inspect(path: String) -> AppResult<SshCertificateInfo> {
+    crate::certificate::inspect(std::path::Path::new(&path))
+}
+
+#[tauri::command]
 pub async fn connection_save(
     state: State<'_, AppState>,
     input: SaveConnectionInput,
@@ -54,6 +59,7 @@ pub async fn connection_save(
     crate::db::validate_connection(&input)?;
     state.sessions.invalidate_transport(&input.id);
     let previous_bookmark = crate::bookmark::load(&input.id)?;
+    let previous_certificate_bookmark = crate::bookmark::load_certificate(&input.id)?;
     let existing = state.db.get_connection(&input.id).await.ok();
     if input.protocol == "rdp"
         && input.credential.as_deref().unwrap_or("").is_empty()
@@ -70,11 +76,20 @@ pub async fn connection_save(
             restore_credential(&input.id, previous.as_deref());
             return Err(error);
         }
+        if let Err(error) = crate::bookmark::delete_certificate(&input.id) {
+            restore_credential(&input.id, previous.as_deref());
+            crate::bookmark::restore(&input.id, previous_bookmark.as_deref());
+            return Err(error);
+        }
         return match state.db.save_connection(&input, None).await {
             Ok(saved) => Ok(saved),
             Err(error) => {
                 restore_credential(&input.id, previous.as_deref());
                 crate::bookmark::restore(&input.id, previous_bookmark.as_deref());
+                crate::bookmark::restore_certificate(
+                    &input.id,
+                    previous_certificate_bookmark.as_deref(),
+                );
                 Err(error)
             }
         };
@@ -104,11 +119,12 @@ pub async fn connection_save(
     };
     let bookmark_unchanged = previous_bookmark.is_some()
         && existing.as_ref().is_some_and(|profile| {
-            profile.auth_type == "privateKey" && profile.private_key_path == input.private_key_path
+            matches!(profile.auth_type.as_str(), "privateKey" | "sshCertificate")
+                && profile.private_key_path == input.private_key_path
         });
     let bookmark_result = if bookmark_unchanged {
         Ok(())
-    } else if input.auth_type == "privateKey" {
+    } else if matches!(input.auth_type.as_str(), "privateKey" | "sshCertificate") {
         crate::bookmark::save(
             &input.id,
             std::path::Path::new(input.private_key_path.as_deref().unwrap_or_default()),
@@ -123,6 +139,28 @@ pub async fn connection_save(
         crate::bookmark::restore(&input.id, previous_bookmark.as_deref());
         return Err(error);
     }
+    let certificate_unchanged = previous_certificate_bookmark.is_some()
+        && existing.as_ref().is_some_and(|profile| {
+            profile.auth_type == "sshCertificate"
+                && profile.certificate_path == input.certificate_path
+        });
+    let certificate_result = if certificate_unchanged {
+        Ok(())
+    } else if input.auth_type == "sshCertificate" {
+        let path = std::path::Path::new(input.certificate_path.as_deref().unwrap_or_default());
+        crate::certificate::inspect(path)
+            .and_then(|_| crate::bookmark::save_certificate(&input.id, path))
+    } else {
+        crate::bookmark::delete_certificate(&input.id)
+    };
+    if let Err(error) = certificate_result {
+        if secret.is_some() || auth_changed {
+            restore_credential(&input.id, previous.as_deref());
+        }
+        crate::bookmark::restore(&input.id, previous_bookmark.as_deref());
+        crate::bookmark::restore_certificate(&input.id, previous_certificate_bookmark.as_deref());
+        return Err(error);
+    }
     let saved = match state
         .db
         .save_connection(&input, credential_ref.as_deref())
@@ -134,6 +172,10 @@ pub async fn connection_save(
                 restore_credential(&input.id, previous.as_deref());
             }
             crate::bookmark::restore(&input.id, previous_bookmark.as_deref());
+            crate::bookmark::restore_certificate(
+                &input.id,
+                previous_certificate_bookmark.as_deref(),
+            );
             return Err(error);
         }
     };
@@ -162,6 +204,7 @@ fn duplicate_input(source: ConnectionProfile, new_id: String) -> AppResult<SaveC
         username: source.username,
         auth_type: source.auth_type,
         private_key_path: source.private_key_path,
+        certificate_path: source.certificate_path,
         host_key_policy: source.host_key_policy,
         note: source.note,
         tags: source.tags,
@@ -198,10 +241,16 @@ pub async fn connection_duplicate(
         let _ = state.db.remove_inserted_connection(&new_id).await;
         return Err(error);
     }
+    if let Err(error) = crate::bookmark::copy_certificate(&id, &new_id) {
+        let _ = crate::bookmark::delete(&new_id);
+        let _ = state.db.remove_inserted_connection(&new_id).await;
+        return Err(error);
+    }
     let secret = match crate::ssh::load_credential(&id) {
         Ok(secret) => secret,
         Err(error) => {
             let _ = crate::bookmark::delete(&new_id);
+            let _ = crate::bookmark::delete_certificate(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             return Err(error);
         }
@@ -213,6 +262,7 @@ pub async fn connection_duplicate(
         Ok(reference) => reference,
         Err(error) => {
             let _ = crate::bookmark::delete(&new_id);
+            let _ = crate::bookmark::delete_certificate(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             return Err(error);
         }
@@ -226,6 +276,7 @@ pub async fn connection_duplicate(
         Err(error) => {
             let _ = crate::ssh::delete_credential(&new_id);
             let _ = crate::bookmark::delete(&new_id);
+            let _ = crate::bookmark::delete_certificate(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             Err(error)
         }
@@ -246,9 +297,15 @@ pub async fn connection_purge(state: State<'_, AppState>, id: String) -> AppResu
     state.sessions.invalidate_transport(&id);
     let previous = crate::ssh::load_credential(&id)?;
     let previous_bookmark = crate::bookmark::load(&id)?;
+    let previous_certificate_bookmark = crate::bookmark::load_certificate(&id)?;
     crate::ssh::delete_credential(&id)?;
     if let Err(error) = crate::bookmark::delete(&id) {
         restore_credential(&id, previous.as_deref());
+        return Err(error);
+    }
+    if let Err(error) = crate::bookmark::delete_certificate(&id) {
+        restore_credential(&id, previous.as_deref());
+        crate::bookmark::restore(&id, previous_bookmark.as_deref());
         return Err(error);
     }
     match state.db.purge_connection(&id).await {
@@ -256,6 +313,7 @@ pub async fn connection_purge(state: State<'_, AppState>, id: String) -> AppResu
         Err(error) => {
             restore_credential(&id, previous.as_deref());
             crate::bookmark::restore(&id, previous_bookmark.as_deref());
+            crate::bookmark::restore_certificate(&id, previous_certificate_bookmark.as_deref());
             Err(error)
         }
     }
@@ -1229,6 +1287,7 @@ mod tests {
             username: "root".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: "note".into(),
             tags: vec!["tag".into()],

@@ -33,7 +33,7 @@ describe("ConnectionEditor", () => {
   it("fills a persisted connection without exposing its credential", async () => {
     const connection: ConnectionProfile = {
       id: "persisted", folderId: "child", protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
-      username: "ubuntu", authType: "password", privateKeyPath: null, hostKeyPolicy: "strict", note: "验收", tags: ["云主机"],
+      username: "ubuntu", authType: "password", privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict", note: "验收", tags: ["云主机"],
       encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, hasCredential: true, createdAt: "", updatedAt: "", lastConnectedAt: null
     };
     useAppStore.setState({ connectionEditorOpen: true, editingConnection: connection });
@@ -56,11 +56,39 @@ describe("ConnectionEditor", () => {
     render(<ConnectionEditor/>);
 
     await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "privateKey");
-    await user.click(screen.getByRole("button", { name: "选择…" }));
+    await user.click(screen.getByRole("button", { name: "选择私钥" }));
 
     expect(dialog.open).toHaveBeenCalledWith({ multiple: false, directory: false });
     expect(screen.getByRole("textbox", { name: "私钥路径" })).toHaveValue("/Users/test/.ssh/id_ed25519");
   });
 
-  it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
+  it("validates and previews an OpenSSH user certificate", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "isDesktop").mockReturnValue(true);
+    dialog.open.mockResolvedValue("/Users/test/.ssh/id_ed25519-cert.pub");
+    vi.spyOn(api, "inspectSshCertificate").mockResolvedValue({
+      path: "/Users/test/.ssh/id_ed25519-cert.pub",
+      certificateType: "ssh-ed25519-cert-v01@openssh.com user certificate",
+      keyId: "deploy-2026",
+      serial: "42",
+      signingCa: "ED25519 SHA256:ca",
+      validFrom: "2026-07-01T00:00:00",
+      validTo: "2026-08-01T00:00:00",
+      principals: ["ubuntu", "deploy"],
+      validNow: true,
+      status: "valid",
+    });
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "sshCertificate");
+    await user.click(screen.getByRole("button", { name: "选择证书" }));
+
+    expect(api.inspectSshCertificate).toHaveBeenCalledWith("/Users/test/.ssh/id_ed25519-cert.pub");
+    expect(screen.getByRole("textbox", { name: "证书路径" })).toHaveValue("/Users/test/.ssh/id_ed25519-cert.pub");
+    expect(screen.getByText("deploy-2026")).toBeInTheDocument();
+    expect(screen.getByText("ubuntu, deploy")).toBeInTheDocument();
+    expect(screen.getByText("有效")).toBeInTheDocument();
+  });
+
+  it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null, certificatePath: null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
 });

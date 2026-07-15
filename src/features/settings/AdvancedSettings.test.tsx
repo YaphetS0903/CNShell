@@ -8,7 +8,7 @@ describe("AdvancedSettings", () => {
   it("maps an SSH jump proxy to a connection instead of hidden host fields", async () => {
     const connection: ConnectionProfile = {
       id: "jump", folderId: null, protocol: "ssh", name: "跳板服务器", host: "jump.example", port: 22, username: "ops",
-      authType: "sshAgent", privateKeyPath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8",
+      authType: "sshAgent", privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8",
       startupCommand: null, proxyId: null, environment: {}, hasCredential: false, createdAt: "", updatedAt: "", lastConnectedAt: null
     };
     const user = userEvent.setup();

@@ -20,6 +20,7 @@ export interface ConnectionProfile {
   username: string;
   authType: string;
   privateKeyPath: string | null;
+  certificatePath: string | null;
   hostKeyPolicy: string;
   note: string;
   tags: string[];
@@ -43,6 +44,7 @@ export interface SaveConnectionInput {
   username: string;
   authType: string;
   privateKeyPath?: string | null;
+  certificatePath?: string | null;
   hostKeyPolicy: string;
   note: string;
   tags: string[];
@@ -111,6 +113,19 @@ export interface ConnectionDiagnostic {
   latencyMs?: number | null;
   fingerprint?: string | null;
   algorithm?: string | null;
+}
+
+export interface SshCertificateInfo {
+  path: string;
+  certificateType: string;
+  keyId: string;
+  serial: string;
+  signingCa: string;
+  validFrom: string;
+  validTo: string;
+  principals: string[];
+  validNow: boolean;
+  status: string;
 }
 
 export interface TerminalSession {

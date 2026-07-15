@@ -5,6 +5,7 @@
 - SSH Agent 转发默认关闭并按连接保存。远端 root 或被入侵进程可能借用本机 Agent 签名，因此只应对完全可信主机启用。
 - SCP 降级复用 CNshell 已验证的 SSH Session，不启动 `sshpass`、不把密码放入命令参数，也不关闭主机指纹校验。
 - Mosh 复用相同的 SSH 认证与主机指纹校验启动远端服务；一次性 Mosh 密钥仅存在于内存和受管客户端环境中，不进入进程参数、数据库、日志或前端 IPC。内置客户端由固定哈希的 GPLv3 Mosh 1.4.0 与 BSD-3-Clause protobuf 21.12 源码构建。
+- SSH Certificate 的私钥与证书文件分别使用只读 security-scoped Bookmark；私钥口令只存 Keychain。连接前验证证书是 OpenSSH 用户证书且处于有效期内，不接受主机证书，也不提供 CA 私钥导入或签发入口。
 - 自动化仅接受固定步骤 Schema，限制步骤数、超时、正则长度和路径；不开放 Python、Shell 插件或任意本地文件权限。
 - 同步包在本机使用 Argon2id 派生密钥和 AES-256-GCM 加密。同步服务只接触密文；口令不保存，主机、私钥路径和凭据分别授权。
 - X11 在安全能力不完整时保持禁用。Zmodem 与 Mosh 只有在依赖完整且通过协议握手后才启用，检测到可执行文件本身不代表连接成功。

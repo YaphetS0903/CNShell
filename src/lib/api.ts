@@ -21,6 +21,7 @@ import type {
   RemoteFile,
   SessionLogStatus,
   SaveConnectionInput,
+  SshCertificateInfo,
   SystemInfo,
   SyncOptions,
   SyncResult,
@@ -52,6 +53,7 @@ const demoConnection: ConnectionProfile = {
   username: "developer",
   authType: "sshAgent",
   privateKeyPath: null,
+  certificatePath: null,
   hostKeyPolicy: "strict",
   note: "连接到真实服务器后显示实时数据",
   tags: ["Demo"],
@@ -93,6 +95,10 @@ export const api = {
     const saved: ConnectionProfile = { ...input, hasCredential: Boolean(input.credential), createdAt: now, updatedAt: now, lastConnectedAt: null };
     browserConnections = [...browserConnections.filter((item) => item.id !== saved.id), saved];
     return saved;
+  },
+  async inspectSshCertificate(path: string): Promise<SshCertificateInfo> {
+    if (isTauri()) return invoke("ssh_certificate_inspect", { path });
+    throw new Error("SSH Certificate 检查需要运行 CNshell 桌面版");
   },
   async duplicateConnection(id:string,newId:string):Promise<ConnectionProfile>{return invoke("connection_duplicate",{id,newId});},
   async deleteConnection(id: string): Promise<void> {

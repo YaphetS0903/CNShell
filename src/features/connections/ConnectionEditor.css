@@ -17,3 +17,31 @@
   color: var(--faint);
   font-size: 9px;
 }
+
+.certificate-info {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px 16px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+}
+
+.certificate-info div {
+  min-width: 0;
+}
+
+.certificate-info dt {
+  color: var(--faint);
+}
+
+.certificate-info dd {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.certificate-info.warning div:last-child dd {
+  color: var(--warning);
+}

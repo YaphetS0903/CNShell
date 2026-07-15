@@ -300,6 +300,7 @@ mod tests {
             username: "test".into(),
             auth_type: "sshAgent".into(),
             private_key_path: None,
+            certificate_path: None,
             host_key_policy: "strict".into(),
             note: String::new(),
             tags: vec![],
