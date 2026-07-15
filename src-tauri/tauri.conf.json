@@ -38,6 +38,7 @@
     "resources": {
       "resources/freerdp/": "freerdp/",
       "resources/mosh/": "mosh/",
+      "resources/kermit/": "kermit/",
       "resources/licenses/": "licenses/"
     },
     "macOS": { "minimumSystemVersion": "13.0" }

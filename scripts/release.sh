@@ -89,6 +89,26 @@ MOSH_ARCHITECTURES="$(lipo -archs "$MOSH_CLIENT")"
 "$MOSH_CLIENT" -c >/dev/null
 codesign --verify --strict --verbose=2 "$MOSH_CLIENT"
 
+KERMIT_HELPER="$APP_PATH/Contents/Resources/kermit/gkermit"
+[[ -x "$KERMIT_HELPER" ]] || {
+  echo "发布失败：应用未包含内置 G-Kermit helper。" >&2
+  exit 1
+}
+KERMIT_ARCHITECTURES="$(lipo -archs "$KERMIT_HELPER")"
+[[ " $KERMIT_ARCHITECTURES " == *" arm64 "* && " $KERMIT_ARCHITECTURES " == *" x86_64 "* ]] || {
+  echo "发布失败：G-Kermit helper 不是 arm64 + x86_64 universal binary：$KERMIT_ARCHITECTURES" >&2
+  exit 1
+}
+[[ -s "$APP_PATH/Contents/Resources/kermit/licenses/G-Kermit-GPL-2.0.txt" ]] || {
+  echo "发布失败：G-Kermit GPLv2 许可证缺失。" >&2
+  exit 1
+}
+KERMIT_SOURCE="$APP_PATH/Contents/Resources/kermit/source/gku201.tar.gz"
+[[ -s "$KERMIT_SOURCE" ]] || { echo "发布失败：G-Kermit 对应源码缺失。" >&2; exit 1; }
+echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $KERMIT_SOURCE" | shasum -a 256 -c - >/dev/null
+"$KERMIT_HELPER" -h 2>&1 | rg -Fq "G-Kermit 2.01"
+codesign --verify --strict --verbose=2 "$KERMIT_HELPER"
+
 [[ -s "$APP_PATH/Contents/Resources/licenses/serialport-MPL-2.0.txt" ]] || {
   echo "发布失败：serialport-rs MPL-2.0 许可证缺失。" >&2
   exit 1

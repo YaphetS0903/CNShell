@@ -13,6 +13,8 @@ const requiredDeliverables = [
   "docs/ACCEPTANCE.md",
   "docs/THIRD_PARTY_NOTICES.md",
   "src-tauri/resources/licenses/serialport-MPL-2.0.txt",
+  "src-tauri/resources/kermit/licenses/G-Kermit-GPL-2.0.txt",
+  "src-tauri/resources/kermit/THIRD_PARTY_NOTICES.md",
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
 ];
@@ -42,5 +44,16 @@ describe("PLAN deliverables", () => {
     expect(guide).toContain("## 卸载");
     expect(guide).toContain("Keychain");
     expect(guide).toContain("Application Support/com.cnshell.desktop");
+  });
+
+  it("pins and verifies the bundled G-Kermit binary, GPL license, and source", () => {
+    const build = readFileSync(resolve("scripts/build-kermit-sidecar.sh"), "utf8");
+    const release = readFileSync(resolve("scripts/release.sh"), "utf8");
+
+    expect(build).toContain("19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd");
+    expect(build).toContain("G-Kermit-GPL-2.0.txt");
+    expect(build).toContain("source/$ARCHIVE");
+    expect(release).toContain("G-Kermit helper 不是 arm64 + x86_64 universal binary");
+    expect(release).toContain("G-Kermit 对应源码缺失");
   });
 });

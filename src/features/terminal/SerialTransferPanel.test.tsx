@@ -30,6 +30,7 @@ describe("SerialTransferPanel", () => {
     expect(mode).toHaveValue("xmodem1k");
     await user.selectOptions(mode, "ymodem");
     expect(screen.getByText("批量与文件名")).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Kermit Batch" })).toBeInTheDocument();
     listener?.({
       id: "transfer",
       sessionId: session.id,

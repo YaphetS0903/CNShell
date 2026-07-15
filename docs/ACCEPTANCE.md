@@ -29,6 +29,7 @@
 | SQLite 历史迁移与失败前备份 | 通过 | `src-tauri/src/db.rs`、`src-tauri/migrations/` | v1–v4 无损升级、任务恢复、数据库 `.backup` 测试通过 |
 | 本地 Shell / Telnet / Serial 基线 | 部分（代码与回环/枚举测试） | `src-tauri/src/local_shell.rs`、`src-tauri/src/telnet.rs`、`src-tauri/src/serial.rs`、连接编辑器 | 本地 PTY 和 Telnet 生命周期已通过；Serial 已完成设备枚举、参数校验、独占打开、DTR/RTS、输入、状态事件和同路径拔出重连代码与测试。当前没有实体串口设备，未声明真实网络设备、USB 转串口拔出/重插和硬件流控验收通过。 |
 | Serial X/Ymodem | 部分（协议核心与双端回环通过） | `src-tauri/src/xymodem.rs`、`src-tauri/src/serial.rs`、`src/features/terminal/SerialTransferPanel.tsx` | Xmodem 128/1K、Checksum/CRC、Ymodem Batch、双 EOT、重复块、CRC 拒绝、双 CAN、进度、单会话互斥、原子下载、失败清理、50 GB/256 文件边界和远端路径隔离已由 Rust/前端测试覆盖。本机没有 `sx/rx/sb/rb` 和实体串口设备，未声明外部实现或硬件互操作通过。 |
+| Serial Kermit | 部分（官方 helper 管道互操作通过） | `src-tauri/src/kermit.rs`、`scripts/build-kermit-sidecar.sh`、Serial 文件面板 | 官方 G-Kermit 2.01 已由固定源码 SHA-256 构建为 macOS 13+ universal sidecar，只链接系统库并随包附 GPL-2.0 与对应源码；两个独立 helper 完成 12,345 字节二进制互传。受管桥接、取消、环境清空、接收隔离、普通文件/数量/大小校验、跨磁盘临时复制、fsync、原子改名和冲突重命名已有测试。实体串口与第三方 Kermit 设备仍待真机验收。 |
 
 ## 2. 自动化证据
 

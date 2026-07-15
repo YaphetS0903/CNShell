@@ -9,6 +9,7 @@ mod db;
 mod diagnostics;
 mod error;
 mod external_edit;
+mod kermit;
 mod local_shell;
 mod models;
 mod monitor;

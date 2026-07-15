@@ -167,6 +167,11 @@ impl SerialManager {
         paths: Vec<String>,
     ) -> AppResult<SerialTransferEvent> {
         validate_transfer_request(protocol, direction, &paths)?;
+        if protocol == "kermit" && !crate::kermit::available() {
+            return Err(AppError::Unavailable(
+                "内置 G-Kermit helper 缺失或损坏，请重新安装 CNshell".into(),
+            ));
+        }
         let session = self
             .sessions
             .lock()
@@ -276,7 +281,7 @@ impl SerialManager {
 }
 
 fn validate_transfer_request(protocol: &str, direction: &str, paths: &[String]) -> AppResult<()> {
-    if !["xmodem", "xmodem1k", "xmodemChecksum", "ymodem"].contains(&protocol)
+    if !["xmodem", "xmodem1k", "xmodemChecksum", "ymodem", "kermit"].contains(&protocol)
         || !["upload", "download"].contains(&direction)
         || paths.is_empty()
         || paths.len() > 256
@@ -286,7 +291,7 @@ fn validate_transfer_request(protocol: &str, direction: &str, paths: &[String]) 
     {
         return Err(AppError::Validation("X/Ymodem 传输参数无效".into()));
     }
-    if protocol != "ymodem" && paths.len() != 1 {
+    if !["ymodem", "kermit"].contains(&protocol) && paths.len() != 1 {
         return Err(AppError::Validation("Xmodem 每次只能传输一个文件".into()));
     }
     if direction == "download" && paths.len() != 1 {
@@ -305,10 +310,6 @@ fn run_transfer(
     paths: Vec<String>,
 ) {
     let _ = port.set_timeout(Duration::from_secs(1));
-    let mut device = CancellablePort {
-        port,
-        cancelled: cancelled.clone(),
-    };
     let path_bufs = paths
         .iter()
         .map(std::path::PathBuf::from)
@@ -335,40 +336,49 @@ fn run_transfer(
         drop(current);
         let _ = progress_app.emit("serial-transfer", emitted);
     };
-    let result = match (protocol, direction) {
-        ("xmodem", "upload") => {
-            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
+    let result = if protocol == "kermit" {
+        crate::kermit::transfer(port, cancelled.clone(), direction, &path_bufs, progress)
+    } else {
+        let mut device = CancellablePort {
+            port,
+            cancelled: cancelled.clone(),
+        };
+        let result = match (protocol, direction) {
+            ("xmodem", "upload") => {
+                crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
+            }
+            ("xmodem1k", "upload") => {
+                crate::xymodem::xmodem_send(&mut device, &path_bufs[0], true, progress)
+            }
+            ("xmodemChecksum", "upload") => {
+                crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
+            }
+            ("xmodem", "download") | ("xmodem1k", "download") => crate::xymodem::xmodem_receive(
+                &mut device,
+                &path_bufs[0],
+                crate::xymodem::XmodemChecksum::Crc16,
+                progress,
+            ),
+            ("xmodemChecksum", "download") => crate::xymodem::xmodem_receive(
+                &mut device,
+                &path_bufs[0],
+                crate::xymodem::XmodemChecksum::Checksum,
+                progress,
+            ),
+            ("ymodem", "upload") => crate::xymodem::ymodem_send(&mut device, &path_bufs, progress),
+            ("ymodem", "download") => {
+                crate::xymodem::ymodem_receive(&mut device, &path_bufs[0], progress)
+            }
+            _ => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "unsupported transfer mode",
+            )),
+        };
+        if result.is_err() {
+            device.cancel_peer();
         }
-        ("xmodem1k", "upload") => {
-            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], true, progress)
-        }
-        ("xmodemChecksum", "upload") => {
-            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
-        }
-        ("xmodem", "download") | ("xmodem1k", "download") => crate::xymodem::xmodem_receive(
-            &mut device,
-            &path_bufs[0],
-            crate::xymodem::XmodemChecksum::Crc16,
-            progress,
-        ),
-        ("xmodemChecksum", "download") => crate::xymodem::xmodem_receive(
-            &mut device,
-            &path_bufs[0],
-            crate::xymodem::XmodemChecksum::Checksum,
-            progress,
-        ),
-        ("ymodem", "upload") => crate::xymodem::ymodem_send(&mut device, &path_bufs, progress),
-        ("ymodem", "download") => {
-            crate::xymodem::ymodem_receive(&mut device, &path_bufs[0], progress)
-        }
-        _ => Err(std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "unsupported transfer mode",
-        )),
+        result
     };
-    if result.is_err() {
-        device.cancel_peer();
-    }
     let mut current = event.lock();
     if cancelled.load(Ordering::Acquire) {
         current.status = "cancelled".into();

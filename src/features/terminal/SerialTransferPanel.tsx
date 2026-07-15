@@ -6,7 +6,7 @@ import { errorMessage, formatBytes } from "../../lib/format";
 import type { SerialTransferEvent, TerminalSession } from "../../types";
 import "./SerialTransferPanel.css";
 
-type Mode = "xmodem" | "xmodem1k" | "xmodemChecksum" | "ymodem";
+type Mode = "xmodem" | "xmodem1k" | "xmodemChecksum" | "ymodem" | "kermit";
 
 export function SerialTransferPanel({
   session,
@@ -40,14 +40,14 @@ export function SerialTransferPanel({
       if (direction === "upload") {
         selected = await open({
           directory: false,
-          multiple: mode === "ymodem",
-          title: mode === "ymodem" ? "选择 Ymodem 上传文件" : "选择 Xmodem 上传文件",
+          multiple: mode === "ymodem" || mode === "kermit",
+          title: mode === "kermit" ? "选择 Kermit 上传文件" : mode === "ymodem" ? "选择 Ymodem 上传文件" : "选择 Xmodem 上传文件",
         });
-      } else if (mode === "ymodem") {
+      } else if (mode === "ymodem" || mode === "kermit") {
         selected = await open({
           directory: true,
           multiple: false,
-          title: "选择 Ymodem 下载目录",
+          title: mode === "kermit" ? "选择 Kermit 下载目录" : "选择 Ymodem 下载目录",
         });
       } else {
         selected = await save({
@@ -80,8 +80,8 @@ export function SerialTransferPanel({
     <section className="serial-transfer-panel" aria-label="Serial 文件传输">
       <header>
         <div>
-          <strong>X/Ymodem</strong>
-          <span>{mode === "ymodem" ? "批量与文件名" : "单文件"}</span>
+          <strong>Serial 文件传输</strong>
+          <span>{mode === "ymodem" || mode === "kermit" ? "批量与文件名" : "单文件"}</span>
         </div>
         <label>
           <span>协议模式</span>
@@ -95,6 +95,7 @@ export function SerialTransferPanel({
             <option value="xmodem">Xmodem 128 + CRC</option>
             <option value="xmodemChecksum">Xmodem 128 + Checksum</option>
             <option value="ymodem">Ymodem Batch</option>
+            <option value="kermit">Kermit Batch</option>
           </select>
         </label>
       </header>
