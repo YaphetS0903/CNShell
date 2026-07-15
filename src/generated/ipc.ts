@@ -224,6 +224,7 @@ export interface ProtocolCapability {
 export interface ConnectionProtocolOptions {
   connectionId: string;
   agentForwarding: boolean;
+  x11Enabled: boolean;
   moshEnabled: boolean;
   moshPortStart: number;
   moshPortEnd: number;

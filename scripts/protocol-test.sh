@@ -31,6 +31,9 @@ chmod 600 "$TMP/authorized_keys"
   -o PasswordAuthentication=no \
   -o KbdInteractiveAuthentication=no \
   -o PubkeyAuthentication=yes \
+  -o X11Forwarding=yes \
+  -o X11UseLocalhost=yes \
+  -o XAuthLocation=/usr/bin/true \
   -o UsePAM=no \
   -o PermitRootLogin=no \
   -o "AllowUsers=$USER_NAME" &

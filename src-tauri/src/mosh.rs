@@ -565,6 +565,7 @@ mod tests {
         }))
         .unwrap();
         assert!(!options.mosh_enabled);
+        assert!(!options.x11_enabled);
         assert_eq!(options.mosh_port_start, DEFAULT_PORT_START);
         assert_eq!(options.mosh_port_end, DEFAULT_PORT_END);
     }

@@ -190,7 +190,9 @@ pub struct TerminalHandle {
     pub cols: u32,
     pub rows: u32,
     pub agent_forwarding: bool,
+    pub x11_enabled: bool,
     pub zmodem: ZmodemState,
+    _x11_forwarder: Option<crate::x11::X11Forwarder>,
     transport: Option<TransportLease>,
 }
 
@@ -976,12 +978,21 @@ pub async fn open_terminal(
     rows: u32,
     logs: SessionLogManager,
     agent_forwarding: bool,
+    x11_enabled: bool,
 ) -> AppResult<TerminalSession> {
     validate_terminal_size(cols, rows)?;
     let transport = manager.acquire_transport(&db, &profile, false).await?;
     let profile_clone = profile.clone();
     let handle = tokio::task::spawn_blocking(move || {
-        open_pty(transport, profile_clone, cols, rows, true, agent_forwarding)
+        open_pty(
+            transport,
+            profile_clone,
+            cols,
+            rows,
+            true,
+            agent_forwarding,
+            x11_enabled,
+        )
     })
     .await
     .map_err(|error| AppError::Internal(error.to_string()))??;
@@ -1006,6 +1017,7 @@ fn open_pty(
     rows: u32,
     run_startup: bool,
     agent_forwarding: bool,
+    x11_enabled: bool,
 ) -> AppResult<TerminalHandle> {
     let connected = transport.connected();
     let mut channel = connected.session.channel_session()?;
@@ -1018,6 +1030,11 @@ fn open_pty(
     for (key, value) in &profile.environment {
         channel.setenv(key, value)?;
     }
+    let x11_forwarder = if x11_enabled {
+        Some(crate::x11::enable(&connected.session, &mut channel)?)
+    } else {
+        None
+    };
     channel.shell()?;
     if run_startup {
         if let Some(command) = profile.startup_command.as_deref() {
@@ -1038,7 +1055,9 @@ fn open_pty(
         cols,
         rows,
         agent_forwarding,
+        x11_enabled,
         zmodem: ZmodemState::default(),
+        _x11_forwarder: x11_forwarder,
         transport: Some(transport),
     })
 }
@@ -1122,13 +1141,14 @@ fn spawn_reader(
                 if manager.get(&session_id).is_err() {
                     break;
                 }
-                let (profile, cols, rows, agent_forwarding) = {
+                let (profile, cols, rows, agent_forwarding, x11_enabled) = {
                     let terminal = handle.lock();
                     (
                         terminal.profile.clone(),
                         terminal.cols,
                         terminal.rows,
                         terminal.agent_forwarding,
+                        terminal.x11_enabled,
                     )
                 };
                 fail_zmodem_for_disconnect(&app, &session_id, &handle);
@@ -1163,6 +1183,7 @@ fn spawn_reader(
                                     rows,
                                     false,
                                     agent_forwarding,
+                                    x11_enabled,
                                 )
                             })
                             .await
@@ -2171,7 +2192,7 @@ mod tests {
         assert_eq!(output.len(), 1048586);
         let terminal_pool = TransportPool::default();
         let transport = terminal_pool.acquire(&db, &profile, false).await.unwrap();
-        let mut pty = open_pty(transport, profile.clone(), 120, 36, false, false).unwrap();
+        let mut pty = open_pty(transport, profile.clone(), 120, 36, false, false, false).unwrap();
         write_channel_input(&mut pty.channel, b"printf 'CNSHELL_PTY_INPUT_OK\\n'\n").unwrap();
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut pty_output = Vec::new();
@@ -2550,6 +2571,64 @@ mod tests {
         assert_eq!(info.key_id, "cnshell-certificate-test");
         assert!(info.principals.contains(&profile.username));
     }
+
+    #[tokio::test]
+    async fn live_ssh_x11_request_sets_remote_display() {
+        let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let key = std::env::var("CNSHELL_TEST_SSH_KEY").expect("CNSHELL_TEST_SSH_KEY");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("CNSHELL_TEST_SSH_USER");
+        let profile = ConnectionProfile {
+            id: format!("x11-request-{}", Uuid::new_v4()),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "x11 request".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username,
+            auth_type: "privateKey".into(),
+            private_key_path: Some(key),
+            certificate_path: None,
+            host_key_policy: "acceptNew".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            has_credential: false,
+            created_at: String::new(),
+            updated_at: String::new(),
+            last_connected_at: None,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("x11-request.sqlite"))
+            .await
+            .unwrap();
+        let connected = verified_connection(&db, &profile, false).await.unwrap();
+        let receiver = connected.session.x11_channel_receiver().unwrap();
+        let mut channel = connected.session.channel_session().unwrap();
+        channel
+            .request_pty("xterm-256color", None, Some((80, 24, 0, 0)))
+            .unwrap();
+        channel
+            .request_x11(
+                false,
+                Some("MIT-MAGIC-COOKIE-1"),
+                Some("00112233445566778899aabbccddeeff"),
+                0,
+            )
+            .unwrap();
+        channel
+            .exec("test -n \"$DISPLAY\" && printf CNSHELL_X11_REQUEST_OK")
+            .unwrap();
+        let mut output = String::new();
+        channel.read_to_string(&mut output).unwrap();
+        channel.wait_close().unwrap();
+        assert_eq!(output, "CNSHELL_X11_REQUEST_OK");
+        drop(receiver);
+    }
     #[tokio::test]
     async fn live_ssh_password_authentication_and_rejection() {
         let Ok(port) = std::env::var("CNSHELL_TEST_PASSWORD_SSH_PORT") else {
@@ -2757,7 +2836,7 @@ mod tests {
             .acquire_transport(&db, &profile, false)
             .await
             .unwrap();
-        let handle = open_pty(transport, profile.clone(), 80, 24, false, false).unwrap();
+        let handle = open_pty(transport, profile.clone(), 80, 24, false, false, false).unwrap();
         let session_id = "directory-transfer-session".to_string();
         manager.insert(session_id.clone(), handle);
         let created_file = format!("/tmp/cnshell-created-{}.txt", Uuid::new_v4());
@@ -2996,14 +3075,14 @@ mod tests {
         let exclusive = pool.acquire(&db, &profile, false).await.unwrap();
         assert_eq!(pool.created(), 5);
         let mut first_terminal =
-            open_pty(exclusive, profile.clone(), 80, 24, false, false).unwrap();
+            open_pty(exclusive, profile.clone(), 80, 24, false, false, false).unwrap();
         let _ = first_terminal.channel.send_eof();
         let _ = first_terminal.channel.close();
         drop(first_terminal);
         let next_exclusive = pool.acquire(&db, &profile, false).await.unwrap();
         assert_eq!(pool.created(), 6);
         let mut next_terminal =
-            open_pty(next_exclusive, profile.clone(), 80, 24, false, false).unwrap();
+            open_pty(next_exclusive, profile.clone(), 80, 24, false, false, false).unwrap();
         write_channel_input(&mut next_terminal.channel, b"exit\n").unwrap();
         let _ = next_terminal.channel.send_eof();
         let _ = next_terminal.channel.close();

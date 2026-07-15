@@ -391,6 +391,7 @@ pub async fn protocol_options_get(
         .unwrap_or(ConnectionProtocolOptions {
             connection_id,
             agent_forwarding: false,
+            x11_enabled: false,
             mosh_enabled: false,
             mosh_port_start: crate::mosh::default_ports().0,
             mosh_port_end: crate::mosh::default_ports().1,
@@ -408,6 +409,7 @@ pub async fn protocol_options_save(
     }
     crate::protocols::validate_options(
         options.agent_forwarding,
+        options.x11_enabled,
         options.mosh_enabled,
         options.mosh_port_start,
         options.mosh_port_end,
@@ -483,6 +485,7 @@ pub async fn terminal_open(
         .unwrap_or(ConnectionProtocolOptions {
             connection_id: connection_id.clone(),
             agent_forwarding: false,
+            x11_enabled: false,
             mosh_enabled: false,
             mosh_port_start: crate::mosh::default_ports().0,
             mosh_port_end: crate::mosh::default_ports().1,
@@ -512,6 +515,7 @@ pub async fn terminal_open(
             rows,
             state.logs.clone(),
             options.agent_forwarding,
+            options.x11_enabled,
         )
         .await?
     };

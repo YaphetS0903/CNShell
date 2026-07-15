@@ -282,6 +282,8 @@ pub struct ConnectionProtocolOptions {
     pub connection_id: String,
     pub agent_forwarding: bool,
     #[serde(default)]
+    pub x11_enabled: bool,
+    #[serde(default)]
     pub mosh_enabled: bool,
     #[serde(default = "default_mosh_port_start")]
     pub mosh_port_start: u16,

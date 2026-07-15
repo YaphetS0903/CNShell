@@ -49,5 +49,8 @@ portable-pty = "0.9"
 objc2 = "0.6"
 objc2-foundation = { version = "0.3", features = ["NSData", "NSError", "NSString", "NSURL"] }
 
+[patch.crates-io]
+ssh2 = { path = "vendor/ssh2" }
+
 [dev-dependencies]
 tempfile = "3"

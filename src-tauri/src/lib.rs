@@ -19,6 +19,7 @@ mod sftp;
 mod ssh;
 mod task;
 mod tunnel;
+mod x11;
 mod zmodem;
 
 use batch::BatchManager;

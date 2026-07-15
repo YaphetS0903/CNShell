@@ -136,7 +136,8 @@
 
 - SSH Certificate 已完成：连接模型与数据库迁移、私钥/证书双安全 Bookmark、OpenSSH 用户证书解析、CA/Key ID/序列号/主体/有效期展示、过期与未生效阻断、备份/复制/清理以及 `libssh2` 证书认证。
 - 本机真实 OpenSSH `sshd` 已使用临时 Ed25519 CA、`TrustedUserCAKeys` 和短期用户证书完成认证及命令执行；测试 CA、密钥、证书和服务进程均由夹具退出时清理。
-- X11、FIDO2 专用交互和 Touch ID Vault 解锁仍在本阶段后续范围，不能因 SSH Agent 已支持普通身份而标记完成。
+- X11 核心实现已完成：按连接默认关闭的真实 `x11-req`、入站 channel 接收、本机 Unix/loopback display 限制、一次性假 cookie 校验与真实 cookie 替换、64 KB 首包上限、8 channel 限制、关闭及重连清理。真实 OpenSSH 已验证远端 `DISPLAY` 建立；本机缺少 XQuartz，因此图形窗口端到端验收仍待外部环境。
+- FIDO2 专用交互和 Touch ID Vault 解锁仍在本阶段后续范围，不能因 SSH Agent 已支持普通身份而标记完成。
 
 ### X11 转发
 
@@ -339,10 +340,9 @@
 
 阶段 1 Zmodem 与阶段 2 Mosh 的核心开发已完成。下一步进入 **阶段 3：高级 SSH 与密钥认证**：
 
-1. SSH Certificate 已完成，继续调研并实现现有 `ssh2/libssh2` 的 X11 request 与转发通道适配。
-2. 在 XQuartz 可用时实现按连接关闭默认的 X11 request、cookie 隔离、channel 限制和退出清理。
-3. 增加 FIDO2 硬件密钥发现、触摸/PIN/取消/拔出状态；无真实设备时只完成可测试适配层，不宣称真机通过。
-4. 使用 LocalAuthentication 为本地 Vault/同步密钥增加可选 Touch ID 解锁与安全恢复路径。
-5. 更新安全边界、故障排查、验收矩阵并打包安装；随后进入阶段 4 RDP 深度集成。
+1. SSH Certificate 与 X11 核心实现已完成；有 XQuartz 环境时补做真实图形窗口端到端验收。
+2. 增加 FIDO2 硬件密钥发现、触摸/PIN/取消/拔出状态；无真实设备时只完成可测试适配层，不宣称真机通过。
+3. 使用 LocalAuthentication 为本地 Vault/同步密钥增加可选 Touch ID 解锁与安全恢复路径。
+4. 更新安全边界、故障排查、验收矩阵并打包安装；随后进入阶段 4 RDP 深度集成。
 
 RDP 技术验证可作为独立研究任务准备，但在验证方案和 Windows 真机可用前不重构现有稳定 RDP 路径。

@@ -64,6 +64,15 @@
 | 真实协议 | 本机临时 OpenSSH `sshd` 使用 Ed25519 CA 与 `TrustedUserCAKeys`，CNshell/libssh2 通过短期用户证书真实认证并执行固定命令；夹具退出清理 CA、密钥、证书与服务进程 |
 | 自动化门禁 | Rust 118 项、前端 100 项、lint、TypeScript/Vite production build 与 diff 检查通过 |
 
+### 2026-07-15 X11 增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| SSH 协议 | 本机真实 OpenSSH `sshd` 接受 CNshell/libssh2 的 `x11-req`，远端命令确认 `DISPLAY` 已建立；请求仍复用 CNshell 主机指纹、认证和 Session |
+| Cookie 与边界 | 大小端 X11 setup 首包均验证随机假 cookie 并替换为真实 cookie；错误 cookie、远程 display、畸形长度和超过 64 KB 首包拒绝，单会话最多 8 个 channel |
+| 生命周期 | X11 forwarder 保存在终端 handle，关闭和重连替换会停止接收器与桥接线程；X11 与 Mosh 互斥，开关默认关闭并要求风险确认 |
+| 保留验收边界 | 当前 Mac 未安装 XQuartz且没有 `DISPLAY`，因此真实 GUI 窗口、XQuartz 重启和多图形 channel 端到端仍待对应环境，不声明通过 |
+
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
