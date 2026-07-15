@@ -9,6 +9,7 @@ mod db;
 mod diagnostics;
 mod error;
 mod external_edit;
+mod local_shell;
 mod models;
 mod monitor;
 mod mosh;
@@ -31,6 +32,7 @@ use ai::AiManager;
 use batch::BatchManager;
 use db::Database;
 use external_edit::ExternalEditManager;
+use local_shell::LocalShellManager;
 use monitor::MonitorState;
 use mosh::MoshManager;
 use rdp::RdpManager;
@@ -57,6 +59,7 @@ pub struct AppState {
     batches: BatchManager,
     external_edits: ExternalEditManager,
     ai: AiManager,
+    local_shell: LocalShellManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -166,6 +169,7 @@ pub fn run() {
                 batches: BatchManager::default(),
                 external_edits: ExternalEditManager::default(),
                 ai: AiManager::default(),
+                local_shell: LocalShellManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -183,6 +187,7 @@ pub fn run() {
             if matches!(event, tauri::WindowEvent::Destroyed) {
                 window.state::<AppState>().rdp.close_all();
                 window.state::<AppState>().mosh.close_all();
+                window.state::<AppState>().local_shell.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![

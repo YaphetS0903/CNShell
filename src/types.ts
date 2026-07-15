@@ -60,8 +60,8 @@ import type {
   ZmodemEvent as GeneratedZmodemEvent,
 } from "./generated/ipc";
 
-export type Protocol = "ssh" | "rdp";
-export type AuthType = "password" | "privateKey" | "sshCertificate" | "sshAgent" | "fido2Agent";
+export type Protocol = "ssh" | "rdp" | "local";
+export type AuthType = "none" | "password" | "privateKey" | "sshCertificate" | "sshAgent" | "fido2Agent";
 export type HostKeyPolicy = "strict" | "acceptNew";
 export type SessionStatus = "connecting" | "online" | "reconnecting" | "failed" | "closed";
 export type ProxyType = "socks5" | "http" | "sshJump";
@@ -108,7 +108,7 @@ export type ConnectionDiagnostic = Omit<GeneratedConnectionDiagnostic, "stage"> 
 };
 export type TerminalSession = Omit<GeneratedTerminalSession, "status" | "sessionType"> & {
   status: SessionStatus;
-  sessionType: "terminal" | "mosh" | "rdp";
+  sessionType: "terminal" | "mosh" | "rdp" | "local";
 };
 export type TerminalStatus = Omit<GeneratedTerminalStatus, "status"> & { status: SessionStatus };
 export type RemoteFile = Omit<GeneratedRemoteFile, "kind"> & { kind: "file" | "directory" | "symlink" | "other" };

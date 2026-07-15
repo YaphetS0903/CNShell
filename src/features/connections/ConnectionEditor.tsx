@@ -3,7 +3,7 @@ import { CheckCircle2, Eye, EyeOff, FolderOpen, HardDrive, KeyRound, LoaderCircl
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, Fido2Identity, Folder, ProxyProfile, RdpConnectionOptions, RdpDisplay, SaveConnectionInput, SshCertificateInfo } from "../../types";
+import type { AuthType, Fido2Identity, Folder, Protocol, ProxyProfile, RdpConnectionOptions, RdpDisplay, SaveConnectionInput, SshCertificateInfo } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -99,10 +99,10 @@ export function ConnectionEditor() {
     <form onSubmit={submit} className="connection-form">
       <div className="form-section-title"><span><ShieldCheck size={17}/>常规</span><small>连接资料仅保存在这台 Mac</small></div>
       <div className="form-grid">
-        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as "ssh"|"rdp";setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:{...current,protocol,port:22});setCertificateInfo(null);if(protocol==="rdp"){setRdpOptions(defaultRdpOptions(form.id));void api.rdpDisplays().then(setRdpDisplays).catch(()=>setRdpDisplays([]));} }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option></select></label>
+        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as Protocol;setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:protocol==="local"?{...current,protocol,host:"localhost",port:0,username:current.username||"本机用户",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict"}:{...current,protocol,port:22,authType:current.authType==="none"?"password":current.authType});setCertificateInfo(null);if(protocol==="rdp"){setRdpOptions(defaultRdpOptions(form.id));void api.rdpDisplays().then(setRdpDisplays).catch(()=>setRdpDisplays([]));} }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option><option value="local">本地 Shell</option></select></label>
         <label><span>名称</span><input required autoFocus value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="生产服务器" /></label>
-        <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>
-        <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>
+        {form.protocol !== "local" && <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>}
+        {form.protocol === "local" ? <label><span>本机用户</span><input value={form.username} onChange={(event) => change("username", event.target.value)} placeholder="当前 macOS 用户" /></label> : <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>}
         <label><span>标签</span><input value={form.tags.join(", ")} onChange={(event) => change("tags", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} placeholder="生产, 香港" /></label>
         <label className="span-2"><span>文件夹</span><select value={form.folderId??""} onChange={(event)=>change("folderId",event.target.value||null)}><option value="">未分组</option>{folderOptions(folders).map((folder)=><option key={folder.id} value={folder.id}>{folder.label}</option>)}</select></label>
       </div>
@@ -120,6 +120,10 @@ export function ConnectionEditor() {
           <label className="span-2"><span>启动命令</span><input value={form.startupCommand ?? ""} onChange={(event) => change("startupCommand", event.target.value || null)} placeholder="例如：tmux attach || tmux" /></label>
           <label className="span-2"><span>环境变量</span><input value={Object.entries(form.environment).map(([key,value])=>`${key}=${value}`).join("; ")} onChange={(event)=>change("environment",parseEnvironment(event.target.value))} placeholder="LANG=zh_CN.UTF-8; APP_ENV=production"/></label>
         </div>
+      </>}
+      {form.protocol === "local" && <>
+        <div className="form-section-title"><span><TerminalSquare size={17}/>本地 Shell</span><small>使用当前 macOS 默认 Shell，通过独立 PTY 运行</small></div>
+        <div className="form-grid"><label className="span-2"><span>启动命令（可选）</span><input value={form.startupCommand ?? ""} onChange={(event) => change("startupCommand", event.target.value || null)} placeholder="例如：tmux attach || tmux" /></label><label className="span-2"><span>环境变量</span><input value={Object.entries(form.environment).map(([key,value])=>`${key}=${value}`).join("; ")} onChange={(event)=>change("environment",parseEnvironment(event.target.value))} placeholder="LANG=zh_CN.UTF-8; APP_ENV=development" /></label></div>
       </>}
       {form.protocol === "rdp" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>远程桌面认证</span><small>密码通过 stdin 安全传递给 FreeRDP</small></div>

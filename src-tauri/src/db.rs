@@ -682,14 +682,23 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
     {
         return Err(AppError::Validation("主机地址无效".into()));
     }
-    if !(1..=65535).contains(&input.port) {
+    if input.protocol != "local" && !(1..=65535).contains(&input.port) {
         return Err(AppError::Validation("端口必须在 1 到 65535 之间".into()));
     }
     if input.username.trim().is_empty() || input.username.chars().any(char::is_control) {
         return Err(AppError::Validation("用户名不能为空或包含控制字符".into()));
     }
-    if !["ssh", "rdp"].contains(&input.protocol.as_str()) {
+    if !["ssh", "rdp", "local"].contains(&input.protocol.as_str()) {
         return Err(AppError::Validation("不支持的协议".into()));
+    }
+    if input.protocol == "local" {
+        if input.port != 0 && input.port != 22 {
+            return Err(AppError::Validation("本地 Shell 不需要网络端口".into()));
+        }
+        if input.auth_type != "none" && input.auth_type != "password" {
+            return Err(AppError::Validation("本地 Shell 不支持该认证方式".into()));
+        }
+        return Ok(());
     }
     if input.protocol == "ssh"
         && ![
@@ -874,6 +883,31 @@ mod tests {
             credential: None,
         };
         assert!(validate_connection(&input).is_err());
+    }
+
+    #[test]
+    fn accepts_local_shell_profile_without_network_port() {
+        let input = SaveConnectionInput {
+            id: "local".into(),
+            folder_id: None,
+            protocol: "local".into(),
+            name: "本地 Shell".into(),
+            host: "localhost".into(),
+            port: 0,
+            username: "developer".into(),
+            auth_type: "none".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: std::collections::BTreeMap::new(),
+            credential: None,
+        };
+        assert!(validate_connection(&input).is_ok());
     }
     #[test]
     fn rejects_invalid_settings_and_environment() {
