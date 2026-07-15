@@ -37,6 +37,19 @@ jobs:
       - run: npm run test:relay-ops
       - run: npm audit --audit-level=moderate
 
+  relay-container:
+    name: Relay Docker and Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Report container runtime
+        run: |
+          docker version
+          docker compose version
+      - name: Build and run relay container smoke
+        run: npm run test:relay-container
+
   desktop-ui:
     name: Browser UI and PTY fixture
     runs-on: macos-13

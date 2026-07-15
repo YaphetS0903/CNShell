@@ -54,3 +54,36 @@ describe("relay age release verification", () => {
     expect(script).toContain("release archive contains unexpected entries");
   });
 });
+
+describe("relay container smoke", () => {
+  const script = readFileSync(
+    resolve("services/team-relay/scripts/container-test.sh"),
+    "utf8",
+  );
+  const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
+  const compose = readFileSync(
+    resolve("services/team-relay/docker-compose.example.yml"),
+    "utf8",
+  );
+
+  it("runs the real Docker and Compose path on a hosted Linux runner", () => {
+    expect(workflow).toContain("relay-container:");
+    expect(workflow).toContain("runs-on: ubuntu-latest");
+    expect(workflow).toContain("npm run test:relay-container");
+    expect(script).toContain("docker compose");
+    expect(script).toContain("up --detach --build");
+    expect(script).toContain("/health");
+    expect(script).toContain("/ready");
+    expect(script).toContain("/metrics");
+  });
+
+  it("checks container isolation, persistence, loopback binding, and graceful stop", () => {
+    expect(compose).toContain('127.0.0.1:${CNSHELL_RELAY_HOST_PORT:-8787}:8787');
+    expect(script).toContain("ReadonlyRootfs");
+    expect(script).toContain("no-new-privileges:true");
+    expect(script).toContain("10001:10001");
+    expect(script).toContain("volume true");
+    expect(script).toContain("stop --timeout 30 relay");
+    expect(script).toContain("{{.State.ExitCode}}");
+  });
+});

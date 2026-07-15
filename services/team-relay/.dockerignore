@@ -1,0 +1,8 @@
+target
+*.sqlite
+*.sqlite-*
+*.sqlite.age
+*.sha256
+.env
+.env.*
+.DS_Store
