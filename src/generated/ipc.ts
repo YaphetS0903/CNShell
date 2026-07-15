@@ -353,6 +353,46 @@ export interface WebDavSyncProgress {
   totalBytes: number;
 }
 
+export interface AiProviderProfile {
+  id: string;
+  name: string;
+  endpoint: string;
+  model: string;
+  hasApiKey: boolean;
+}
+
+export interface SaveAiProviderInput {
+  id: string;
+  name: string;
+  endpoint: string;
+  model: string;
+  apiKey?: string | null;
+}
+
+export interface AiPreviewInput {
+  providerId: string;
+  kind: string;
+  content: string;
+}
+
+export interface AiRequestPreview {
+  requestId: string;
+  providerName: string;
+  endpoint: string;
+  model: string;
+  kind: string;
+  redactedContent: string;
+  redactions: string[];
+  expiresAt: string;
+}
+
+export interface AiAssistantResult {
+  requestId: string;
+  kind: string;
+  model: string;
+  content: string;
+}
+
 export interface RemoteFile {
   name: string;
   path: string;

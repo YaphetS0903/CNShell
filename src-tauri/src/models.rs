@@ -469,6 +469,56 @@ pub struct WebDavSyncProgress {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AiProviderProfile {
+    pub id: String,
+    pub name: String,
+    pub endpoint: String,
+    pub model: String,
+    pub has_api_key: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveAiProviderInput {
+    pub id: String,
+    pub name: String,
+    pub endpoint: String,
+    pub model: String,
+    pub api_key: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPreviewInput {
+    pub provider_id: String,
+    pub kind: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiRequestPreview {
+    pub request_id: String,
+    pub provider_name: String,
+    pub endpoint: String,
+    pub model: String,
+    pub kind: String,
+    pub redacted_content: String,
+    pub redactions: Vec<String>,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AiAssistantResult {
+    pub request_id: String,
+    pub kind: String,
+    pub model: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct RemoteFile {
     pub name: String,
     pub path: String,

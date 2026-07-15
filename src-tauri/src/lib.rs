@@ -1,3 +1,4 @@
+mod ai;
 mod automation;
 mod backup;
 mod batch;
@@ -25,6 +26,7 @@ mod webdav;
 mod x11;
 mod zmodem;
 
+use ai::AiManager;
 use batch::BatchManager;
 use db::Database;
 use external_edit::ExternalEditManager;
@@ -53,6 +55,7 @@ pub struct AppState {
     logs: SessionLogManager,
     batches: BatchManager,
     external_edits: ExternalEditManager,
+    ai: AiManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -161,6 +164,7 @@ pub fn run() {
                     .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?,
                 batches: BatchManager::default(),
                 external_edits: ExternalEditManager::default(),
+                ai: AiManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -222,6 +226,11 @@ pub fn run() {
             commands::webdav_profile_delete,
             commands::webdav_sync_write_start,
             commands::webdav_sync_read_start,
+            commands::ai_provider_list,
+            commands::ai_provider_save,
+            commands::ai_provider_delete,
+            commands::ai_preview,
+            commands::ai_execute,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,

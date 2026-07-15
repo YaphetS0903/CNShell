@@ -56,3 +56,4 @@ CNshell 每 2 秒通过独立 SSH Exec Channel 读取 `/proc`、`df`、`ip` 和 
 - “本地目录加密同步”只操作用户选择的目录，可指向 iCloud Drive、WebDAV 挂载点或 Git 检出目录。口令默认不保存；可明确选择用 Touch ID 保存到这台 Mac 的设备专属 Keychain。
 - “WebDAV 同步”直接连接 HTTPS WebDAV 地址，用户名保存在本地数据库，密码保存在 Keychain。上传前保留远端版本并使用 ETag 条件写入；另一设备已修改文件时会拒绝覆盖。同步内容始终是加密包，凭据同步默认关闭。
 - 启动自动导入默认关闭。开启后需另存同步口令到 Keychain，CNshell 下次启动只下载并导入远端加密包；未保存口令时不会在启动阶段联网。
+- “AI 辅助”先保存用户选择的 Provider 和模型，再对选中文本生成脱敏预览。只有点击确认后才发送，API Key 保存在 Keychain；命令结果需要用户手动复制和执行，错误解释与日志总结不会自动修改主机。

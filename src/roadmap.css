@@ -223,6 +223,71 @@
   color: var(--muted);
 }
 
+.ai-settings {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.ai-providers {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.ai-providers button {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+}
+
+.ai-providers button.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.ai-providers small,
+.ai-preview small {
+  color: var(--muted);
+}
+
+.ai-request,
+.ai-preview,
+.ai-answer {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.ai-request textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.ai-preview,
+.ai-answer {
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.ai-preview pre,
+.ai-answer pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.ai-answer > div,
+.ai-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .recording-status {
   color: var(--muted);
   font-size: 12px;

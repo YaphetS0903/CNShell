@@ -724,6 +724,47 @@ pub async fn webdav_sync_read_start(
 }
 
 #[tauri::command]
+pub async fn ai_provider_list(state: State<'_, AppState>) -> AppResult<Vec<AiProviderProfile>> {
+    crate::ai::providers(&state.db).await
+}
+
+#[tauri::command]
+pub async fn ai_provider_save(
+    state: State<'_, AppState>,
+    input: SaveAiProviderInput,
+) -> AppResult<AiProviderProfile> {
+    crate::ai::save_provider(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn ai_provider_delete(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::ai::delete_provider(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn ai_preview(
+    state: State<'_, AppState>,
+    input: AiPreviewInput,
+) -> AppResult<AiRequestPreview> {
+    state.ai.preview(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn ai_execute(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<BackgroundTask> {
+    let request = state.ai.take(&request_id)?;
+    Ok(state
+        .tasks
+        .spawn(app, "ai-assistant", move |cancelled| async move {
+            serde_json::to_value(crate::ai::execute(request_id, request, cancelled).await?)
+                .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await
