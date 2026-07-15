@@ -770,6 +770,39 @@ pub fn plugin_manifest_inspect(path: String) -> AppResult<PluginPermissionReport
 }
 
 #[tauri::command]
+pub async fn plugin_list(state: State<'_, AppState>) -> AppResult<Vec<PluginInstallRecord>> {
+    crate::plugin::list_installed(&state.db).await
+}
+
+#[tauri::command]
+pub async fn plugin_audit_list(state: State<'_, AppState>) -> AppResult<Vec<PluginAuditEvent>> {
+    crate::plugin::list_audit(&state.db).await
+}
+
+#[tauri::command]
+pub async fn plugin_register(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<PluginInstallRecord> {
+    crate::plugin::register(&state.db, &path).await
+}
+
+#[tauri::command]
+pub async fn plugin_disable(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::plugin::disable(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn plugin_remove(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::plugin::remove(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn plugin_audit_export(state: State<'_, AppState>, path: String) -> AppResult<usize> {
+    crate::plugin::export_audit(&state.db, &path).await
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await

@@ -307,6 +307,31 @@
   color: var(--muted);
 }
 
+.plugin-record {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+.plugin-record > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.plugin-record > div:last-child {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.plugin-record small {
+  overflow-wrap: anywhere;
+}
+
 .recording-status {
   color: var(--muted);
   font-size: 12px;

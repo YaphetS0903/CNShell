@@ -545,6 +545,34 @@ pub struct PluginPermissionReport {
     pub warnings: Vec<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginInstallRecord {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub manifest_path: String,
+    pub digest: String,
+    pub signature_status: String,
+    pub requested_permissions: Vec<String>,
+    pub denied_permissions: Vec<String>,
+    pub enabled: bool,
+    pub executable: bool,
+    pub installed_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginAuditEvent {
+    pub id: String,
+    pub plugin_id: String,
+    pub action: String,
+    pub detail: String,
+    pub digest: String,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteFile {

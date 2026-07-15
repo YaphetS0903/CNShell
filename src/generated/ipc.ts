@@ -415,6 +415,30 @@ export interface PluginPermissionReport {
   warnings: string[];
 }
 
+export interface PluginInstallRecord {
+  id: string;
+  name: string;
+  version: string;
+  manifestPath: string;
+  digest: string;
+  signatureStatus: string;
+  requestedPermissions: string[];
+  deniedPermissions: string[];
+  enabled: boolean;
+  executable: boolean;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface PluginAuditEvent {
+  id: string;
+  pluginId: string;
+  action: string;
+  detail: string;
+  digest: string;
+  createdAt: string;
+}
+
 export interface RemoteFile {
   name: string;
   path: string;
