@@ -4,7 +4,8 @@ use crate::{
     models::{AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult},
     ssh,
 };
-use chrono::Utc;
+use chrono::{Datelike, LocalResult, NaiveTime, TimeZone, Utc, Weekday};
+use chrono_tz::Tz;
 use cron::Schedule;
 use regex::Regex;
 use std::str::FromStr;
@@ -26,11 +27,17 @@ pub fn schedules_key() -> &'static str {
 }
 
 pub fn validate_schedule(schedule: &crate::models::AutomationSchedule) -> AppResult<()> {
-    if schedule.id.trim().is_empty() {
-        return Err(AppError::Validation("定时任务 ID 不能为空".into()));
+    if schedule.id.trim().is_empty()
+        || schedule.id.len() > 128
+        || !schedule
+            .id
+            .bytes()
+            .all(|value| value.is_ascii_alphanumeric() || value == b'-' || value == b'_')
+    {
+        return Err(AppError::Validation("定时任务 ID 无效".into()));
     }
     validate(&schedule.plan)?;
-    if !["once", "interval", "cron"].contains(&schedule.schedule_type.as_str()) {
+    if !["once", "interval", "daily", "weekly", "cron"].contains(&schedule.schedule_type.as_str()) {
         return Err(AppError::Validation("定时任务类型无效".into()));
     }
     if !["skip", "runOnce"].contains(&schedule.misfire_policy.as_str()) {
@@ -42,6 +49,7 @@ pub fn validate_schedule(schedule: &crate::models::AutomationSchedule) -> AppRes
             "定时任务表达式不能为空且不能超过 128 字符".into(),
         ));
     }
+    parse_time_zone(schedule)?;
     match schedule.schedule_type.as_str() {
         "once" => {
             chrono::DateTime::parse_from_rfc3339(expression)
@@ -54,6 +62,12 @@ pub fn validate_schedule(schedule: &crate::models::AutomationSchedule) -> AppRes
             if !(10..=2_592_000).contains(&seconds) {
                 return Err(AppError::Validation("间隔必须为 10 秒至 30 天".into()));
             }
+        }
+        "daily" => {
+            parse_wall_time(expression)?;
+        }
+        "weekly" => {
+            parse_weekly_expression(expression)?;
         }
         "cron" => {
             Schedule::from_str(expression)
@@ -71,6 +85,7 @@ pub fn next_run_at(
     if !schedule.enabled {
         return Ok(None);
     }
+    let time_zone = parse_time_zone(schedule)?;
     match schedule.schedule_type.as_str() {
         "once" => {
             let at = chrono::DateTime::parse_from_rfc3339(schedule.expression.trim())
@@ -84,23 +99,220 @@ pub fn next_run_at(
                 .trim()
                 .parse()
                 .map_err(|_| AppError::Validation("间隔必须是秒数".into()))?;
-            let base = schedule
+            let last_run = schedule
                 .last_run_at
                 .as_deref()
                 .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-                .map(|value| value.with_timezone(&Utc))
-                .unwrap_or(after);
+                .map(|value| value.with_timezone(&Utc));
+            let base = last_run.filter(|value| *value > after).unwrap_or(after);
             Ok(Some(
                 (base + chrono::Duration::seconds(seconds)).to_rfc3339(),
             ))
         }
+        "daily" => next_calendar_run(schedule, after, time_zone, None),
+        "weekly" => {
+            let (weekday, _) = parse_weekly_expression(schedule.expression.trim())?;
+            next_calendar_run(schedule, after, time_zone, Some(weekday))
+        }
         "cron" => {
             let parsed = Schedule::from_str(schedule.expression.trim())
                 .map_err(|error| AppError::Validation(format!("Cron 表达式无效：{error}")))?;
-            Ok(parsed.after(&after).next().map(|value| value.to_rfc3339()))
+            let local_after = after.with_timezone(&time_zone);
+            for candidate in parsed.after(&local_after).take(4096) {
+                let candidate = candidate.with_timezone(&Utc);
+                if schedule.last_occurrence_key.as_deref()
+                    != Some(occurrence_key(schedule, candidate)?.as_str())
+                {
+                    return Ok(Some(candidate.to_rfc3339()));
+                }
+            }
+            Err(AppError::Unavailable(
+                "Cron 在可检查范围内没有下一次执行时间".into(),
+            ))
         }
         _ => Err(AppError::Validation("定时任务类型无效".into())),
     }
+}
+
+pub fn prepare_schedule_for_save(
+    mut schedule: crate::models::AutomationSchedule,
+    existing: Option<&crate::models::AutomationSchedule>,
+    now: chrono::DateTime<Utc>,
+) -> AppResult<crate::models::AutomationSchedule> {
+    validate_schedule(&schedule)?;
+    if let Some(existing) = existing {
+        if existing.id != schedule.id {
+            return Err(AppError::Validation("定时任务 ID 不匹配".into()));
+        }
+        schedule.last_run_at.clone_from(&existing.last_run_at);
+        schedule
+            .last_occurrence_key
+            .clone_from(&existing.last_occurrence_key);
+    } else {
+        schedule.last_run_at = None;
+        schedule.last_occurrence_key = None;
+    }
+    schedule.next_run_at = next_run_at(&schedule, now)?;
+    if schedule.enabled && schedule.next_run_at.is_none() {
+        return Err(AppError::Validation(
+            "定时任务没有未来执行时间；请检查一次执行时间".into(),
+        ));
+    }
+    Ok(schedule)
+}
+
+fn parse_time_zone(schedule: &crate::models::AutomationSchedule) -> AppResult<Tz> {
+    schedule.time_zone.trim().parse::<Tz>().map_err(|_| {
+        AppError::Validation("定时任务时区必须是有效 IANA 名称，例如 Asia/Shanghai".into())
+    })
+}
+
+fn parse_wall_time(value: &str) -> AppResult<NaiveTime> {
+    NaiveTime::parse_from_str(value, "%H:%M")
+        .map_err(|_| AppError::Validation("每日时间必须使用 HH:MM 24 小时格式".into()))
+}
+
+fn parse_weekly_expression(value: &str) -> AppResult<(Weekday, NaiveTime)> {
+    let (weekday, time) = value
+        .split_once('@')
+        .ok_or_else(|| AppError::Validation("每周时间必须使用 mon@HH:MM 格式".into()))?;
+    let weekday = match weekday.to_ascii_lowercase().as_str() {
+        "mon" => Weekday::Mon,
+        "tue" => Weekday::Tue,
+        "wed" => Weekday::Wed,
+        "thu" => Weekday::Thu,
+        "fri" => Weekday::Fri,
+        "sat" => Weekday::Sat,
+        "sun" => Weekday::Sun,
+        _ => return Err(AppError::Validation("每周任务星期值无效".into())),
+    };
+    Ok((weekday, parse_wall_time(time)?))
+}
+
+fn next_calendar_run(
+    schedule: &crate::models::AutomationSchedule,
+    after: chrono::DateTime<Utc>,
+    time_zone: Tz,
+    weekday: Option<Weekday>,
+) -> AppResult<Option<String>> {
+    let time = if schedule.schedule_type == "weekly" {
+        parse_weekly_expression(schedule.expression.trim())?.1
+    } else {
+        parse_wall_time(schedule.expression.trim())?
+    };
+    let start_date = after.with_timezone(&time_zone).date_naive();
+    for offset in 0..=14 {
+        let Some(date) = start_date.checked_add_days(chrono::Days::new(offset)) else {
+            break;
+        };
+        if weekday.is_some_and(|expected| date.weekday() != expected) {
+            continue;
+        }
+        let local = date.and_time(time);
+        let candidate = match time_zone.from_local_datetime(&local) {
+            LocalResult::Single(value) => value.with_timezone(&Utc),
+            LocalResult::Ambiguous(first, second) => {
+                std::cmp::min(first.with_timezone(&Utc), second.with_timezone(&Utc))
+            }
+            LocalResult::None => continue,
+        };
+        if candidate <= after {
+            continue;
+        }
+        if schedule.last_occurrence_key.as_deref()
+            == Some(occurrence_key(schedule, candidate)?.as_str())
+        {
+            continue;
+        }
+        return Ok(Some(candidate.to_rfc3339()));
+    }
+    Err(AppError::Unavailable(
+        "日历任务在可检查范围内没有下一次执行时间".into(),
+    ))
+}
+
+fn occurrence_key(
+    schedule: &crate::models::AutomationSchedule,
+    scheduled_at: chrono::DateTime<Utc>,
+) -> AppResult<String> {
+    if matches!(schedule.schedule_type.as_str(), "daily" | "weekly" | "cron") {
+        let time_zone = parse_time_zone(schedule)?;
+        return Ok(format!(
+            "{}:{}",
+            time_zone,
+            scheduled_at
+                .with_timezone(&time_zone)
+                .format("%Y-%m-%dT%H:%M:%S")
+        ));
+    }
+    Ok(scheduled_at.to_rfc3339())
+}
+
+fn advance_schedule(
+    schedule: &mut crate::models::AutomationSchedule,
+    now: chrono::DateTime<Utc>,
+    scheduled_at: chrono::DateTime<Utc>,
+) {
+    schedule.last_run_at = Some(now.to_rfc3339());
+    schedule.last_occurrence_key = occurrence_key(schedule, scheduled_at).ok();
+    if schedule.schedule_type == "once" {
+        schedule.enabled = false;
+        schedule.next_run_at = None;
+    } else {
+        schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
+    }
+}
+
+fn collect_due_plans(
+    schedules: &mut [crate::models::AutomationSchedule],
+    now: chrono::DateTime<Utc>,
+) -> (bool, Vec<AutomationPlan>) {
+    let mut changed = false;
+    let mut due_plans = Vec::new();
+    for schedule in schedules {
+        if !schedule.enabled {
+            continue;
+        }
+        let scheduled_at = schedule
+            .next_run_at
+            .as_deref()
+            .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
+            .map(|value| value.with_timezone(&Utc));
+        let Some(scheduled_at) = scheduled_at else {
+            schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
+            if schedule.schedule_type == "once" && schedule.next_run_at.is_none() {
+                schedule.enabled = false;
+            }
+            changed = true;
+            continue;
+        };
+        if scheduled_at > now {
+            continue;
+        }
+        let due = if schedule.misfire_policy != "skip" {
+            true
+        } else {
+            let grace = match schedule.schedule_type.as_str() {
+                "interval" => schedule
+                    .expression
+                    .parse::<u64>()
+                    .map(Duration::from_secs)
+                    .unwrap_or(Duration::from_secs(15)),
+                "daily" | "weekly" | "cron" => Duration::from_secs(120),
+                _ => Duration::from_secs(30),
+            };
+            now.signed_duration_since(scheduled_at)
+                .to_std()
+                .map(|delay| delay <= grace)
+                .unwrap_or(false)
+        };
+        if due {
+            due_plans.push(schedule.plan.clone());
+        }
+        advance_schedule(schedule, now, scheduled_at);
+        changed = true;
+    }
+    (changed, due_plans)
 }
 
 pub fn start_scheduler(app: tauri::AppHandle, db: Database, tasks: crate::task::TaskManager) {
@@ -117,66 +329,16 @@ pub fn start_scheduler(app: tauri::AppHandle, db: Database, tasks: crate::task::
                 Ok(None) => continue,
                 Err(_) => continue,
             };
-            let mut changed = false;
-            for schedule in &mut schedules {
-                if !schedule.enabled {
+            let (changed, due_plans) = collect_due_plans(&mut schedules, now);
+            if changed {
+                let Ok(value) = serde_json::to_value(&schedules) else {
+                    continue;
+                };
+                if db.save_named_state(SCHEDULES_KEY, &value).await.is_err() {
                     continue;
                 }
-                let due = schedule
-                    .next_run_at
-                    .as_deref()
-                    .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-                    .map(|value| {
-                        let scheduled_at = value.with_timezone(&Utc);
-                        if scheduled_at > now {
-                            return false;
-                        }
-                        if schedule.misfire_policy != "skip" {
-                            return true;
-                        }
-                        let grace = match schedule.schedule_type.as_str() {
-                            "interval" => schedule
-                                .expression
-                                .parse::<u64>()
-                                .map(Duration::from_secs)
-                                .unwrap_or(Duration::from_secs(15)),
-                            "cron" => Duration::from_secs(120),
-                            _ => Duration::from_secs(30),
-                        };
-                        now.signed_duration_since(scheduled_at)
-                            .to_std()
-                            .map(|delay| delay <= grace)
-                            .unwrap_or(false)
-                    })
-                    .unwrap_or(false);
-                if !due {
-                    if schedule
-                        .next_run_at
-                        .as_deref()
-                        .and_then(|value| chrono::DateTime::parse_from_rfc3339(value).ok())
-                        .map(|value| value.with_timezone(&Utc) <= now)
-                        .unwrap_or(false)
-                    {
-                        schedule.last_run_at = Some(now.to_rfc3339());
-                        if schedule.schedule_type == "once" {
-                            schedule.enabled = false;
-                            schedule.next_run_at = None;
-                        } else {
-                            schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
-                        }
-                        changed = true;
-                    }
-                    continue;
-                }
-                let plan = schedule.plan.clone();
-                schedule.last_run_at = Some(now.to_rfc3339());
-                if schedule.schedule_type == "once" {
-                    schedule.enabled = false;
-                    schedule.next_run_at = None;
-                } else {
-                    schedule.next_run_at = next_run_at(schedule, now).ok().flatten();
-                }
-                changed = true;
+            }
+            for plan in due_plans {
                 let db_for_run = db.clone();
                 tasks.spawn(
                     app.clone(),
@@ -186,11 +348,6 @@ pub fn start_scheduler(app: tauri::AppHandle, db: Database, tasks: crate::task::
                             .map_err(|error| AppError::Internal(error.to_string()))
                     },
                 );
-            }
-            if changed {
-                if let Ok(value) = serde_json::to_value(&schedules) {
-                    let _ = db.save_named_state(SCHEDULES_KEY, &value).await;
-                }
             }
         }
     });
@@ -570,15 +727,173 @@ mod tests {
             expression: "60".into(),
             enabled: true,
             misfire_policy: "skip".into(),
+            time_zone: "UTC".into(),
             next_run_at: None,
             last_run_at: None,
+            last_occurrence_key: None,
         };
         assert!(validate_schedule(&schedule).is_ok());
         assert!(next_run_at(&schedule, Utc::now()).unwrap().is_some());
+        schedule.schedule_type = "daily".into();
+        schedule.expression = "09:30".into();
+        schedule.time_zone = "Asia/Shanghai".into();
+        let after = chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(
+            next_run_at(&schedule, after).unwrap().as_deref(),
+            Some("2026-01-01T01:30:00+00:00")
+        );
+        schedule.schedule_type = "weekly".into();
+        schedule.expression = "fri@09:30".into();
+        assert_eq!(
+            next_run_at(&schedule, after).unwrap().as_deref(),
+            Some("2026-01-02T01:30:00+00:00")
+        );
         schedule.schedule_type = "cron".into();
-        schedule.expression = "0 0 * * * *".into();
+        schedule.expression = "0 30 9 * * *".into();
         assert!(validate_schedule(&schedule).is_ok());
+        assert_eq!(
+            next_run_at(&schedule, after).unwrap().as_deref(),
+            Some("2026-01-01T01:30:00+00:00")
+        );
         schedule.expression = "not cron".into();
         assert!(validate_schedule(&schedule).is_err());
+        schedule.expression = "0 30 9 * * *".into();
+        schedule.time_zone = "Mars/Olympus".into();
+        assert!(validate_schedule(&schedule).is_err());
+    }
+
+    #[test]
+    fn calendar_schedules_do_not_repeat_a_dst_fallback_wall_time() {
+        let mut schedule = crate::models::AutomationSchedule {
+            id: "dst".into(),
+            plan: plan(AutomationStep {
+                id: "step".into(),
+                kind: "command".into(),
+                command: Some("true".into()),
+                pattern: None,
+                timeout_seconds: Some(30),
+                action: None,
+                direction: None,
+                local_path: None,
+                remote_path: None,
+            }),
+            schedule_type: "daily".into(),
+            expression: "01:30".into(),
+            enabled: true,
+            misfire_policy: "runOnce".into(),
+            time_zone: "America/New_York".into(),
+            next_run_at: None,
+            last_run_at: None,
+            last_occurrence_key: None,
+        };
+        let before_fallback = chrono::DateTime::parse_from_rfc3339("2026-11-01T05:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let first = next_run_at(&schedule, before_fallback).unwrap().unwrap();
+        assert_eq!(first, "2026-11-01T05:30:00+00:00");
+        schedule.last_occurrence_key = Some(
+            occurrence_key(
+                &schedule,
+                chrono::DateTime::parse_from_rfc3339(&first)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            )
+            .unwrap(),
+        );
+        let after_first = chrono::DateTime::parse_from_rfc3339("2026-11-01T05:31:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(
+            next_run_at(&schedule, after_first).unwrap().as_deref(),
+            Some("2026-11-02T06:30:00+00:00")
+        );
+
+        schedule.schedule_type = "cron".into();
+        schedule.expression = "0 30 1 * * *".into();
+        assert_eq!(
+            next_run_at(&schedule, after_first).unwrap().as_deref(),
+            Some("2026-11-02T06:30:00+00:00")
+        );
+    }
+
+    #[test]
+    fn schedule_save_keeps_runtime_cursors_server_authoritative() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-07-16T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let schedule = crate::models::AutomationSchedule {
+            id: "owned".into(),
+            plan: plan(AutomationStep {
+                id: "step".into(),
+                kind: "command".into(),
+                command: Some("true".into()),
+                pattern: None,
+                timeout_seconds: Some(30),
+                action: None,
+                direction: None,
+                local_path: None,
+                remote_path: None,
+            }),
+            schedule_type: "interval".into(),
+            expression: "60".into(),
+            enabled: true,
+            misfire_policy: "skip".into(),
+            time_zone: "UTC".into(),
+            next_run_at: Some("2099-01-01T00:00:00Z".into()),
+            last_run_at: Some("2099-01-01T00:00:00Z".into()),
+            last_occurrence_key: Some("client-forged".into()),
+        };
+        let created = prepare_schedule_for_save(schedule.clone(), None, now).unwrap();
+        assert_eq!(created.last_run_at, None);
+        assert_eq!(created.last_occurrence_key, None);
+        assert_eq!(
+            created.next_run_at.as_deref(),
+            Some("2026-07-16T00:01:00+00:00")
+        );
+        let mut due = created.clone();
+        due.next_run_at = Some("2026-07-15T23:59:59+00:00".into());
+        let mut due_schedules = vec![due];
+        let (changed, plans) = collect_due_plans(&mut due_schedules, now);
+        assert!(changed);
+        assert_eq!(plans.len(), 1);
+        assert!(
+            chrono::DateTime::parse_from_rfc3339(due_schedules[0].next_run_at.as_deref().unwrap())
+                .unwrap()
+                > now
+        );
+        let (_, duplicate_plans) = collect_due_plans(&mut due_schedules, now);
+        assert!(duplicate_plans.is_empty());
+
+        let mut skipped = created.clone();
+        skipped.next_run_at = Some("2026-07-15T23:00:00+00:00".into());
+        let mut skipped_schedules = vec![skipped];
+        let (changed, skipped_plans) = collect_due_plans(&mut skipped_schedules, now);
+        assert!(changed);
+        assert!(skipped_plans.is_empty());
+        assert!(skipped_schedules[0].last_occurrence_key.is_some());
+
+        let mut existing = schedule.clone();
+        existing.last_run_at = Some("2026-07-15T23:59:30+00:00".into());
+        existing.last_occurrence_key = Some("server-owned".into());
+        let updated = prepare_schedule_for_save(schedule, Some(&existing), now).unwrap();
+        assert_eq!(updated.last_run_at, existing.last_run_at);
+        assert_eq!(updated.last_occurrence_key, existing.last_occurrence_key);
+        assert_eq!(
+            updated.next_run_at.as_deref(),
+            Some("2026-07-16T00:01:00+00:00")
+        );
+
+        let mut past_once = updated;
+        past_once.schedule_type = "once".into();
+        past_once.expression = "2026-07-15T00:00:00Z".into();
+        assert!(prepare_schedule_for_save(past_once.clone(), None, now).is_err());
+        past_once.next_run_at = None;
+        let mut legacy_past_once = vec![past_once];
+        let (changed, plans) = collect_due_plans(&mut legacy_past_once, now);
+        assert!(changed);
+        assert!(plans.is_empty());
+        assert!(!legacy_past_once[0].enabled);
     }
 }

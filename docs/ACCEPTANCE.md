@@ -42,10 +42,10 @@
 | OpenSSH 与终端安全 | 通过 | `OpenSshTools.test.tsx`、`terminal-safety.test.ts`；Rust 覆盖 `Include` 的 `*`/`?`、循环/越界、公钥权限部署；逐窗格时间戳 gutter、Copy Mode、跨标签搜索、最低对比度和增强光标通过 Lint/构建与单元测试 |
 | SCP 安全降级 | 通过（代码/编译） | SFTP 子系统失败后使用 `ssh2::Session::scp_send/scp_recv`，复用现有认证、代理和主机指纹；临时文件、取消和大小校验保留。未破坏用户服务器以人为制造 SFTP 故障，因此未声明真机故障注入通过 |
 | Agent 转发 | 通过（本机能力） | `ProtocolSettings.test.tsx` 验证逐连接选择和风险确认；Rust 连接及重连路径调用 `request_auth_agent_forwarding`。是否获远端 sshd 允许取决于目标主机配置 |
-| 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览；Rust 验证固定 Schema、步骤/超时/正则边界，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
+| 受限自动化 | 通过 | `AutomationSettings.test.tsx` 验证最终预览、每日计划和 IANA 时区；Rust 验证固定 Schema、步骤/超时/正则边界、每日/每周/Cron、DST 回拨去重、后端权威游标和先持久化后启动的 at-most-once 调度，后端提供任务 ID、逐步结果、取消、失败停止和文件原子落盘 |
 | 加密同步 | 通过（代码/本机密钥边界） | Rust 验证同步包不出现主机与私钥路径明文、旧包保留、错误口令拒绝和同 ID 本地连接不被覆盖；UI 默认关闭凭据同步。可选 Touch ID 口令使用设备专属 Data Protection Keychain 与当前指纹集合保护，解锁后不返回前端，手动口令恢复入口始终保留 |
 | Zmodem/Mosh/X11 | 部分 | Zmodem 已与腾讯云 `lrzsz` 完成双向互操作；Mosh 已完成真实公网 UDP 短测；X11 已由本机 OpenSSH 接受真实 `x11-req` 并建立远端 `DISPLAY`。XQuartz GUI、Mosh 漫游/Intel 与对应外部环境仍待验收 |
-| AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI、可信插件沙箱、本地团队 RBAC/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI 和 relay 备份恢复运维代码已完成。正式域名/TLS/WSS/邮件/限速/监控、真实加密异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
+| AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI 有界流式响应、可信插件沙箱、本地团队 RBAC/组织导出/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、Prometheus 指标、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI 和 relay 备份恢复运维代码已完成。本机真实 `age` 功能演练通过；正式域名/TLS/WSS/邮件/限速/监控平台、生产 identity 异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
 
@@ -64,6 +64,7 @@
 | --- | --- |
 | 数据与文件授权 | `0005_ssh_certificate.sql` 历史迁移通过；私钥与证书使用独立 Keychain Bookmark，连接复制、永久删除、备份字段和旧数据默认值均纳入同一生命周期 |
 | 元数据与有效期 | OpenSSH 用户证书类型、CA、Key ID、序列号、主体和 UTC 有效期解析通过；主机证书、格式错误、过期和尚未生效均拒绝认证 |
+| 主体授权 | 非空 principals 必须精确、区分大小写地包含目标用户名，主体不匹配在网络认证前拒绝；空 principals 保留 OpenSSH 不限制用户名的语义 |
 | 真实协议 | 本机临时 OpenSSH `sshd` 使用 Ed25519 CA 与 `TrustedUserCAKeys`，CNshell/libssh2 通过短期用户证书真实认证并执行固定命令；夹具退出清理 CA、密钥、证书与服务进程 |
 | 自动化门禁 | Rust 118 项、前端 100 项、lint、TypeScript/Vite production build 与 diff 检查通过 |
 
@@ -141,7 +142,7 @@
 | endpoint 与秘密边界 | 生产地址强制 HTTPS，仅 loopback 测试允许 HTTP；禁用重定向并限制超时/响应。账号和设备 token 只进 Keychain，SQLite 只保存非秘密元数据和到期时间 |
 | 工作区生命周期 | 已完成账号注册/登录/退出、工作区发布、邮箱邀请令牌、可重试邀请接受、成员/设备/epoch 快照同步、在线角色更新和设备撤销；本机公钥与 Keychain 私钥身份固定比对 |
 | 自动刷新与证据 | 双账号、双 SQLite/Keychain 身份通过真实 relay HTTP 完成发布、邀请、角色同步；删除设备 token 后通过 Ed25519 一次性 challenge 自动恢复。客户端数据库检查不含明文密码或 token |
-| 保留验收边界 | 本阶段只验收账号与目录同步；房间 WebSocket、观看/控制 UI 和备份恢复运维代码已在后续增量中接通。正式 TLS 域名、邮件、监控、真实加密异地恢复和两台真实设备跨网络证据仍未完成 |
+| 保留验收边界 | 本阶段只验收账号与目录同步；房间 WebSocket、观看/控制 UI 和备份恢复运维代码已在后续增量中接通。正式 TLS 域名、邮件、监控平台、生产 identity 加密异地恢复和两台真实设备跨网络证据仍未完成 |
 | 部署边界 | 提供非 root、只读文件系统兼容的 Dockerfile 和仅绑定 host loopback 的 Compose 示例；非 loopback 启动必须显式确认位于 TLS 代理后。当前机器没有 Docker，未执行镜像构建；正式 DNS/TLS/WSS、邮件、代理限速、加密卷、生产备份恢复、监控告警和真实两设备仍待外部环境 |
 
 ### 2026-07-16 在线多人终端客户端增量验收
@@ -152,17 +153,28 @@
 | 成员与控制 | 握手恢复服务端权威的已加入成员和当前租约；加入/离开、授权/撤销实时广播。参与者离开后服务端撤销房间访问及其租约；主持端收到租约广播后同步本地逐帧输入校验状态 |
 | UI 与内容边界 | 常驻协作中心支持 SSH 主持、按设备邀请、参与者 xterm 观看、10–300 秒控制移交和关闭。只有匹配本机且未过期的租约开放输入；弹窗隐藏时仍保留有界输出缓冲。房间密钥、设备私钥、账号/设备 token 和密文加解密均不进入 React 状态 |
 | 自动化证据 | 6 个 Rust 游标/队列测试覆盖 ready 前缀、缺口、单次 accepted、未确认重连和输入恢复；6 个 React 测试覆盖建房、邀请、主持输出转发、接受邀请、只读/租约输入、授权/撤销；真实 relay loopback 测试覆盖成员/租约初始快照和参与者离开 |
-| 保留验收边界 | 当前只完成同机 loopback 自动化和运维代码演练，没有正式 DNS/TLS/WSS、邮件、限速、监控、真实 `age` 异地恢复，也没有两台真实设备跨网络观看、控制和断网恢复证据；因此仅记为代码与 loopback 通过 |
+| 保留验收边界 | 当前只完成同机 loopback 自动化、临时 `age` 功能演练和运维代码演练，没有正式 DNS/TLS/WSS、邮件、限速、监控平台、生产 identity 异地恢复，也没有两台真实设备跨网络观看、控制和断网恢复证据；因此仅记为代码与 loopback 通过 |
 
 ### 2026-07-16 团队 relay 运维基线增量验收
 
 | 项目 | 结果 |
 | --- | --- |
-| 健康与停机 | `/health` 为纯 liveness；`/ready` 执行 SQLite `SELECT 1`，正常返回 200、连接池关闭返回 503。SIGINT/SIGTERM 停止接流，活动 WebSocket 收到关闭帧后退出；Compose 和镜像健康检查使用 `/ready`，Compose 预留 30 秒停机窗口 |
+| 健康、指标与停机 | `/health` 为纯 liveness；`/ready` 执行 SQLite `SELECT 1`，正常返回 200、连接池关闭返回 503；`/metrics` 只输出进程、ready、uptime、HTTP 状态类别、readiness 和授权 WebSocket 计数，不含租户标签。SIGINT/SIGTERM 停止接流，活动 WebSocket 收到关闭帧后退出；Compose 和镜像健康检查使用 `/ready`，Compose 预留 30 秒停机窗口 |
 | 备份边界 | `VACUUM INTO` 生成在线一致性快照，执行 `quick_check`、`foreign_key_check` 和核心 schema 校验；生产路径要求 `CNSHELL_RELAY_AGE_RECIPIENT` 和 `age`，未配置时失败，不会降级明文。最终载荷与 SHA-256 sidecar 权限为 `0600`，保留策略只匹配严格时间戳文件名 |
 | 恢复边界 | 恢复前校验 sidecar，密文要求独立 identity；拒绝符号链接、未知文件名、运行中 PID、已有目标和损坏/错误 schema，校验完成后才把新数据库安装到目标。服务停机确认是必填开关 |
-| 本机演练 | `/usr/bin/sqlite3` 自动演练覆盖默认明文拒绝、符号链接拒绝、两份保留且不删除诱饵文件、完整往返、拒绝覆盖、篡改拒绝、真实 relay `/health`/`/ready` 和 SIGTERM 正常退出 |
-| 保留验收边界 | 当前机器没有 `age` 和 Docker，只完成显式明文测试分支及二进制本机进程演练；未执行真实加密、容器构建、加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
+| 本机演练 | `/usr/bin/sqlite3` 自动演练覆盖默认明文拒绝、符号链接拒绝、两份保留且不删除诱饵文件、完整往返、拒绝覆盖、篡改拒绝、真实 relay `/health`/`/ready`/`/metrics` 和 SIGTERM 正常退出；可选真实 `age` 分支覆盖密文不暴露 SQLite 头/样例邮箱、正确 identity 恢复、错误 identity 和宽权限 identity 拒绝 |
+| 保留验收边界 | 当前机器没有 Docker；真实 `age` 分支使用临时下载二进制，记录了发布归档 SHA-256，但未验证其 Sigsum 证明。未执行容器构建、生产 identity、加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
+
+### 2026-07-16 本机可实现规划收口增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 自动化调度 | 后端与 UI 支持 interval/once/daily/weekly/Cron 和 IANA 时区；New York DST 回拨只选择一次重复墙上时间，Shanghai 时区计划正确；新计划清除客户端运行历史、旧计划保留服务端游标、过去的一次性计划拒绝，调度器持久化游标成功后才启动任务 |
+| WebDAV 与 AI | 本机 TCP 夹具验证两者在响应头之后仍可取消、chunked body 采用累计上限；WebDAV 另覆盖 412、507、503 分类和逐块进度，AI 输出限制为 64 KB |
+| 团队目录与历史 | Owner/Admin `workspaceExport` 原子导出只含工作区、成员、设备公钥/指纹和元数据审计，Operator/Viewer 拒绝，符号链接拒绝且秘密字段扫描通过；真实 Keychain 分享在 epoch 轮换后仍允许有效原接收设备解密，撤销与篡改继续拒绝 |
+| Relay 有界性与观测 | 客户端 REST 对未知长度 chunked 响应执行累计 1 MiB 上限；真实 loopback HTTP/WebSocket 集成看到两条活动连接后归零；`/metrics` 没有工作区、设备和房间标签；Relay Clippy `-D warnings` 通过 |
+| 完整短时门禁 | `npm run check` 通过：前端 48 个文件、138 项测试，Rust 205 项测试，Relay 2 项单元测试与 1 项真实 loopback 集成测试，IPC 一致性、ESLint、TypeScript/Vite production build、Relay Clippy 和运维演练全部通过。另启用临时真实 `age` 二进制重跑运维演练通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
+| 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、Docker、正式 DNS/TLS/WSS/邮件/限速/监控、生产加密异地恢复和双设备跨网络协作仍未验证 |
 
 | 命令 | 结果（2026-07-12） |
 | --- | --- |

@@ -213,6 +213,7 @@ export const api = {
   async exportPluginAudit(path:string):Promise<number>{return invoke("plugin_audit_export",{path});},
   async listTeamWorkspaces():Promise<TeamWorkspace[]>{return isTauri()?invoke("team_workspace_list"):[];},
   async createTeamWorkspace(input:CreateTeamWorkspaceInput):Promise<TeamWorkspace>{return invoke("team_workspace_create",{input});},
+  async exportTeamWorkspace(workspaceId:string,path:string):Promise<void>{return invoke("team_workspace_export",{workspaceId,path});},
   async listTeamMembers(workspaceId:string):Promise<TeamMember[]>{return invoke("team_member_list",{workspaceId});},
   async saveTeamMember(input:SaveTeamMemberInput):Promise<TeamMember>{return invoke("team_member_save",{input});},
   async removeTeamMember(workspaceId:string,memberId:string):Promise<void>{return invoke("team_member_remove",{workspaceId,memberId});},

@@ -1,8 +1,9 @@
 # CNshell Team Relay 运维手册
 
 > 适用范围：`services/team-relay` 单实例 SQLite 部署。
-> 当前证据：本机 loopback 的健康检查、优雅停机、明文测试备份/恢复演练已通过；正式
-> DNS/TLS/WSS、`age` 生产密钥、加密卷、监控平台和异地主机恢复仍需部署环境验收。
+> 当前证据：本机 loopback 的健康检查、指标、优雅停机、明文测试及临时 `age` 二进制的
+> 加密备份/恢复功能演练已通过；正式 DNS/TLS/WSS、经供应链验证的 `age` 生产密钥、加密卷、
+> 监控平台和异地主机恢复仍需部署环境验收。
 
 ## 1. 运行边界
 
@@ -32,10 +33,12 @@ RUST_LOG=cnshell_team_relay=info,tower_http=info
 | --- | --- | --- |
 | `GET /health` | 进程存活，不访问数据库 | `200 {"status":"ok"}` |
 | `GET /ready` | 服务可接流量，实际执行 SQLite `SELECT 1` | `200 {"status":"ready"}` |
+| `GET /metrics` | Prometheus 低基数进程与服务指标 | `200 text/plain` |
 
 数据库不可访问时 `/ready` 返回 `503`，而 `/health` 仍可为 `200`。负载均衡摘流和容器
 健康检查应使用 `/ready`；进程守护的 liveness 可使用 `/health`。两个 endpoint 都不应经过
-账号认证，但只能由代理、编排器和监控网络访问。
+账号认证，但只能由代理、编排器和监控网络访问。`/metrics` 不包含账号、工作区、设备、房间
+或原始 URL 标签，但仍应按内部运维端点限制访问。
 
 服务处理 `SIGINT` 和 `SIGTERM`。停机时先停止接收新请求，通知活动协作 WebSocket 关闭，
 再等待 HTTP 任务退出。容器或进程管理器至少保留 30 秒退出窗口，超时强杀只作为兜底。
@@ -113,7 +116,9 @@ npm run test:relay-ops
 ```
 
 该命令通过显式明文测试开关覆盖拒绝路径、保留策略、篡改、恢复、健康检查和 SIGTERM，
-不等价于真实 `age`、对象存储或异地主机演练。
+不等价于生产 `age` identity、对象存储或异地主机演练。测试机提供 `age` 和 `age-keygen` 时，
+可通过 `CNSHELL_RELAY_AGE_BIN` 与 `CNSHELL_RELAY_AGE_KEYGEN_BIN` 让同一脚本追加真实密文、
+正确/错误 identity 和私钥权限分支。该功能分支仍不能替代二进制供应链验证和异地恢复。
 
 ## 5. 监控与告警
 
@@ -127,6 +132,10 @@ npm run test:relay-ops
 
 日志只保留请求 ID、状态码、耗时和服务端元数据。集中日志平台必须配置字段级删除规则，
 禁止采集 Header、Body、完整 URL、终端密文 envelope 和数据库文件。
+
+Relay 自带 `/metrics` 可直接提供 process up、数据库 ready、uptime、HTTP 2xx/4xx/5xx、
+readiness 检查/失败和授权 WebSocket 总数/活动数。磁盘、备份、TLS、代理、邮件与宿主进程
+重启指标仍需部署平台采集；仅存在 endpoint 不等于监控告警已经上线。
 
 ## 6. 事故处理
 
@@ -144,7 +153,8 @@ npm run test:relay-ops
 ## 7. 发布前未完成项
 
 - 当前机器没有 Docker，示例镜像和 Compose 健康检查尚未实际构建运行。
-- 当前机器没有 `age`，尚无真实加密备份、私钥解密或异地主机恢复证据。
+- 临时 `age` 二进制的本机加密/解密功能演练已通过，但其 Sigsum 供应链证明未验证；尚无
+  生产 identity、加密卷、对象存储或异地主机恢复证据。
 - 正式 DNS/TLS/WSS、邮件验证/投递、代理层限速、监控告警和对象存储尚未部署。
 - 尚未使用两台真实设备跨网络验证观看、控制移交、断网恢复与撤销传播。
 

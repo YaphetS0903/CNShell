@@ -214,6 +214,23 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
             .status(),
         StatusCode::OK
     );
+    let metrics_response = client
+        .get(format!("{}/metrics", server.base_url))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    assert!(
+        metrics_response.headers()[reqwest::header::CONTENT_TYPE]
+            .to_str()
+            .unwrap()
+            .starts_with("text/plain")
+    );
+    let metrics = metrics_response.text().await.unwrap();
+    assert!(metrics.contains("cnshell_relay_up 1"));
+    assert!(metrics.contains("cnshell_relay_ready 1"));
+    assert!(!metrics.contains(&server.base_url));
     assert_eq!(
         client
             .get(format!("{}/ready", server.base_url))
@@ -466,6 +483,17 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
     let host_initial_control = receive_json(&mut host_socket).await;
     let recipient_participants = receive_json(&mut recipient_socket).await;
     let recipient_initial_control = receive_json(&mut recipient_socket).await;
+    let live_metrics = client
+        .get(format!("{}/metrics", server.base_url))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(live_metrics.contains("cnshell_relay_websocket_active 2"));
     assert_eq!(host_participants["type"], "participants");
     assert_eq!(
         host_participants["participants"].as_array().unwrap().len(),
@@ -726,4 +754,16 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         .await
         .unwrap();
     assert!(matches!(closed, Some(Ok(Message::Close(_))) | None));
+    tokio::task::yield_now().await;
+    let stopped_metrics = client
+        .get(format!("{}/metrics", server.base_url))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert!(stopped_metrics.contains("cnshell_relay_websocket_active 0"));
 }

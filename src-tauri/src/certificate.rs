@@ -41,6 +41,18 @@ pub fn inspect(path: &Path) -> AppResult<SshCertificateInfo> {
     parse(path, &text, Utc::now())
 }
 
+pub fn validate_for_username(info: &SshCertificateInfo, username: &str) -> AppResult<()> {
+    if username.is_empty() {
+        return Err(AppError::Authentication("SSH 用户名不能为空".into()));
+    }
+    if !info.principals.is_empty() && !info.principals.iter().any(|value| value == username) {
+        return Err(AppError::Authentication(format!(
+            "SSH Certificate 主体不包含目标用户 {username}"
+        )));
+    }
+    Ok(())
+}
+
 fn parse(path: &Path, text: &str, now: DateTime<Utc>) -> AppResult<SshCertificateInfo> {
     let mut certificate_type = String::new();
     let mut key_id = String::new();
@@ -155,6 +167,11 @@ mod tests {
         assert!(info.valid_now);
         assert_eq!(info.status, "valid");
         assert_eq!(info.principals, ["ubuntu", "deploy"]);
+        assert!(validate_for_username(&info, "ubuntu").is_ok());
+        assert!(matches!(
+            validate_for_username(&info, "root"),
+            Err(AppError::Authentication(message)) if message.contains("主体不包含")
+        ));
         let expired = parse(
             Path::new("/tmp/fixture-cert.pub"),
             text,
@@ -177,5 +194,18 @@ mod tests {
             .is_err()
         );
         assert!(parse_time("tomorrow").is_err());
+        let unrestricted = SshCertificateInfo {
+            path: "/tmp/unrestricted-cert.pub".into(),
+            certificate_type: "user certificate".into(),
+            key_id: "unrestricted".into(),
+            serial: "1".into(),
+            signing_ca: "SHA256:test".into(),
+            valid_from: "always".into(),
+            valid_to: "forever".into(),
+            principals: Vec::new(),
+            valid_now: true,
+            status: "valid".into(),
+        };
+        assert!(validate_for_username(&unrestricted, "any-user").is_ok());
     }
 }

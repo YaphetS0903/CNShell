@@ -37,6 +37,8 @@ CNshell host                         CNshell participant
 - 服务端审计只记录成员、动作、目标和时间，每工作区最多 4,096 条，不记录 envelope 正文。
 - `/health` 只报告进程存活，`/ready` 实际查询 SQLite；SIGINT/SIGTERM 停止接收新流量并
   通知活动 WebSocket 关闭，然后等待服务任务退出。
+- `/metrics` 输出 Prometheus 文本，只包含进程、数据库就绪、运行时长、HTTP 状态类别、
+  readiness 结果和授权 WebSocket 总数/活动数；没有账号、工作区、设备、房间或原始 URL 标签。
 
 ## 自动化证据
 
@@ -46,8 +48,10 @@ CNshell host                         CNshell participant
 token 失效。客户端另有游标恢复和观看/控制 UI 自动测试。
 
 运维演练另行覆盖默认拒绝明文备份、符号链接、限定保留、SHA-256 篡改、拒绝覆盖恢复、
-SQLite 完整性、`/health`、`/ready` 和 SIGTERM。当前机器没有 `age`，因此这里只验证默认
-不降级和显式明文测试路径，不把它记录为生产加密备份通过。
+SQLite 完整性、`/health`、`/ready`、`/metrics` 和 SIGTERM。另使用临时 `age`/`age-keygen`
+完成真实密文、正确 identity 恢复、错误 identity 拒绝和宽权限私钥拒绝。下载归档记录了
+SHA-256，但因环境没有 Sigsum 验证器，该二进制不构成供应链验证，也不把本机演练记录为
+生产加密异地恢复通过。
 
 服务端独立门禁：
 
@@ -60,7 +64,8 @@ npm run test:relay-ops
 ## macOS 客户端接入
 
 客户端只接受 `https://` relay 地址；`http://` 仅允许 `localhost`、`127.0.0.1` 和 `::1`
-自动化测试。请求禁用重定向，连接和总请求有超时，响应限制为 1 MiB。
+自动化测试。请求禁用重定向，连接和总请求有超时，响应逐块读取且累计限制为 1 MiB，
+未知长度的 chunked 响应不能绕过上限。
 
 - 账号 token 和每工作区设备 token 仅保存到 `cn.cnshell.team-relay` Keychain 服务；SQLite
   只保存 endpoint、账号 ID/邮箱、会话到期时间、工作区绑定和最后同步时间。
@@ -92,8 +97,9 @@ npm run test:relay-ops
 
 1. 正式域名、TLS 证书和只允许 `wss://`/`https://` 的反向代理。
 2. 代理层登录/注册速率限制、邮件投递与邮箱验证、防滥用和告警。
-3. 在加密卷、真实 `age` identity、异地存储和隔离恢复主机上执行自动备份与恢复演练，并接入
-   日志保留、监控和事故响应。脚本和 runbook 已完成，本机明文测试演练不能替代此项。
+3. 在加密卷、经受信任供应链获取的生产 `age` identity、异地存储和隔离恢复主机上执行自动
+   备份与恢复演练，并接入日志保留、监控和事故响应。脚本、指标和 runbook 已完成，本机
+   临时二进制功能演练不能替代此项。
 4. 至少两台真实设备跨网络完成观看、控制移交、断网恢复和撤销传播验收。
 
 客户端 REST/WebSocket 与观看/控制入口已经接通，但在以上生产条件和真机证据齐备前只用于

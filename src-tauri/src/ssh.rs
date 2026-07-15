@@ -570,6 +570,7 @@ pub fn authenticate(
                     _ => "SSH Certificate 当前无效".into(),
                 }));
             }
+            crate::certificate::validate_for_username(&info, &profile.username)?;
             connected
                 .session
                 .userauth_pubkey_file(

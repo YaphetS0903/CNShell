@@ -147,10 +147,21 @@ export function TeamSettings({
     catch (error) { onError(errorMessage(error)); }
   };
 
+  const exportWorkspace = async () => {
+    try {
+      const path = await save({ defaultPath: "cnshell-team-workspace.json", filters: [{ name: "JSON", extensions: ["json"] }] });
+      if (!path) return;
+      setBusy(true);
+      await api.exportTeamWorkspace(workspaceId, path);
+      await refreshWorkspace(workspaceId);
+    } catch (error) { onError(errorMessage(error)); } finally { setBusy(false); }
+  };
+
   const workspace = workspaces.find((item) => item.id === workspaceId);
   const canManageMembers = permissions?.permissions.includes("memberManage") ?? false;
   const canManageOwners = permissions?.permissions.includes("ownerManage") ?? false;
   const canManageShares = permissions?.permissions.includes("shareManage") ?? false;
+  const canExportWorkspace = permissions?.permissions.includes("workspaceExport") ?? false;
   const localDevice = devices.find((device) => device.isLocal && device.status === "active");
   const relayChanged = async (targetWorkspaceId?: string) => {
     await refreshWorkspaces();
@@ -165,7 +176,7 @@ export function TeamSettings({
     <div className="plugin-report"><strong>创建本地工作区</strong><div className="backup-actions"><input aria-label="团队名称" placeholder="团队名称" value={teamName} onChange={(event) => setTeamName(event.target.value)} maxLength={256}/><input aria-label="Owner 名称" placeholder="Owner 名称" value={ownerName} onChange={(event) => setOwnerName(event.target.value)} maxLength={256}/><button className="mini-button" disabled={busy || !teamName.trim() || !ownerName.trim()} onClick={() => void createWorkspace()}><Plus size={13}/>创建</button></div></div>
     {workspaces.length > 0 && <>
       <label><span>工作区</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}>{workspaces.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
-      {workspace && <div className="plugin-report"><strong>{workspace.name}</strong><small>本机角色：{roleLabel[workspace.localRole]} · 密钥 epoch {workspace.keyEpoch}</small><small>权限：{permissions?.permissions.join(", ") || "无"}</small></div>}
+      {workspace && <div className="plugin-report"><strong>{workspace.name}</strong><small>本机角色：{roleLabel[workspace.localRole]} · 密钥 epoch {workspace.keyEpoch}</small><small>权限：{permissions?.permissions.join(", ") || "无"}</small>{canExportWorkspace && <button className="mini-button" disabled={busy} onClick={() => void exportWorkspace()}><Download size={13}/>导出组织目录</button>}</div>}
       {canManageMembers && !relayBinding && <div className="plugin-report"><strong>添加成员</strong><div className="backup-actions"><input aria-label="成员名称" placeholder="成员名称" value={memberName} onChange={(event) => setMemberName(event.target.value)} maxLength={256}/><select aria-label="成员角色" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option>{canManageOwners && <option value="owner">Owner</option>}</select><button className="mini-button" disabled={busy || !memberName.trim()} onClick={() => void saveMember()}><Plus size={13}/>添加</button></div></div>}
       <div className="plugin-report"><strong>成员</strong>{members.map((member) => <div className="plugin-record" key={member.id}><div><strong>{member.displayName}</strong><small>{member.id === workspace?.localMemberId ? "本机成员 · " : ""}{roleLabel[member.role]} · {member.status === "active" ? "活动" : "已移除"}</small></div>{member.status === "active" && canManageMembers && member.id !== workspace?.localMemberId && <div><select aria-label={`修改 ${member.displayName} 角色`} value={member.role} onChange={(event) => void saveMember(member, event.target.value)} disabled={busy || (member.role === "owner" && !canManageOwners)}><option value="viewer">Viewer</option><option value="operator">Operator</option><option value="admin">Admin</option>{canManageOwners && <option value="owner">Owner</option>}</select><button className="icon-button" aria-label={`移除 ${member.displayName}`} onClick={() => void removeMember(member)}><Trash2 size={14}/></button></div>}</div>)}</div>
       <div className="plugin-report"><strong><KeyRound size={14}/> 设备密钥</strong>{!localDevice && <div className="backup-actions"><input aria-label="本机设备名称" placeholder="例如：Chen 的 Mac" value={deviceName} onChange={(event) => setDeviceName(event.target.value)} maxLength={256}/><button className="mini-button" disabled={busy || !deviceName.trim()} onClick={() => void ensureDevice()}><KeyRound size={13}/>创建设备身份</button></div>}{localDevice && <div className="backup-actions"><button className="mini-button" onClick={() => void exportDevice()}><Download size={13}/>导出本机公钥</button>{canManageShares && !relayBinding && <button className="mini-button" onClick={() => void importDevice()}><Upload size={13}/>导入设备公钥</button>}</div>}{devices.map((device) => <div className="plugin-record" key={device.id}><div><strong>{device.name}</strong><small>{members.find((member) => member.id === device.memberId)?.displayName ?? device.memberId} · {device.isLocal ? "本机" : "远端"} · {device.status === "active" ? "活动" : "已撤销"}</small><small>SHA-256 {device.fingerprint.replace("sha256:", "")}</small></div>{device.status === "active" && canManageShares && (!relayBinding || !device.isLocal) && <button className="icon-button" aria-label={`撤销设备 ${device.name}`} onClick={() => void revokeDevice(device)}><Trash2 size={14}/></button>}</div>)}</div>

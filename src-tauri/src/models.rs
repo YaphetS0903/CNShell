@@ -377,8 +377,12 @@ pub struct AutomationSchedule {
     pub enabled: bool,
     #[serde(default = "default_misfire_policy")]
     pub misfire_policy: String,
+    #[serde(default = "default_automation_time_zone")]
+    pub time_zone: String,
     pub next_run_at: Option<String>,
     pub last_run_at: Option<String>,
+    #[serde(default)]
+    pub last_occurrence_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -411,6 +415,10 @@ pub struct PythonAutomationPreview {
 
 fn default_misfire_policy() -> String {
     "skip".into()
+}
+
+fn default_automation_time_zone() -> String {
+    "UTC".into()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

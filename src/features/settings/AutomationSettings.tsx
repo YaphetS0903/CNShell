@@ -29,6 +29,19 @@ const blankStep = (
   remotePath: kind === "transfer" ? "" : null,
 });
 
+const scheduleDefaults: Record<string, string> = {
+  interval: "3600",
+  daily: "09:00",
+  weekly: "mon@09:00",
+  cron: "0 0 9 * * *",
+};
+
+const scheduleDefault = (type: string) => type === "once"
+  ? new Date(Date.now() + 60 * 60 * 1000).toISOString()
+  : scheduleDefaults[type] ?? "";
+
+const defaultTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
 export function AutomationSettings({
   connections,
   onError,
@@ -49,6 +62,7 @@ export function AutomationSettings({
   const [scheduleType, setScheduleType] = useState("interval");
   const [scheduleExpression, setScheduleExpression] = useState("3600");
   const [misfirePolicy, setMisfirePolicy] = useState("skip");
+  const [timeZone, setTimeZone] = useState(defaultTimeZone);
   useEffect(() => {
     void api.listAutomationSchedules().then(setSchedules).catch((error) => onError(errorMessage(error)));
   }, [onError]);
@@ -134,8 +148,10 @@ export function AutomationSettings({
         expression: scheduleExpression.trim(),
         enabled: true,
         misfirePolicy,
+        timeZone,
         nextRunAt: null,
         lastRunAt: null,
+        lastOccurrenceKey: null,
       });
       setSchedules((current) => [...current, schedule]);
     } catch (error) {
@@ -358,12 +374,13 @@ export function AutomationSettings({
           </div>
         </div>
         <div className="automation-meta">
-          <label><span>类型</span><select value={scheduleType} onChange={(event) => setScheduleType(event.target.value)}><option value="interval">固定间隔</option><option value="once">一次执行</option><option value="cron">Cron</option></select></label>
-          <label><span>{scheduleType === "interval" ? "间隔秒数" : scheduleType === "once" ? "RFC3339 时间" : "Cron 表达式"}</span><input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder={scheduleType === "cron" ? "0 0 * * * *" : undefined} /></label>
+          <label><span>类型</span><select value={scheduleType} onChange={(event) => { const value = event.target.value; setScheduleType(value); setScheduleExpression(scheduleDefault(value)); }}><option value="interval">固定间隔</option><option value="once">一次执行</option><option value="daily">每日</option><option value="weekly">每周</option><option value="cron">Cron</option></select></label>
+          <label><span>{scheduleType === "interval" ? "间隔秒数" : scheduleType === "once" ? "RFC3339 时间" : scheduleType === "daily" ? "每日时间" : scheduleType === "weekly" ? "星期与时间" : "Cron 表达式"}</span><input value={scheduleExpression} onChange={(event) => setScheduleExpression(event.target.value)} placeholder={scheduleDefault(scheduleType)} /></label>
+          <label><span>IANA 时区</span><input value={timeZone} onChange={(event) => setTimeZone(event.target.value)} placeholder="Asia/Shanghai" /></label>
           <label><span>错过执行</span><select value={misfirePolicy} onChange={(event) => setMisfirePolicy(event.target.value)}><option value="skip">跳过</option><option value="runOnce">恢复后执行一次</option></select></label>
           <button className="button secondary" onClick={() => void saveSchedule()}><Clock3 size={14} /> 保存定时任务</button>
         </div>
-        {schedules.length > 0 && <div className="automation-results" aria-live="polite">{schedules.map((schedule) => <article key={schedule.id}><p><strong>{schedule.plan.name || "未命名计划"}</strong> · {schedule.scheduleType} · {schedule.expression}</p><div className="automation-actions"><button className="button secondary" onClick={() => void runSchedule(schedule)}><Play size={14} /> 立即运行</button><IconButton icon={Trash2} label="删除定时任务" onClick={() => void deleteSchedule(schedule.id)} /></div></article>)}</div>}
+        {schedules.length > 0 && <div className="automation-results" aria-live="polite">{schedules.map((schedule) => <article key={schedule.id}><p><strong>{schedule.plan.name || "未命名计划"}</strong> · {schedule.scheduleType} · {schedule.expression} · {schedule.timeZone}{schedule.nextRunAt ? ` · 下次 ${new Date(schedule.nextRunAt).toLocaleString()}` : ""}</p><div className="automation-actions"><button className="button secondary" onClick={() => void runSchedule(schedule)}><Play size={14} /> 立即运行</button><IconButton icon={Trash2} label="删除定时任务" onClick={() => void deleteSchedule(schedule.id)} /></div></article>)}</div>}
       </section>
       {task && (
         <p className="muted-copy" aria-live="polite">

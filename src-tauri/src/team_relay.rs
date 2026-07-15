@@ -12,6 +12,7 @@ use crate::{
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use ed25519_dalek::{Signer, SigningKey};
+use futures_util::StreamExt;
 use rand::{RngCore, rngs::OsRng};
 use reqwest::{Client, RequestBuilder, StatusCode, Url, redirect::Policy};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -643,20 +644,33 @@ async fn send_empty(request: RequestBuilder) -> Result<(), RelayFailure> {
 }
 
 async fn bounded_response(response: reqwest::Response) -> Result<Vec<u8>, RelayFailure> {
-    if response.content_length().unwrap_or(0) > MAX_RESPONSE_BYTES as u64 {
+    bounded_response_with_limit(response, MAX_RESPONSE_BYTES).await
+}
+
+async fn bounded_response_with_limit(
+    response: reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, RelayFailure> {
+    if response.content_length().unwrap_or(0) > max_bytes as u64 {
         return Err(RelayFailure {
             status: None,
             message: "团队服务响应超过 1 MiB 上限".into(),
         });
     }
-    let bytes = response.bytes().await.map_err(network_failure)?;
-    if bytes.len() > MAX_RESPONSE_BYTES {
-        return Err(RelayFailure {
-            status: None,
-            message: "团队服务响应超过 1 MiB 上限".into(),
-        });
+    let mut bytes =
+        Vec::with_capacity(response.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(network_failure)?;
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(RelayFailure {
+                status: None,
+                message: "团队服务响应超过 1 MiB 上限".into(),
+            });
+        }
+        bytes.extend_from_slice(&chunk);
     }
-    Ok(bytes.to_vec())
+    Ok(bytes)
 }
 
 fn response_failure(status: StatusCode, bytes: &[u8]) -> RelayFailure {
@@ -2043,6 +2057,7 @@ mod tests {
     use super::*;
     use cnshell_team_relay::{RelayStore, router};
     use tempfile::tempdir;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::task::JoinHandle;
 
     struct TestRelay {
@@ -2083,6 +2098,32 @@ mod tests {
         assert!(validate_base_url("http://relay.example.com").is_err());
         assert!(validate_base_url("https://relay.example.com/path").is_err());
         assert!(validate_base_url("https://user@relay.example.com").is_err());
+    }
+
+    #[tokio::test]
+    async fn chunked_relay_response_is_bounded_while_streaming() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+                let count = socket.read(&mut buffer).await.unwrap();
+                request.extend_from_slice(&buffer[..count]);
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        let response = Client::new()
+            .get(format!("http://{address}/oversized"))
+            .send()
+            .await
+            .unwrap();
+        let error = bounded_response_with_limit(response, 8).await.unwrap_err();
+        assert!(error.message.contains("1 MiB"));
     }
 
     #[tokio::test]

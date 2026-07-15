@@ -286,8 +286,10 @@ export interface AutomationSchedule {
   expression: string;
   enabled: boolean;
   misfirePolicy: string;
+  timeZone: string;
   nextRunAt: string | null;
   lastRunAt: string | null;
+  lastOccurrenceKey: string | null;
 }
 
 export interface PythonAutomationManifest {

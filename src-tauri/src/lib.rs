@@ -300,6 +300,7 @@ pub fn run() {
             commands::plugin_audit_export,
             commands::team_workspace_list,
             commands::team_workspace_create,
+            commands::team_workspace_export,
             commands::team_member_list,
             commands::team_member_save,
             commands::team_member_remove,

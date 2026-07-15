@@ -118,6 +118,52 @@ expect_failure "wrong-schema backup restore" \
   CNSHELL_RELAY_SQLITE3_BIN="$SQLITE3_BIN" \
   "$RESTORE_SCRIPT" "$wrong_schema_backup" "$temporary_directory/wrong-schema.sqlite"
 
+age_bin="${CNSHELL_RELAY_AGE_BIN:-$(command -v age 2>/dev/null || true)}"
+if [[ -n "$age_bin" ]]; then
+  age_keygen_bin="${CNSHELL_RELAY_AGE_KEYGEN_BIN:-${age_bin%/*}/age-keygen}"
+  [[ -x "$age_bin" && -x "$age_keygen_bin" ]] || fail "age and age-keygen must both be executable"
+  encrypted_directory="$temporary_directory/encrypted-backups"
+  mkdir "$encrypted_directory"
+  identity="$temporary_directory/backup-identity.agekey"
+  "$age_keygen_bin" -o "$identity" > "$temporary_directory/age-keygen.log" 2>&1
+  chmod 600 "$identity"
+  recipient="$("$age_keygen_bin" -y "$identity")"
+  encrypted_backup="$(env CNSHELL_RELAY_AGE_RECIPIENT="$recipient" \
+    CNSHELL_RELAY_AGE_BIN="$age_bin" CNSHELL_RELAY_BACKUP_TIMESTAMP=20260716T020101Z \
+    CNSHELL_RELAY_SQLITE3_BIN="$SQLITE3_BIN" \
+    "$BACKUP_SCRIPT" "$database" "$encrypted_directory")"
+  [[ "$encrypted_backup" == *.sqlite.age && -f "$encrypted_backup.sha256" ]] || \
+    fail "encrypted backup files were not created"
+  if LC_ALL=C grep -a -Fq 'SQLite format 3' "$encrypted_backup" || \
+    LC_ALL=C grep -a -Fq 'ops@example.com' "$encrypted_backup"; then
+    fail "encrypted backup exposed SQLite or sample account plaintext"
+  fi
+  encrypted_restore="$temporary_directory/encrypted-restored.sqlite"
+  env CNSHELL_RELAY_CONFIRM_SERVICE_STOPPED=1 CNSHELL_RELAY_AGE_IDENTITY="$identity" \
+    CNSHELL_RELAY_AGE_BIN="$age_bin" CNSHELL_RELAY_SQLITE3_BIN="$SQLITE3_BIN" \
+    "$RESTORE_SCRIPT" "$encrypted_backup" "$encrypted_restore" >/dev/null
+  [[ "$("$SQLITE3_BIN" "$encrypted_restore" "SELECT email FROM accounts WHERE id='account-1';")" == "ops@example.com" ]] || \
+    fail "encrypted restore content did not match"
+
+  wrong_identity="$temporary_directory/wrong-identity.agekey"
+  "$age_keygen_bin" -o "$wrong_identity" > "$temporary_directory/wrong-age-keygen.log" 2>&1
+  chmod 600 "$wrong_identity"
+  expect_failure "encrypted restore with the wrong identity" \
+    env CNSHELL_RELAY_CONFIRM_SERVICE_STOPPED=1 CNSHELL_RELAY_AGE_IDENTITY="$wrong_identity" \
+    CNSHELL_RELAY_AGE_BIN="$age_bin" CNSHELL_RELAY_SQLITE3_BIN="$SQLITE3_BIN" \
+    "$RESTORE_SCRIPT" "$encrypted_backup" "$temporary_directory/wrong-identity.sqlite"
+
+  unsafe_identity="$temporary_directory/unsafe-identity.agekey"
+  cp "$identity" "$unsafe_identity"
+  chmod 644 "$unsafe_identity"
+  expect_failure "encrypted restore with a group-readable identity" \
+    env CNSHELL_RELAY_CONFIRM_SERVICE_STOPPED=1 CNSHELL_RELAY_AGE_IDENTITY="$unsafe_identity" \
+    CNSHELL_RELAY_AGE_BIN="$age_bin" CNSHELL_RELAY_SQLITE3_BIN="$SQLITE3_BIN" \
+    "$RESTORE_SCRIPT" "$encrypted_backup" "$temporary_directory/unsafe-identity.sqlite"
+else
+  printf 'relay operations drill: age unavailable, encrypted round trip skipped\n' >&2
+fi
+
 cargo build --quiet --manifest-path "$ROOT/Cargo.toml"
 relay_binary="$ROOT/target/debug/cnshell-team-relay"
 [[ -x "$relay_binary" ]] || fail "relay binary was not built"
@@ -148,8 +194,12 @@ fi
 
 health_response="$(curl --fail --silent "http://127.0.0.1:$port/health")"
 ready_response="$(curl --fail --silent "http://127.0.0.1:$port/ready")"
+metrics_response="$(curl --fail --silent "http://127.0.0.1:$port/metrics")"
 [[ "$health_response" == '{"status":"ok"}' ]] || fail "liveness response was unexpected"
 [[ "$ready_response" == '{"status":"ready"}' ]] || fail "readiness response was unexpected"
+[[ "$metrics_response" == *'cnshell_relay_up 1'* ]] || fail "metrics did not report process liveness"
+[[ "$metrics_response" == *'cnshell_relay_ready 1'* ]] || fail "metrics did not report database readiness"
+[[ "$metrics_response" == *'cnshell_relay_websocket_active 0'* ]] || fail "metrics reported an unexpected active WebSocket"
 
 pid_file="$temporary_directory/relay.pid"
 printf '%s\n' "$relay_pid" > "$pid_file"

@@ -5,6 +5,7 @@ use crate::{
     models::{SaveWebDavProfileInput, SyncOptions, SyncResult, WebDavProfile, WebDavSyncProgress},
 };
 use chrono::Utc;
+use futures_util::StreamExt;
 use reqwest::{Client, StatusCode, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use std::sync::{
@@ -17,6 +18,7 @@ const PROFILES_KEY: &str = "cnshell.sync.webdav.profiles";
 const KEYCHAIN_SERVICE: &str = "cn.cnshell.webdav";
 const MAX_REMOTE_BYTES: usize = 50 * 1024 * 1024;
 
+#[derive(Debug)]
 struct RemoteObject {
     bytes: Vec<u8>,
     etag: Option<String>,
@@ -199,7 +201,17 @@ pub async fn write(
     emit_progress(app, profile_id, "uploading", 0, payload_size);
     let client = client()?;
     let target = target_url(&profile.url, "CNshell-sync.cnshell.json")?;
-    let existing = get_optional(&client, &target, &profile.username, &password, &cancelled).await?;
+    let existing = get_optional(
+        &client,
+        &target,
+        &profile.username,
+        &password,
+        &cancelled,
+        |transferred, total| {
+            emit_progress(app, profile_id, "checkingRemote", transferred, total);
+        },
+    )
+    .await?;
     ensure_not_cancelled(&cancelled)?;
     let (conflict_copy, target_etag) = if let Some(existing) = existing {
         let etag = existing.etag.clone().ok_or_else(|| {
@@ -229,6 +241,7 @@ pub async fn write(
         (None, None)
     };
     ensure_not_cancelled(&cancelled)?;
+    emit_progress(app, profile_id, "uploading", 0, payload_size);
     put(
         &client,
         &target,
@@ -261,10 +274,19 @@ pub async fn read(
     emit_progress(app, profile_id, "downloading", 0, 0);
     let client = client()?;
     let target = target_url(&profile.url, "CNshell-sync.cnshell.json")?;
-    let payload = get_optional(&client, &target, &profile.username, &password, &cancelled)
-        .await?
-        .ok_or_else(|| AppError::NotFound("WebDAV 中没有 CNshell-sync.cnshell.json".into()))?
-        .bytes;
+    let payload = get_optional(
+        &client,
+        &target,
+        &profile.username,
+        &password,
+        &cancelled,
+        |transferred, total| {
+            emit_progress(app, profile_id, "downloading", transferred, total);
+        },
+    )
+    .await?
+    .ok_or_else(|| AppError::NotFound("WebDAV 中没有 CNshell-sync.cnshell.json".into()))?
+    .bytes;
     emit_progress(
         app,
         profile_id,
@@ -335,13 +357,41 @@ fn client() -> AppResult<Client> {
         .map_err(|error| AppError::Unavailable(format!("WebDAV 客户端初始化失败：{error}")))
 }
 
-async fn get_optional(
+async fn get_optional<F>(
     client: &Client,
     url: &Url,
     username: &str,
     password: &str,
     cancelled: &Arc<AtomicBool>,
-) -> AppResult<Option<RemoteObject>> {
+    progress: F,
+) -> AppResult<Option<RemoteObject>>
+where
+    F: FnMut(u64, u64),
+{
+    get_optional_with_limit(
+        client,
+        url,
+        username,
+        password,
+        cancelled,
+        MAX_REMOTE_BYTES,
+        progress,
+    )
+    .await
+}
+
+async fn get_optional_with_limit<F>(
+    client: &Client,
+    url: &Url,
+    username: &str,
+    password: &str,
+    cancelled: &Arc<AtomicBool>,
+    max_bytes: usize,
+    mut progress: F,
+) -> AppResult<Option<RemoteObject>>
+where
+    F: FnMut(u64, u64),
+{
     let request = client.get(url.clone()).basic_auth(username, Some(password));
     let response = send_cancellable(request, cancelled).await?;
     if response.status() == StatusCode::NOT_FOUND {
@@ -350,7 +400,8 @@ async fn get_optional(
     if !response.status().is_success() {
         return Err(http_error("读取", response.status()));
     }
-    if response.content_length().unwrap_or(0) > MAX_REMOTE_BYTES as u64 {
+    let total_bytes = response.content_length().unwrap_or(0);
+    if total_bytes > max_bytes as u64 {
         return Err(AppError::Validation("WebDAV 同步包不能超过 50 MB".into()));
     }
     let etag = response
@@ -358,14 +409,28 @@ async fn get_optional(
         .get(reqwest::header::ETAG)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    let bytes = response.bytes().await.map_err(network_error)?;
-    if bytes.len() > MAX_REMOTE_BYTES {
-        return Err(AppError::Validation("WebDAV 同步包不能超过 50 MB".into()));
+    progress(0, total_bytes);
+    let mut bytes = Vec::with_capacity(total_bytes.min(max_bytes as u64) as usize);
+    let mut stream = response.bytes_stream();
+    loop {
+        let next = tokio::select! {
+            chunk = stream.next() => chunk,
+            _ = wait_for_cancellation(cancelled) => {
+                return Err(AppError::Unavailable("WebDAV 同步已取消".into()));
+            }
+        };
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.map_err(network_error)?;
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(AppError::Validation("WebDAV 同步包不能超过 50 MB".into()));
+        }
+        bytes.extend_from_slice(&chunk);
+        progress(bytes.len() as u64, total_bytes);
     }
-    Ok(Some(RemoteObject {
-        bytes: bytes.to_vec(),
-        etag,
-    }))
+    ensure_not_cancelled(cancelled)?;
+    Ok(Some(RemoteObject { bytes, etag }))
 }
 
 async fn put(
@@ -407,11 +472,13 @@ async fn send_cancellable(
 ) -> AppResult<reqwest::Response> {
     tokio::select! {
         result = request.send() => result.map_err(network_error),
-        _ = async {
-            while !cancelled.load(Ordering::Acquire) {
-                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-            }
-        } => Err(AppError::Unavailable("WebDAV 同步已取消".into())),
+        _ = wait_for_cancellation(cancelled) => Err(AppError::Unavailable("WebDAV 同步已取消".into())),
+    }
+}
+
+async fn wait_for_cancellation(cancelled: &Arc<AtomicBool>) {
+    while !cancelled.load(Ordering::Acquire) {
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
 }
 
@@ -540,6 +607,12 @@ fn http_error(operation: &str, status: StatusCode) -> AppError {
         StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN => {
             AppError::Authentication(format!("WebDAV {operation}被拒绝（HTTP {status}）"))
         }
+        StatusCode::INSUFFICIENT_STORAGE => {
+            AppError::Remote("WebDAV 存储空间不足（HTTP 507），本地数据未被覆盖".into())
+        }
+        status if status.is_server_error() => AppError::Remote(format!(
+            "WebDAV 服务器暂时不可用（HTTP {status}），本地数据未被覆盖"
+        )),
         _ => AppError::Remote(format!("WebDAV {operation}失败（HTTP {status}）")),
     }
 }
@@ -547,7 +620,72 @@ fn http_error(operation: &str, status: StatusCode) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::AtomicU64;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Vec<u8> {
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        let header_end = loop {
+            let count = socket.read(&mut buffer).await.unwrap();
+            assert!(count > 0, "request ended before its headers");
+            request.extend_from_slice(&buffer[..count]);
+            if let Some(offset) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                break offset + 4;
+            }
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                line.to_ascii_lowercase()
+                    .strip_prefix("content-length: ")
+                    .and_then(|value| value.parse::<usize>().ok())
+            })
+            .unwrap_or(0);
+        while request.len() < header_end + content_length {
+            let count = socket.read(&mut buffer).await.unwrap();
+            assert!(count > 0, "request ended before its body");
+            request.extend_from_slice(&buffer[..count]);
+        }
+        request
+    }
+
+    async fn put_error(status: &'static str) -> AppError {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let request = read_http_request(&mut socket).await;
+            socket
+                .write_all(
+                    format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .await
+                .unwrap();
+            request
+        });
+        let error = put(
+            &client().unwrap(),
+            &Url::parse(&format!("http://{address}/sync.bin")).unwrap(),
+            "alice",
+            "secret",
+            b"encrypted".to_vec(),
+            Some("\"v1\""),
+            false,
+            &Arc::new(AtomicBool::new(false)),
+        )
+        .await
+        .unwrap_err();
+        let request = server.await.unwrap();
+        assert!(
+            String::from_utf8_lossy(&request)
+                .to_ascii_lowercase()
+                .contains("if-match: \"v1\"")
+        );
+        error
+    }
 
     #[test]
     fn validates_https_and_builds_scoped_target_urls() {
@@ -579,28 +717,7 @@ mod tests {
         tokio::spawn(async move {
             for index in 0..2 {
                 let (mut socket, _) = listener.accept().await.unwrap();
-                let mut request = Vec::new();
-                let mut buffer = [0_u8; 1024];
-                let header_end = loop {
-                    let count = socket.read(&mut buffer).await.unwrap();
-                    request.extend_from_slice(&buffer[..count]);
-                    if let Some(offset) = request.windows(4).position(|part| part == b"\r\n\r\n") {
-                        break offset + 4;
-                    }
-                };
-                let headers = String::from_utf8_lossy(&request[..header_end]);
-                let content_length = headers
-                    .lines()
-                    .find_map(|line| {
-                        line.to_ascii_lowercase()
-                            .strip_prefix("content-length: ")
-                            .and_then(|value| value.parse::<usize>().ok())
-                    })
-                    .unwrap_or(0);
-                while request.len() < header_end + content_length {
-                    let count = socket.read(&mut buffer).await.unwrap();
-                    request.extend_from_slice(&buffer[..count]);
-                }
+                let request = read_http_request(&mut socket).await;
                 sender.send(request.clone()).await.unwrap();
                 if index == 0 {
                     socket.write_all(b"HTTP/1.1 201 Created\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").await.unwrap();
@@ -625,7 +742,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            get_optional(&client, &url, "alice", "secret", &cancelled)
+            get_optional(&client, &url, "alice", "secret", &cancelled, |_, _| {})
                 .await
                 .unwrap()
                 .unwrap()
@@ -645,5 +762,80 @@ mod tests {
         assert!(put_text.to_ascii_lowercase().contains("if-none-match: *"));
         assert!(put_request.ends_with(b"ciphertext"));
         assert!(get_text.starts_with("GET /sync.bin HTTP/1.1"));
+    }
+
+    #[tokio::test]
+    async fn streamed_download_honors_cancellation_after_response_headers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _ = read_http_request(&mut socket).await;
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nhello",
+                )
+                .await
+                .unwrap();
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            let _ = socket.write_all(b"world").await;
+        });
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation = cancelled.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+            cancellation.store(true, Ordering::Release);
+        });
+        let transferred = Arc::new(AtomicU64::new(0));
+        let observed = transferred.clone();
+        let error = get_optional(
+            &client().unwrap(),
+            &Url::parse(&format!("http://{address}/slow.bin")).unwrap(),
+            "alice",
+            "secret",
+            &cancelled,
+            move |bytes, _| observed.store(bytes, Ordering::Release),
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::Unavailable(message) if message.contains("已取消")));
+        assert_eq!(transferred.load(Ordering::Acquire), 5);
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn streamed_download_rejects_chunked_body_over_the_limit() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _ = read_http_request(&mut socket).await;
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        let error = get_optional_with_limit(
+            &client().unwrap(),
+            &Url::parse(&format!("http://{address}/oversized.bin")).unwrap(),
+            "alice",
+            "secret",
+            &Arc::new(AtomicBool::new(false)),
+            8,
+            |_, _| {},
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(error, AppError::Validation(message) if message.contains("50 MB")));
+    }
+
+    #[tokio::test]
+    async fn put_classifies_conflict_quota_and_server_failures() {
+        let conflict = put_error("412 Precondition Failed").await;
+        assert!(matches!(conflict, AppError::Remote(message) if message.contains("同步冲突")));
+        let quota = put_error("507 Insufficient Storage").await;
+        assert!(matches!(quota, AppError::Remote(message) if message.contains("存储空间不足")));
+        let unavailable = put_error("503 Service Unavailable").await;
+        assert!(matches!(unavailable, AppError::Remote(message) if message.contains("暂时不可用")));
     }
 }

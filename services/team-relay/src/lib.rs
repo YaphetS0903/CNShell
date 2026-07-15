@@ -1,9 +1,11 @@
 mod error;
+mod metrics;
 pub mod models;
 mod store;
 mod terminal;
 
 pub use error::{RelayError, RelayResult};
+use metrics::RelayMetrics;
 pub use store::RelayStore;
 use terminal::TerminalRelay;
 
@@ -11,6 +13,7 @@ use axum::{
     Json, Router,
     extract::{Path, Query, State, WebSocketUpgrade},
     http::{HeaderMap, StatusCode},
+    middleware,
     response::IntoResponse,
     routing::{delete, get, patch, post},
 };
@@ -25,6 +28,7 @@ const MAX_HTTP_BODY_BYTES: usize = 256 * 1024;
 struct RelayState {
     store: RelayStore,
     terminal: TerminalRelay,
+    metrics: RelayMetrics,
 }
 
 pub fn router(store: RelayStore) -> Router {
@@ -43,9 +47,11 @@ impl RelayShutdownHandle {
 }
 
 pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) {
+    let metrics = RelayMetrics::default();
     let state = RelayState {
-        terminal: TerminalRelay::new(store.clone()),
+        terminal: TerminalRelay::new(store.clone(), metrics.clone()),
         store,
+        metrics: metrics.clone(),
     };
     let shutdown = RelayShutdownHandle {
         terminal: state.terminal.clone(),
@@ -53,6 +59,7 @@ pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) 
     let router = Router::new()
         .route("/health", get(health))
         .route("/ready", get(readiness))
+        .route("/metrics", get(prometheus_metrics))
         .route("/v1/accounts/register", post(register_account))
         .route("/v1/accounts/login", post(login))
         .route("/v1/workspaces/bootstrap", post(bootstrap_workspace))
@@ -96,6 +103,7 @@ pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) 
         .route("/v1/terminal/ws/{room_id}", get(terminal_socket))
         .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
         .layer(TraceLayer::new_for_http())
+        .layer(middleware::from_fn_with_state(metrics, metrics::track_http))
         .with_state(state);
     (router, shutdown)
 }
@@ -105,12 +113,27 @@ async fn health() -> impl IntoResponse {
 }
 
 async fn readiness(State(state): State<RelayState>) -> impl IntoResponse {
-    if state.store.readiness().await.is_ok() {
+    let ready = state.store.readiness().await.is_ok();
+    state.metrics.record_readiness(ready);
+    if ready {
         return (StatusCode::OK, Json(json!({ "status": "ready" })));
     }
     (
         StatusCode::SERVICE_UNAVAILABLE,
         Json(json!({ "status": "unavailable" })),
+    )
+}
+
+async fn prometheus_metrics(State(state): State<RelayState>) -> impl IntoResponse {
+    let ready = state.store.readiness().await.is_ok();
+    state.metrics.record_readiness(ready);
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        state.metrics.render(ready),
     )
 }
 
@@ -448,9 +471,11 @@ mod tests {
         let database = directory.path().join("relay.sqlite");
         let database_url = format!("sqlite://{}?mode=rwc", database.display());
         let store = RelayStore::open(&database_url).await.unwrap();
+        let metrics = RelayMetrics::default();
         let state = RelayState {
-            terminal: TerminalRelay::new(store.clone()),
+            terminal: TerminalRelay::new(store.clone(), metrics.clone()),
             store: store.clone(),
+            metrics,
         };
 
         assert_eq!(health().await.into_response().status(), StatusCode::OK);

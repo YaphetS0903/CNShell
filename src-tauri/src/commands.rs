@@ -614,17 +614,22 @@ pub async fn automation_schedule_list(
 #[tauri::command]
 pub async fn automation_schedule_save(
     state: State<'_, AppState>,
-    mut schedule: AutomationSchedule,
+    schedule: AutomationSchedule,
 ) -> AppResult<AutomationSchedule> {
-    crate::automation::validate_schedule(&schedule)?;
-    if schedule.next_run_at.is_none() {
-        schedule.next_run_at = crate::automation::next_run_at(&schedule, chrono::Utc::now())?;
-    }
     let mut schedules: Vec<AutomationSchedule> = state
         .db
         .load_named_state(crate::automation::schedules_key())
         .await?
         .unwrap_or_default();
+    let existing = schedules
+        .iter()
+        .find(|item| item.id == schedule.id)
+        .cloned();
+    let schedule = crate::automation::prepare_schedule_for_save(
+        schedule,
+        existing.as_ref(),
+        chrono::Utc::now(),
+    )?;
     if let Some(existing) = schedules.iter_mut().find(|item| item.id == schedule.id) {
         *existing = schedule.clone();
     } else {
@@ -995,6 +1000,15 @@ pub async fn team_workspace_create(
     input: CreateTeamWorkspaceInput,
 ) -> AppResult<TeamWorkspace> {
     crate::team::create_workspace(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_workspace_export(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    path: String,
+) -> AppResult<()> {
+    crate::team::export_workspace(&state.db, &workspace_id, &path).await
 }
 
 #[tauri::command]

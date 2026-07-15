@@ -6,6 +6,7 @@ use crate::{
     },
 };
 use chrono::{Duration as ChronoDuration, Utc};
+use futures_util::StreamExt;
 use parking_lot::Mutex;
 use regex::Regex;
 use reqwest::{Client, StatusCode, Url, redirect::Policy};
@@ -214,10 +215,7 @@ pub async fn execute(
     if response.content_length().unwrap_or(0) > MAX_OUTPUT_BYTES as u64 {
         return Err(AppError::Validation("AI 响应超过 64 KB".into()));
     }
-    let bytes = response.bytes().await.map_err(ai_network_error)?;
-    if bytes.len() > MAX_OUTPUT_BYTES {
-        return Err(AppError::Validation("AI 响应超过 64 KB".into()));
-    }
+    let bytes = read_bounded_response(response, &cancelled, MAX_OUTPUT_BYTES).await?;
     let value: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|_| AppError::Remote("AI Provider 返回了无效 JSON".into()))?;
     let content = value
@@ -358,6 +356,39 @@ async fn wait_cancelled(cancelled: &Arc<AtomicBool>) {
     }
 }
 
+async fn read_bounded_response(
+    response: reqwest::Response,
+    cancelled: &Arc<AtomicBool>,
+    max_bytes: usize,
+) -> AppResult<Vec<u8>> {
+    if response.content_length().unwrap_or(0) > max_bytes as u64 {
+        return Err(AppError::Validation("AI 响应超过 64 KB".into()));
+    }
+    let mut output =
+        Vec::with_capacity(response.content_length().unwrap_or(0).min(max_bytes as u64) as usize);
+    let mut stream = response.bytes_stream();
+    loop {
+        let next = tokio::select! {
+            chunk = stream.next() => chunk,
+            _ = wait_cancelled(cancelled) => {
+                return Err(AppError::Unavailable("AI 请求已取消".into()));
+            }
+        };
+        let Some(chunk) = next else {
+            break;
+        };
+        let chunk = chunk.map_err(ai_network_error)?;
+        if output.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(AppError::Validation("AI 响应超过 64 KB".into()));
+        }
+        output.extend_from_slice(&chunk);
+    }
+    if cancelled.load(Ordering::Acquire) {
+        return Err(AppError::Unavailable("AI 请求已取消".into()));
+    }
+    Ok(output)
+}
+
 fn save_api_key(id: &str, api_key: &str) -> AppResult<()> {
     keyring::Entry::new(KEYCHAIN_SERVICE, id)
         .map_err(|error| AppError::Storage(error.to_string()))?
@@ -407,6 +438,19 @@ fn ai_http_error(status: StatusCode) -> AppError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    async fn accept_request(listener: tokio::net::TcpListener) -> tokio::net::TcpStream {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut buffer = [0_u8; 1024];
+        while !request.windows(4).any(|part| part == b"\r\n\r\n") {
+            let count = socket.read(&mut buffer).await.unwrap();
+            assert!(count > 0, "request ended before headers");
+            request.extend_from_slice(&buffer[..count]);
+        }
+        socket
+    }
 
     #[test]
     fn redacts_secrets_hosts_ips_and_paths() {
@@ -437,5 +481,60 @@ mod tests {
         assert!(validate_kind_content("command", "list files").is_ok());
         assert!(validate_kind_content("unknown", "text").is_err());
         assert!(validate_kind_content("explain", "").is_err());
+    }
+
+    #[tokio::test]
+    async fn response_body_honors_cancellation_after_headers() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let mut socket = accept_request(listener).await;
+            socket
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\nhello",
+                )
+                .await
+                .unwrap();
+            tokio::time::sleep(Duration::from_millis(500)).await;
+            let _ = socket.write_all(b"world").await;
+        });
+        let response = Client::new()
+            .get(format!("http://{address}/slow"))
+            .send()
+            .await
+            .unwrap();
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancellation = cancelled.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(75)).await;
+            cancellation.store(true, Ordering::Release);
+        });
+        let error = read_bounded_response(response, &cancelled, MAX_OUTPUT_BYTES)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::Unavailable(message) if message.contains("已取消")));
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn response_body_rejects_chunked_data_over_the_limit() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut socket = accept_request(listener).await;
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello\r\n5\r\nworld\r\n0\r\n\r\n")
+                .await
+                .unwrap();
+        });
+        let response = Client::new()
+            .get(format!("http://{address}/oversized"))
+            .send()
+            .await
+            .unwrap();
+        let error = read_bounded_response(response, &Arc::new(AtomicBool::new(false)), 8)
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::Validation(message) if message.contains("64 KB")));
     }
 }

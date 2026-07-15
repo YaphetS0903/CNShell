@@ -2,7 +2,7 @@ use crate::{
     db::Database,
     error::{AppError, AppResult},
     models::{
-        CreateTeamWorkspaceInput, SaveTeamMemberInput, TeamAuditEvent, TeamMember,
+        CreateTeamWorkspaceInput, SaveTeamMemberInput, TeamAuditEvent, TeamDevice, TeamMember,
         TeamPermissionReport, TeamWorkspace,
     },
 };
@@ -19,6 +19,7 @@ const ROLES: &[&str] = &["owner", "admin", "operator", "viewer"];
 const OWNER_PERMISSIONS: &[&str] = &[
     "workspaceRead",
     "workspaceDelete",
+    "workspaceExport",
     "memberRead",
     "memberManage",
     "ownerManage",
@@ -34,6 +35,7 @@ const OWNER_PERMISSIONS: &[&str] = &[
 ];
 const ADMIN_PERMISSIONS: &[&str] = &[
     "workspaceRead",
+    "workspaceExport",
     "memberRead",
     "memberManage",
     "connectionRead",
@@ -558,6 +560,108 @@ pub async fn export_audit(db: &Database, workspace_id: &str, path: &str) -> AppR
     Ok(count)
 }
 
+pub async fn export_workspace(db: &Database, workspace_id: &str, path: &str) -> AppResult<()> {
+    if path.len() > 16 * 1024 {
+        return Err(AppError::Validation("团队工作区导出路径超过 16 KB".into()));
+    }
+    let target = Path::new(path);
+    if !target.is_absolute() || target.extension().and_then(|value| value.to_str()) != Some("json")
+    {
+        return Err(AppError::Validation(
+            "团队工作区必须导出为绝对路径 JSON 文件".into(),
+        ));
+    }
+    if target.is_symlink() {
+        return Err(AppError::Validation(
+            "团队工作区导出目标不能是符号链接".into(),
+        ));
+    }
+    let parent = target
+        .parent()
+        .filter(|value| value.is_dir())
+        .ok_or_else(|| AppError::Validation("团队工作区导出目录不存在".into()))?;
+    let mut transaction = db.pool.begin().await?;
+    let (actor_id, role) = local_authorization(&mut transaction, workspace_id).await?;
+    require_permission(&role, "workspaceExport")?;
+    let workspace = sqlx::query_as::<_, TeamWorkspace>("SELECT w.id,w.name,w.local_member_id,m.role AS local_role,w.key_epoch,w.created_at,w.updated_at FROM team_workspaces w JOIN team_members m ON m.id=w.local_member_id AND m.workspace_id=w.id WHERE w.id=?")
+        .bind(workspace_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+    let members = sqlx::query_as::<_, TeamMember>("SELECT id,workspace_id,display_name,role,status,joined_at,updated_at,removed_at FROM team_members WHERE workspace_id=? ORDER BY joined_at,id")
+        .bind(workspace_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+    let devices = sqlx::query_as::<_, TeamDevice>("SELECT id,workspace_id,member_id,name,encryption_public_key,signing_public_key,fingerprint,is_local,status,created_at,updated_at,revoked_at FROM team_devices WHERE workspace_id=? ORDER BY created_at,id")
+        .bind(workspace_id)
+        .fetch_all(&mut *transaction)
+        .await?;
+    let events = sqlx::query_as::<_, TeamAuditEvent>("SELECT id,workspace_id,actor_member_id,action,target_type,target_id,created_at FROM team_audit_events WHERE workspace_id=? ORDER BY created_at,rowid LIMIT ?")
+        .bind(workspace_id)
+        .bind(MAX_AUDIT_EXPORT)
+        .fetch_all(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    let payload = serde_json::to_vec_pretty(&json!({
+        "schemaVersion": 1,
+        "kind": "cnshellTeamWorkspaceExport",
+        "exportedAt": Utc::now().to_rfc3339(),
+        "workspace": workspace,
+        "members": members,
+        "devices": devices,
+        "auditEvents": events,
+    }))
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+    let target = target.to_path_buf();
+    let written_target = target.clone();
+    let temporary = parent.join(format!(
+        ".cnshell-team-workspace-{}.tmp",
+        uuid::Uuid::new_v4()
+    ));
+    tokio::task::spawn_blocking(move || -> AppResult<()> {
+        let result = (|| {
+            let mut file = std::fs::File::options()
+                .create_new(true)
+                .write(true)
+                .open(&temporary)?;
+            file.write_all(&payload)?;
+            file.sync_all()?;
+            std::fs::rename(&temporary, &target)?;
+            Ok(())
+        })();
+        if result.is_err() {
+            let _ = std::fs::remove_file(&temporary);
+        }
+        result
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("团队工作区导出任务失败：{error}")))??;
+    let mut transaction = match db.pool.begin().await {
+        Ok(transaction) => transaction,
+        Err(error) => {
+            let _ = std::fs::remove_file(&written_target);
+            return Err(error.into());
+        }
+    };
+    if let Err(error) = audit(
+        &mut transaction,
+        workspace_id,
+        &actor_id,
+        "workspace-exported",
+        "workspace",
+        workspace_id,
+    )
+    .await
+    {
+        let _ = std::fs::remove_file(&written_target);
+        return Err(error);
+    }
+    if let Err(error) = transaction.commit().await {
+        let _ = std::fs::remove_file(&written_target);
+        return Err(error.into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -566,6 +670,12 @@ mod tests {
     #[test]
     fn role_matrix_is_least_privilege() {
         assert!(permissions("owner").unwrap().contains(&"workspaceDelete"));
+        assert!(permissions("admin").unwrap().contains(&"workspaceExport"));
+        assert!(
+            !permissions("operator")
+                .unwrap()
+                .contains(&"workspaceExport")
+        );
         assert!(!permissions("admin").unwrap().contains(&"ownerManage"));
         assert!(
             permissions("operator")
@@ -699,5 +809,75 @@ mod tests {
         assert!(!exported.contains("terminalOutput"));
         assert!(!exported.contains("credential"));
         assert_eq!(list_audit(&db, &workspace.id).await.unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn workspace_export_contains_only_directory_public_keys_and_metadata() {
+        let directory = tempdir().unwrap();
+        let db = Database::open(&directory.path().join("cnshell.sqlite"))
+            .await
+            .unwrap();
+        let workspace = create_workspace(
+            &db,
+            CreateTeamWorkspaceInput {
+                name: "Exported Ops".into(),
+                owner_name: "Owner".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let member = save_member(
+            &db,
+            SaveTeamMemberInput {
+                workspace_id: workspace.id.clone(),
+                member_id: None,
+                display_name: "Viewer".into(),
+                role: "viewer".into(),
+            },
+        )
+        .await
+        .unwrap();
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("INSERT INTO team_devices(id,workspace_id,member_id,name,encryption_public_key,signing_public_key,fingerprint,is_local,status,created_at,updated_at,revoked_at) VALUES(?,?,?,?,?,?,?,0,'active',?,?,NULL)")
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&workspace.id)
+            .bind(&member.id)
+            .bind("Viewer Mac")
+            .bind("x25519:public-encryption-key")
+            .bind("ed25519:public-signing-key")
+            .bind("sha256:public-fingerprint")
+            .bind(&now)
+            .bind(&now)
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        let output = directory.path().join("workspace.json");
+        export_workspace(&db, &workspace.id, output.to_str().unwrap())
+            .await
+            .unwrap();
+        let exported = std::fs::read_to_string(&output).unwrap();
+        assert!(exported.contains("cnshellTeamWorkspaceExport"));
+        assert!(exported.contains("Exported Ops"));
+        assert!(exported.contains("Viewer Mac"));
+        assert!(exported.contains("x25519:public-encryption-key"));
+        assert!(!exported.to_ascii_lowercase().contains("credential"));
+        assert!(!exported.to_ascii_lowercase().contains("password"));
+        assert!(!exported.to_ascii_lowercase().contains("terminal"));
+        assert!(!exported.to_ascii_lowercase().contains("token"));
+        assert!(
+            list_audit(&db, &workspace.id)
+                .await
+                .unwrap()
+                .iter()
+                .any(|event| event.action == "workspace-exported")
+        );
+
+        let symlink = directory.path().join("workspace-link.json");
+        std::os::unix::fs::symlink(&output, &symlink).unwrap();
+        assert!(
+            export_workspace(&db, &workspace.id, symlink.to_str().unwrap())
+                .await
+                .is_err()
+        );
     }
 }

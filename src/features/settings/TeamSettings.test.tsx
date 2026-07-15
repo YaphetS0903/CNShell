@@ -37,7 +37,7 @@ const permissions: TeamPermissionReport = {
   workspaceId: workspace.id,
   memberId: owner.id,
   role: "owner",
-  permissions: ["memberManage", "ownerManage", "auditRead", "auditExport"],
+  permissions: ["memberManage", "ownerManage", "auditRead", "auditExport", "workspaceExport"],
 };
 const audit: TeamAuditEvent = {
   id: "44444444-4444-4444-8444-444444444444",
@@ -101,6 +101,19 @@ describe("TeamSettings", () => {
     await user.type(screen.getByLabelText("Owner 名称"), "Chen");
     await user.click(screen.getByRole("button", { name: "创建" }));
     await waitFor(() => expect(create).toHaveBeenCalledWith({ name: "Platform", ownerName: "Chen" }));
+  });
+
+  it("exports the organization directory through the authorized backend command", async () => {
+    const user = userEvent.setup();
+    dialog.save.mockResolvedValue("/tmp/cnshell-team-workspace.json");
+    const exportWorkspace = vi.spyOn(api, "exportTeamWorkspace").mockResolvedValue();
+    render(<TeamSettings onError={vi.fn()}/>);
+
+    await user.click(await screen.findByRole("button", { name: "导出组织目录" }));
+    await waitFor(() => expect(exportWorkspace).toHaveBeenCalledWith(
+      workspace.id,
+      "/tmp/cnshell-team-workspace.json",
+    ));
   });
 
   it("exports a credential share only after device selection and confirmation", async () => {

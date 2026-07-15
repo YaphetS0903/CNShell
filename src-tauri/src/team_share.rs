@@ -1212,11 +1212,19 @@ mod tests {
         )
         .await
         .unwrap();
+        let original_epoch = workspace.key_epoch;
+        sqlx::query("UPDATE team_workspaces SET key_epoch=key_epoch+1,updated_at=? WHERE id=?")
+            .bind(Utc::now().to_rfc3339())
+            .bind(&workspace.id)
+            .execute(&db.pool)
+            .await
+            .unwrap();
         let manager = TeamShareManager::default();
         let preview = preview_share(&db, &manager, share_path.to_str().unwrap())
             .await
             .unwrap();
         assert_eq!(preview.connection_name, "Shared Server");
+        assert_eq!(preview.key_epoch, original_epoch);
         assert!(preview.has_credential);
         let imported = apply_share(&db, &manager, &preview.request_id)
             .await

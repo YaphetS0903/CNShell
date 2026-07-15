@@ -1,5 +1,6 @@
 use crate::{
     error::{RelayError, RelayResult},
+    metrics::RelayMetrics,
     models::{
         ClientSocketMessage, ControlLeaseOutput, CreateRoomInput, GrantControlInput, RoomView,
         RouteRoomInvitationInput, RoutedRoomInvitation, ServerSocketMessage,
@@ -39,15 +40,17 @@ pub struct TerminalRelay {
     store: RelayStore,
     hubs: Arc<Mutex<HashMap<String, broadcast::Sender<BroadcastFrame>>>>,
     shutdown: watch::Sender<bool>,
+    metrics: RelayMetrics,
 }
 
 impl TerminalRelay {
-    pub fn new(store: RelayStore) -> Self {
+    pub fn new(store: RelayStore, metrics: RelayMetrics) -> Self {
         let (shutdown, _) = watch::channel(false);
         Self {
             store,
             hubs: Arc::new(Mutex::new(HashMap::new())),
             shutdown,
+            metrics,
         }
     }
 
@@ -748,6 +751,7 @@ impl TerminalRelay {
         if self.authorize_room(&auth, &room_id).await.is_err() {
             return;
         }
+        let _active_socket = self.metrics.begin_websocket();
         let sender = self.sender(&room_id);
         let mut receiver = sender.subscribe();
         let (mut sink, mut stream) = socket.split();
