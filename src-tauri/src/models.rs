@@ -381,6 +381,34 @@ pub struct AutomationSchedule {
     pub last_run_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonAutomationManifest {
+    pub connection_id: String,
+    pub permissions: Vec<String>,
+    #[serde(default)]
+    pub allowed_local_paths: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonAutomationRequest {
+    pub id: String,
+    pub name: String,
+    pub source: String,
+    pub manifest: PythonAutomationManifest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonAutomationPreview {
+    pub script_hash: String,
+    pub target_connection_id: String,
+    pub permissions: Vec<String>,
+    pub steps: Vec<AutomationStep>,
+    pub warnings: Vec<String>,
+}
+
 fn default_misfire_policy() -> String {
     "skip".into()
 }

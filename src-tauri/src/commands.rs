@@ -599,6 +599,32 @@ pub async fn automation_schedule_run_now(
 }
 
 #[tauri::command]
+pub fn automation_python_preview(
+    request: PythonAutomationRequest,
+) -> AppResult<PythonAutomationPreview> {
+    crate::python_automation::compile(&request)
+}
+
+#[tauri::command]
+pub async fn automation_python_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request: PythonAutomationRequest,
+) -> AppResult<BackgroundTask> {
+    let preview = crate::python_automation::compile(&request)?;
+    let plan = crate::python_automation::plan(&request, preview);
+    crate::automation::validate(&plan)?;
+    state.db.get_connection(&plan.connection_id).await?;
+    let db = state.db.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "automation-python", move |cancelled| async move {
+            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
+                .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
 pub async fn sync_write(
     state: State<'_, AppState>,
     folder: String,

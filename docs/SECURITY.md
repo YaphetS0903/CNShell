@@ -9,7 +9,8 @@
 - FIDO2 使用独立认证模式，只尝试 Agent 中的 OpenSSH `sk-*` 硬件身份，绝不静默回退到普通软件密钥。触摸和 PIN 由 macOS/OpenSSH Agent 处理，CNshell 不读取硬件 PIN。
 - RDP 仍在独立受管 FreeRDP sidecar 中运行，主进程只保存有界诊断和状态，不把远端画面经 WebView IPC 转发。密码仅经 stdin；文本剪贴板默认允许而文件剪贴板关闭，音频、麦克风和本地目录映射默认关闭。目录映射使用读写 security-scoped Bookmark，只有用户明确选择的一个目录会暴露给远端。
 - X11 转发默认关闭，只允许本机 Unix socket 或 loopback display，拒绝远程 X Server。每个 SSH 会话使用随机假 cookie，入站首包不匹配即关闭，真实 cookie 不发送给远端；首包限制 64 KB、并发 channel 限制为 8，终端关闭或重连会停止旧桥接。
-- 自动化仅接受固定步骤 Schema，限制步骤数、超时、正则长度和路径；不开放 Python、Shell 插件或任意本地文件权限。
+- 自动化仅接受固定步骤 Schema，限制步骤数、超时、正则长度和路径。受控 Python 只解析白名单 `cnshell.*` 调用，不启动系统 Python；`import`、变量、循环、函数、文件 API、网络 API、Keychain 和子进程均在编译阶段拒绝。
+- Python 脚本必须声明目标、权限和精确本地路径，运行前展示 SHA-256、步骤和高风险警告。操作录制只接收命令面板事件，不读取 xterm 原始键盘；密码、令牌、私钥和 `sshpass` 等敏感命令不会进入录制。
 - 同步包在本机使用 Argon2id 派生密钥和 AES-256-GCM 加密。同步服务只接触密文；主机、私钥路径和凭据分别授权。同步口令默认不保存；用户明确启用 Touch ID 时，口令写入仅限本机、绑定当前指纹集合的 Data Protection Keychain 项，解锁与同步在 Rust 后端完成，口令不会返回 WebView。手动口令始终可用于恢复。
 - X11 在 XQuartz、`DISPLAY`、`xauth` 或本地 socket 不完整时保持禁用。Zmodem 与 Mosh 只有在依赖完整且通过协议握手后才启用，检测到可执行文件本身不代表连接成功。
 - AI 和通用插件尚未启用；终端内容不会因路线图功能而自动上传。

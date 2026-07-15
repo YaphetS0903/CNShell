@@ -12,6 +12,8 @@ import type {
   BackgroundTask,
   ConnectionProfile,
 } from "../../types";
+import { PythonAutomationSettings } from "./PythonAutomationSettings";
+import { RecordingSettings } from "./RecordingSettings";
 
 const blankStep = (
   kind: AutomationStep["kind"] = "command",
@@ -164,7 +166,7 @@ export function AutomationSettings({
             受限任务编排
           </h3>
           <p>
-            只支持命令、匹配、条件和文件传输；不执行任意 Python 或插件代码。
+            只支持命令、匹配、条件和文件传输；不执行未授权系统代码。
           </p>
         </div>
       </div>
@@ -387,6 +389,8 @@ export function AutomationSettings({
           ))}
         </div>
       )}
+      <PythonAutomationSettings connections={connections} onError={onError} />
+      <RecordingSettings connections={connections} onError={onError} />
     </section>
   );
 }

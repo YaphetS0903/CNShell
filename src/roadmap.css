@@ -125,6 +125,74 @@
 .automation-schedules .automation-meta {
   align-items: end;
 }
+
+.python-automation {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.python-source-field {
+  display: grid;
+  gap: 6px;
+}
+
+.python-source-field textarea {
+  min-height: 150px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  line-height: 1.5;
+}
+
+.python-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+}
+
+.python-paths,
+.python-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.path-chip {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.automation-recording {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.recording-status {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0;
+}
+
+.recording-actions {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  padding-left: 26px;
+}
+
+.recording-actions li {
+  padding: 4px 0;
+}
 .automation-results article.failed {
   border-color: var(--danger);
 }

@@ -290,6 +290,27 @@ export interface AutomationSchedule {
   lastRunAt: string | null;
 }
 
+export interface PythonAutomationManifest {
+  connectionId: string;
+  permissions: string[];
+  allowedLocalPaths: string[];
+}
+
+export interface PythonAutomationRequest {
+  id: string;
+  name: string;
+  source: string;
+  manifest: PythonAutomationManifest;
+}
+
+export interface PythonAutomationPreview {
+  scriptHash: string;
+  targetConnectionId: string;
+  permissions: string[];
+  steps: AutomationStep[];
+  warnings: string[];
+}
+
 export interface SyncOptions {
   includeHosts: boolean;
   includePrivateKeyPaths: boolean;

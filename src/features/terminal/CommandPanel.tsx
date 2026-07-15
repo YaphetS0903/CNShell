@@ -6,6 +6,7 @@ import type { CommandSnippet, TerminalSession } from "../../types";
 import { CommandTemplateDialog } from "./CommandTemplateDialog";
 import { SmartCommandEntry } from "./SmartCommandEntry";
 import { isHighRiskCommand, templateParameters } from "./smart-command";
+import { publishRecordableCommand } from "../../lib/automation-recorder";
 
 const builtInSnippets:CommandSnippet[] = [
   {id:"system",name:"系统概览",command:"uname -a && uptime",description:"",tags:[],sortOrder:0,builtIn:true},
@@ -23,7 +24,7 @@ export function CommandPanel({ session, onError }: { session: TerminalSession; o
     void api.listHistory(session.connectionId).then(setHistory);
   },[session.connectionId]);
   useEffect(()=>{load();},[load]);
-  const execute=async(command:string)=>{if(isHighRiskCommand(command)&&!confirm(`这是高风险命令，请核对后确认执行：\n\n${command}`))return;try{await api.terminalInput(session.id,`${command}\n`);await api.addHistory(session.connectionId,command);setDraft("");setHistory(await api.listHistory(session.connectionId));}catch(error){onError(String(error));}};
+  const execute=async(command:string)=>{if(isHighRiskCommand(command)&&!confirm(`这是高风险命令，请核对后确认执行：\n\n${command}`))return;try{await api.terminalInput(session.id,`${command}\n`);publishRecordableCommand(session.connectionId,command);await api.addHistory(session.connectionId,command);setDraft("");setHistory(await api.listHistory(session.connectionId));}catch(error){onError(String(error));}};
   const run=(command:string)=>{const normalized=command.trim();if(!normalized)return;if(templateParameters(normalized).length){setPendingTemplate(normalized);return;}void execute(normalized);};
   const add=async()=>{const name=prompt("快捷命令名称");if(!name||!draft.trim())return;try{await api.saveSnippet({id:crypto.randomUUID(),name,command:draft.trim(),description:"",tags:[],sortOrder:snippets.length});setDraft("");load();}catch(error){onError(String(error));}};
   const remove=async(id:string,name:string)=>{if(!confirm(`删除快捷命令“${name}”？`))return;try{await api.deleteSnippet(id);load();}catch(error){onError(String(error));}};

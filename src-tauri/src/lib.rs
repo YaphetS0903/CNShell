@@ -13,6 +13,7 @@ mod monitor;
 mod mosh;
 mod openssh;
 mod protocols;
+mod python_automation;
 mod rdp;
 mod session_log;
 mod sftp;
@@ -203,6 +204,8 @@ pub fn run() {
             commands::automation_schedule_save,
             commands::automation_schedule_delete,
             commands::automation_schedule_run_now,
+            commands::automation_python_preview,
+            commands::automation_python_start,
             commands::sync_write,
             commands::sync_read,
             commands::touch_id_sync_status,
