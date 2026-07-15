@@ -171,6 +171,28 @@ pub(crate) async fn audit(
     Ok(())
 }
 
+pub(crate) async fn record_local_audit(
+    db: &Database,
+    workspace_id: &str,
+    action: &str,
+    target_type: &str,
+    target_id: &str,
+) -> AppResult<()> {
+    let mut transaction = db.pool.begin().await?;
+    let (actor_id, _) = local_authorization(&mut transaction, workspace_id).await?;
+    audit(
+        &mut transaction,
+        workspace_id,
+        &actor_id,
+        action,
+        target_type,
+        target_id,
+    )
+    .await?;
+    transaction.commit().await?;
+    Ok(())
+}
+
 pub async fn list_workspaces(db: &Database) -> AppResult<Vec<TeamWorkspace>> {
     Ok(sqlx::query_as::<_, TeamWorkspace>("SELECT w.id,w.name,w.local_member_id,m.role AS local_role,w.key_epoch,w.created_at,w.updated_at FROM team_workspaces w JOIN team_members m ON m.id=w.local_member_id AND m.workspace_id=w.id WHERE m.status='active' ORDER BY w.name COLLATE NOCASE")
         .fetch_all(&db.pool)

@@ -4,6 +4,7 @@ mod backup;
 mod batch;
 mod bookmark;
 mod certificate;
+mod collaboration;
 mod commands;
 mod db;
 mod diagnostics;
@@ -36,6 +37,7 @@ mod zmodem;
 
 use ai::AiManager;
 use batch::BatchManager;
+use collaboration::CollaborationManager;
 use db::Database;
 use external_edit::ExternalEditManager;
 use local_shell::LocalShellManager;
@@ -72,6 +74,7 @@ pub struct AppState {
     telnet: TelnetManager,
     serial: SerialManager,
     team_shares: TeamShareManager,
+    collaboration: CollaborationManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -194,6 +197,7 @@ pub fn run() {
                 telnet: TelnetManager::default(),
                 serial: SerialManager::default(),
                 team_shares: TeamShareManager::default(),
+                collaboration: CollaborationManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -214,6 +218,7 @@ pub fn run() {
                 window.state::<AppState>().local_shell.close_all();
                 window.state::<AppState>().telnet.close_all();
                 window.state::<AppState>().serial.close_all();
+                window.state::<AppState>().collaboration.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -296,6 +301,14 @@ pub fn run() {
             commands::team_share_export,
             commands::team_share_preview,
             commands::team_share_apply,
+            commands::team_terminal_room_start,
+            commands::team_terminal_room_join,
+            commands::team_terminal_output_publish,
+            commands::team_terminal_control_grant,
+            commands::team_terminal_control_input,
+            commands::team_terminal_control_revoke,
+            commands::team_terminal_room_status,
+            commands::team_terminal_room_close,
             commands::terminal_open,
             commands::terminal_input,
             commands::terminal_resize,

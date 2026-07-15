@@ -51,6 +51,10 @@ import type {
   TeamDevice,
   TeamShareExportInput,
   TeamSharePreview,
+  TeamTerminalFrame,
+  TeamTerminalRoom,
+  TeamTerminalParticipant,
+  TeamControlLease,
   SyncOptions,
   SyncResult,
   ProxyProfile as GeneratedProxyProfile,
@@ -155,7 +159,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, CreateTeamWorkspaceInput, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, PluginPublisherRoot, PluginRunResult, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SaveTeamMemberInput, SerialDeviceInfo, SerialConnectionOptions, SerialTransferEvent, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TeamAuditEvent, TeamDevice, TeamMember, TeamPermissionReport, TeamShareExportInput, TeamSharePreview, TeamWorkspace, TerminalOutput, WebDavProfile, WebDavSyncProgress };
+export type { AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, CreateTeamWorkspaceInput, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, PluginPublisherRoot, PluginRunResult, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SaveTeamMemberInput, SerialDeviceInfo, SerialConnectionOptions, SerialTransferEvent, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TeamAuditEvent, TeamControlLease, TeamDevice, TeamMember, TeamPermissionReport, TeamShareExportInput, TeamSharePreview, TeamTerminalFrame, TeamTerminalParticipant, TeamTerminalRoom, TeamWorkspace, TerminalOutput, WebDavProfile, WebDavSyncProgress };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

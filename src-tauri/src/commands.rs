@@ -7,6 +7,7 @@ use crate::{
     sftp::TransferManager,
     ssh::SessionManager,
 };
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -1056,6 +1057,175 @@ pub async fn team_share_apply(
 }
 
 #[tauri::command]
+pub async fn team_terminal_room_start(
+    state: State<'_, AppState>,
+    workspace_id: String,
+    session_id: String,
+) -> AppResult<TeamTerminalRoom> {
+    state.sessions.get(&session_id)?;
+    let room = state
+        .collaboration
+        .start(&state.db, &workspace_id, &session_id)
+        .await?;
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &workspace_id,
+        "terminal-room-started",
+        "terminalRoom",
+        &room.id,
+    )
+    .await
+    {
+        let _ = state.collaboration.close(&state.db, &room.id).await;
+        return Err(error);
+    }
+    Ok(room)
+}
+
+#[tauri::command]
+pub async fn team_terminal_room_join(
+    state: State<'_, AppState>,
+    room_id: String,
+    device_id: String,
+) -> AppResult<TeamTerminalRoom> {
+    let room = state
+        .collaboration
+        .join(&state.db, &room_id, &device_id)
+        .await?;
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "terminal-participant-joined",
+        "device",
+        &device_id,
+    )
+    .await
+    {
+        let _ = state
+            .collaboration
+            .remove_participant(&state.db, &room.id, &device_id)
+            .await;
+        return Err(error);
+    }
+    Ok(room)
+}
+
+#[tauri::command]
+pub async fn team_terminal_output_publish(
+    state: State<'_, AppState>,
+    room_id: String,
+    data_base64: String,
+) -> AppResult<TeamTerminalFrame> {
+    if data_base64.len() > 128 * 1024 {
+        return Err(AppError::Validation("团队终端输出帧编码超过限制".into()));
+    }
+    let bytes = STANDARD
+        .decode(data_base64)
+        .map_err(|_| AppError::Validation("团队终端输出帧 Base64 无效".into()))?;
+    state
+        .collaboration
+        .publish_output(&state.db, &room_id, &bytes)
+        .await
+}
+
+#[tauri::command]
+pub async fn team_terminal_control_grant(
+    state: State<'_, AppState>,
+    room_id: String,
+    device_id: String,
+    duration_seconds: u64,
+) -> AppResult<TeamTerminalRoom> {
+    let room = state
+        .collaboration
+        .grant_control(&state.db, &room_id, &device_id, duration_seconds)
+        .await?;
+    if let Err(error) = crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "terminal-control-granted",
+        "device",
+        &device_id,
+    )
+    .await
+    {
+        let _ = state
+            .collaboration
+            .revoke_control(&state.db, &room.id)
+            .await;
+        return Err(error);
+    }
+    Ok(room)
+}
+
+#[tauri::command]
+pub async fn team_terminal_control_input(
+    state: State<'_, AppState>,
+    room_id: String,
+    device_id: String,
+    lease_id: String,
+    sequence: u64,
+    data_base64: String,
+) -> AppResult<()> {
+    let (session_id, data) = state
+        .collaboration
+        .receive_input(
+            &state.db,
+            &room_id,
+            &device_id,
+            &lease_id,
+            sequence,
+            &data_base64,
+        )
+        .await?;
+    crate::ssh::terminal_input(state.sessions.clone(), session_id, data).await
+}
+
+#[tauri::command]
+pub async fn team_terminal_control_revoke(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamTerminalRoom> {
+    let room = state
+        .collaboration
+        .revoke_control(&state.db, &room_id)
+        .await?;
+    crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "terminal-control-revoked",
+        "terminalRoom",
+        &room.id,
+    )
+    .await?;
+    Ok(room)
+}
+
+#[tauri::command]
+pub fn team_terminal_room_status(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamTerminalRoom> {
+    state.collaboration.status(&room_id)
+}
+
+#[tauri::command]
+pub async fn team_terminal_room_close(
+    state: State<'_, AppState>,
+    room_id: String,
+) -> AppResult<TeamTerminalRoom> {
+    let room = state.collaboration.close(&state.db, &room_id).await?;
+    crate::team::record_local_audit(
+        &state.db,
+        &room.workspace_id,
+        "terminal-room-closed",
+        "terminalRoom",
+        &room.id,
+    )
+    .await?;
+    Ok(room)
+}
+
+#[tauri::command]
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await
@@ -1231,6 +1401,7 @@ pub async fn terminal_resize(
 
 #[tauri::command]
 pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    let collaboration_rooms = state.collaboration.close_terminal(&session_id);
     let result = if state.local_shell.contains(&session_id) {
         state.local_shell.close(&session_id)
     } else if state.telnet.contains(&session_id) {
@@ -1244,6 +1415,16 @@ pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> A
     };
     let _ = state.logs.stop(&session_id);
     state.monitor.remove(&session_id);
+    for (workspace_id, room_id) in collaboration_rooms {
+        let _ = crate::team::record_local_audit(
+            &state.db,
+            &workspace_id,
+            "terminal-room-closed",
+            "terminalRoom",
+            &room_id,
+        )
+        .await;
+    }
     result
 }
 

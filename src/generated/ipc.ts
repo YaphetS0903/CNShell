@@ -536,6 +536,42 @@ export interface TeamSharePreview {
   expiresAt: string;
 }
 
+export interface TeamTerminalParticipant {
+  memberId: string;
+  deviceId: string;
+  role: string;
+  joinedAt: string;
+}
+
+export interface TeamControlLease {
+  id: string;
+  memberId: string;
+  deviceId: string;
+  expiresAt: string;
+  generation: number;
+}
+
+export interface TeamTerminalRoom {
+  id: string;
+  workspaceId: string;
+  terminalSessionId: string;
+  hostMemberId: string;
+  hostDeviceId: string;
+  keyEpoch: number;
+  status: string;
+  participants: TeamTerminalParticipant[];
+  controlLease: TeamControlLease | null;
+  nextOutputSequence: number;
+  createdAt: string;
+}
+
+export interface TeamTerminalFrame {
+  roomId: string;
+  sequence: number;
+  kind: string;
+  dataBase64: string;
+}
+
 export interface PluginAuditEvent {
   id: string;
   pluginId: string;

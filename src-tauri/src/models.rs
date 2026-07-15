@@ -693,6 +693,50 @@ pub struct TeamSharePreview {
     pub expires_at: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamTerminalParticipant {
+    pub member_id: String,
+    pub device_id: String,
+    pub role: String,
+    pub joined_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamControlLease {
+    pub id: String,
+    pub member_id: String,
+    pub device_id: String,
+    pub expires_at: String,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamTerminalRoom {
+    pub id: String,
+    pub workspace_id: String,
+    pub terminal_session_id: String,
+    pub host_member_id: String,
+    pub host_device_id: String,
+    pub key_epoch: i64,
+    pub status: String,
+    pub participants: Vec<TeamTerminalParticipant>,
+    pub control_lease: Option<TeamControlLease>,
+    pub next_output_sequence: u64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamTerminalFrame {
+    pub room_id: String,
+    pub sequence: u64,
+    pub kind: String,
+    pub data_base64: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PluginAuditEvent {
