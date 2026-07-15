@@ -15,7 +15,7 @@ use futures_util::{SinkExt, StreamExt};
 use parking_lot::Mutex;
 use sqlx::Row;
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, watch};
 
 const MAX_ENVELOPE_BYTES: usize = 128 * 1024;
 const MAX_FRAME_BYTES: usize = 64 * 1024;
@@ -38,14 +38,21 @@ struct BroadcastFrame {
 pub struct TerminalRelay {
     store: RelayStore,
     hubs: Arc<Mutex<HashMap<String, broadcast::Sender<BroadcastFrame>>>>,
+    shutdown: watch::Sender<bool>,
 }
 
 impl TerminalRelay {
     pub fn new(store: RelayStore) -> Self {
+        let (shutdown, _) = watch::channel(false);
         Self {
             store,
             hubs: Arc::new(Mutex::new(HashMap::new())),
+            shutdown,
         }
+    }
+
+    pub fn shutdown(&self) {
+        self.shutdown.send_replace(true);
     }
 
     pub async fn create_room(
@@ -731,6 +738,10 @@ impl TerminalRelay {
         room_id: String,
         after_sequence: u64,
     ) {
+        let mut shutdown = self.shutdown.subscribe();
+        if *shutdown.borrow() {
+            return;
+        }
         let Ok(auth) = self.store.authenticate_device(&token).await else {
             return;
         };
@@ -867,7 +878,11 @@ impl TerminalRelay {
                     }
                 }
                 broadcast = receiver.recv() => {
-                    let Ok(frame) = broadcast else { continue; };
+                    let frame = match broadcast {
+                        Ok(frame) => frame,
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(broadcast::error::RecvError::Closed) => break,
+                    };
                     let current = match self.store.authenticate_device(&token).await {
                         Ok(value) => value,
                         Err(_) => break,
@@ -882,6 +897,12 @@ impl TerminalRelay {
                         continue;
                     }
                     if sink.send(Message::Text(frame.json.into())).await.is_err() { break; }
+                }
+                changed = shutdown.changed() => {
+                    if changed.is_err() || *shutdown.borrow() {
+                        let _ = sink.send(Message::Close(None)).await;
+                        break;
+                    }
                 }
             }
         }

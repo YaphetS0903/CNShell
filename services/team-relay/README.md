@@ -21,7 +21,8 @@ npm run check:relay
 The integration test starts two accounts and two devices, performs workspace invitation and
 device challenge authentication, routes signed encrypted terminal frames over WebSocket, replays
 a missed frame after reconnect, transfers a bounded control lease, rejects duplicate input, and
-verifies that member removal advances the epoch and invalidates the device session.
+verifies that member removal advances the epoch and invalidates the device session. The operations
+drill exercises backup/restore failure boundaries, liveness, database readiness and SIGTERM.
 
 ## Production boundary
 
@@ -40,7 +41,27 @@ Required runtime settings:
 | `RUST_LOG` | Metadata-only service logs; request bodies and tokens are never intentionally logged |
 
 The example Compose file publishes the relay only on host loopback so a host reverse proxy can
-reach it. Public DNS, certificates, email delivery, backup retention, monitoring and incident
+reach it. `/health` is process liveness, while `/ready` executes a database query and is the
+container/load-balancer readiness endpoint. SIGINT/SIGTERM stops new traffic and closes active
+team-terminal WebSockets before the server drains.
+
+## Backup and operations
+
+`scripts/backup.sh` creates and verifies a consistent SQLite snapshot. Production backup requires
+an `age` public recipient and never falls back to plaintext. `scripts/restore.sh` verifies the
+SHA-256 sidecar, decrypts and checks the database, refuses an existing target, and requires an
+explicit confirmation that the relay has stopped.
+
+```bash
+npm run test:relay-ops
+```
+
+The local drill uses plaintext only behind an explicit development flag. It does not claim a real
+`age`, Docker, off-host storage or production restore test. See
+[`docs/TEAM_RELAY_OPERATIONS.md`](../../docs/TEAM_RELAY_OPERATIONS.md) for deployment, retention,
+restore, monitoring and incident procedures.
+
+Public DNS, certificates, email delivery, production backup scheduling, monitoring and incident
 response remain deployment responsibilities.
 
 ## Stored data
@@ -54,4 +75,3 @@ response remain deployment responsibilities.
 
 The schema has no columns for terminal plaintext, room content keys, connection credentials, host
 addresses, usernames or local paths.
-

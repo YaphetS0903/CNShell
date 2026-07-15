@@ -1,14 +1,14 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use cnshell_team_relay::{
-    RelayStore,
+    RelayShutdownHandle, RelayStore,
     models::{
         AccountSessionOutput, ControlLeaseOutput, DeviceChallengeOutput, DeviceRegistration,
         DeviceSessionOutput, RelayAuditEvent, RoomView, RoutedRoomInvitation,
         TeamTerminalEncryptedFrame, TeamTerminalInvitation, WorkspaceInvitationOutput,
         WorkspaceSnapshot,
     },
-    router,
+    router_with_shutdown,
 };
 use ed25519_dalek::{Signer, SigningKey};
 use futures_util::{SinkExt, StreamExt};
@@ -28,6 +28,7 @@ struct TestServer {
     ws_url: String,
     _directory: TempDir,
     handle: JoinHandle<()>,
+    shutdown: RelayShutdownHandle,
 }
 
 impl Drop for TestServer {
@@ -46,7 +47,7 @@ async fn start_server() -> TestServer {
     let database = directory.path().join("relay.sqlite");
     let database_url = format!("sqlite://{}?mode=rwc", database.display());
     let store = RelayStore::open(&database_url).await.unwrap();
-    let app = router(store);
+    let (app, shutdown) = router_with_shutdown(store);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let handle = tokio::spawn(async move {
@@ -57,6 +58,7 @@ async fn start_server() -> TestServer {
         ws_url: format!("ws://{address}"),
         _directory: directory,
         handle,
+        shutdown,
     }
 }
 
@@ -203,6 +205,24 @@ async fn receive_json(
 async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
     let server = start_server().await;
     let client = Client::new();
+    assert_eq!(
+        client
+            .get(format!("{}/health", server.base_url))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
+    assert_eq!(
+        client
+            .get(format!("{}/ready", server.base_url))
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        StatusCode::OK
+    );
     let host_device = device(11);
     let recipient_device = device(22);
     let alice = register(&client, &server, "alice@example.com").await;
@@ -700,4 +720,10 @@ async fn accounts_rbac_encrypted_websocket_replay_and_revocation_round_trip() {
         .await
         .unwrap();
     assert_eq!(deleted.status(), StatusCode::UNAUTHORIZED);
+
+    server.shutdown.shutdown();
+    let closed = tokio::time::timeout(std::time::Duration::from_secs(2), host_socket.next())
+        .await
+        .unwrap();
+    assert!(matches!(closed, Some(Ok(Message::Close(_))) | None));
 }

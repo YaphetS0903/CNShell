@@ -1,4 +1,4 @@
-use cnshell_team_relay::{RelayStore, router};
+use cnshell_team_relay::{RelayStore, router_with_shutdown};
 use std::net::SocketAddr;
 use tracing_subscriber::EnvFilter;
 
@@ -21,6 +21,43 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store = RelayStore::open(&database_url).await?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     tracing::info!(address = %listener.local_addr()?, "CNshell team relay listening");
-    axum::serve(listener, router(store)).await?;
+    let (router, shutdown) = router_with_shutdown(store);
+    axum::serve(listener, router)
+        .with_graceful_shutdown(async move {
+            shutdown_signal().await;
+            shutdown.shutdown();
+        })
+        .await?;
     Ok(())
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        if let Err(error) = tokio::signal::ctrl_c().await {
+            tracing::error!(%error, "failed to register Ctrl-C shutdown signal");
+            std::future::pending::<()>().await;
+        }
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => {
+                signal.recv().await;
+            }
+            Err(error) => {
+                tracing::error!(%error, "failed to register SIGTERM shutdown signal");
+                std::future::pending::<()>().await;
+            }
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
+    tracing::info!("CNshell team relay shutting down");
 }

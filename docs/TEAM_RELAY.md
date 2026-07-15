@@ -35,6 +35,8 @@ CNshell host                         CNshell participant
 - 断线输出只保留密文，窗口为五分钟、512 帧和 4 MiB 三者中的最小值。窗口缺失时拒绝
   静默跳号并要求重新加入。
 - 服务端审计只记录成员、动作、目标和时间，每工作区最多 4,096 条，不记录 envelope 正文。
+- `/health` 只报告进程存活，`/ready` 实际查询 SQLite；SIGINT/SIGTERM 停止接收新流量并
+  通知活动 WebSocket 关闭，然后等待服务任务退出。
 
 ## 自动化证据
 
@@ -43,11 +45,16 @@ CNshell host                         CNshell participant
 与租约握手恢复、控制输入定向、重复拒绝、参与者离开、租约撤销、成员移除、epoch 推进和
 token 失效。客户端另有游标恢复和观看/控制 UI 自动测试。
 
+运维演练另行覆盖默认拒绝明文备份、符号链接、限定保留、SHA-256 篡改、拒绝覆盖恢复、
+SQLite 完整性、`/health`、`/ready` 和 SIGTERM。当前机器没有 `age`，因此这里只验证默认
+不降级和显式明文测试路径，不把它记录为生产加密备份通过。
+
 服务端独立门禁：
 
 ```bash
 cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path services/team-relay/Cargo.toml
+npm run test:relay-ops
 ```
 
 ## macOS 客户端接入
@@ -85,8 +92,11 @@ cargo test --manifest-path services/team-relay/Cargo.toml
 
 1. 正式域名、TLS 证书和只允许 `wss://`/`https://` 的反向代理。
 2. 代理层登录/注册速率限制、邮件投递与邮箱验证、防滥用和告警。
-3. 加密卷、自动备份、恢复演练、日志保留、监控和事故响应。
+3. 在加密卷、真实 `age` identity、异地存储和隔离恢复主机上执行自动备份与恢复演练，并接入
+   日志保留、监控和事故响应。脚本和 runbook 已完成，本机明文测试演练不能替代此项。
 4. 至少两台真实设备跨网络完成观看、控制移交、断网恢复和撤销传播验收。
 
 客户端 REST/WebSocket 与观看/控制入口已经接通，但在以上生产条件和真机证据齐备前只用于
 loopback 或用户自行部署的测试 relay，不标记为正式在线团队服务。
+
+部署、备份、恢复、监控和事故处理步骤见 `docs/TEAM_RELAY_OPERATIONS.md`。

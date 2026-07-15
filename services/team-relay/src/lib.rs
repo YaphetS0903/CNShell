@@ -28,12 +28,31 @@ struct RelayState {
 }
 
 pub fn router(store: RelayStore) -> Router {
+    router_with_shutdown(store).0
+}
+
+#[derive(Clone)]
+pub struct RelayShutdownHandle {
+    terminal: TerminalRelay,
+}
+
+impl RelayShutdownHandle {
+    pub fn shutdown(&self) {
+        self.terminal.shutdown();
+    }
+}
+
+pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) {
     let state = RelayState {
         terminal: TerminalRelay::new(store.clone()),
         store,
     };
-    Router::new()
+    let shutdown = RelayShutdownHandle {
+        terminal: state.terminal.clone(),
+    };
+    let router = Router::new()
         .route("/health", get(health))
+        .route("/ready", get(readiness))
         .route("/v1/accounts/register", post(register_account))
         .route("/v1/accounts/login", post(login))
         .route("/v1/workspaces/bootstrap", post(bootstrap_workspace))
@@ -77,11 +96,22 @@ pub fn router(store: RelayStore) -> Router {
         .route("/v1/terminal/ws/{room_id}", get(terminal_socket))
         .layer(RequestBodyLimitLayer::new(MAX_HTTP_BODY_BYTES))
         .layer(TraceLayer::new_for_http())
-        .with_state(state)
+        .with_state(state);
+    (router, shutdown)
 }
 
 async fn health() -> impl IntoResponse {
     (StatusCode::OK, Json(json!({ "status": "ok" })))
+}
+
+async fn readiness(State(state): State<RelayState>) -> impl IntoResponse {
+    if state.store.readiness().await.is_ok() {
+        return (StatusCode::OK, Json(json!({ "status": "ready" })));
+    }
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(json!({ "status": "unavailable" })),
+    )
 }
 
 async fn register_account(
@@ -406,4 +436,36 @@ fn bearer_token(headers: &HeaderMap) -> RelayResult<&str> {
         .and_then(|value| value.strip_prefix("Bearer "))
         .filter(|value| !value.is_empty())
         .ok_or_else(|| RelayError::Authentication("缺少 Bearer 会话令牌".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn health_and_readiness_report_process_and_database_state() {
+        let directory = tempfile::tempdir().unwrap();
+        let database = directory.path().join("relay.sqlite");
+        let database_url = format!("sqlite://{}?mode=rwc", database.display());
+        let store = RelayStore::open(&database_url).await.unwrap();
+        let state = RelayState {
+            terminal: TerminalRelay::new(store.clone()),
+            store: store.clone(),
+        };
+
+        assert_eq!(health().await.into_response().status(), StatusCode::OK);
+        assert_eq!(
+            readiness(State(state.clone()))
+                .await
+                .into_response()
+                .status(),
+            StatusCode::OK
+        );
+
+        store.close_for_test().await;
+        assert_eq!(
+            readiness(State(state)).await.into_response().status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
 }

@@ -74,7 +74,7 @@ DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要
 - Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver 真机矩阵仍待扩大。
 - Zmodem 已完成 `lrzsz` 双向互操作，Mosh 已完成真实公网 UDP 短测，X11 已完成真实 SSH request；Mosh 漫游/Intel 与 XQuartz GUI 仍待对应环境验收。
 - FIDO2 硬件密钥和 Touch ID 本地同步口令保护已完成代码接入；实体安全密钥与系统生物识别弹窗仍需对应真机人工验收。
-- 团队 relay 的账号、Keychain 会话、工作区发布/邀请/同步、多人终端 WebSocket 与观看/控制入口已完成双账号双设备 loopback。正式域名/TLS/WSS、邮件验证、限速、监控备份和真实跨设备网络会话仍未完成；当前入口只适用于 loopback 或用户自行部署的测试 relay，不代表生产团队服务。
+- 团队 relay 的账号、Keychain 会话、工作区发布/邀请/同步、多人终端 WebSocket、观看/控制入口及备份恢复运维代码已完成 loopback 验证。正式域名/TLS/WSS、邮件验证、限速、监控、真实 `age` 异地恢复和跨设备网络会话仍未完成；当前入口只适用于 loopback 或用户自行部署的测试 relay，不代表生产团队服务。
 
 完整验收范围与未覆盖环境见 [验收记录](docs/ACCEPTANCE.md)。
 

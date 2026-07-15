@@ -2,6 +2,7 @@ services:
   relay:
     build: .
     restart: unless-stopped
+    stop_grace_period: 30s
     environment:
       CNSHELL_RELAY_DATABASE_URL: sqlite:///data/relay.sqlite?mode=rwc
       CNSHELL_RELAY_BIND: 0.0.0.0:8787
@@ -16,7 +17,12 @@ services:
       - /tmp:size=16m,mode=1777
     security_opt:
       - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8787/ready"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
 volumes:
   relay-data:
-

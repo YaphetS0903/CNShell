@@ -77,6 +77,19 @@ impl RelayStore {
         Ok(Self { pool })
     }
 
+    pub async fn readiness(&self) -> RelayResult<()> {
+        let value: i64 = sqlx::query_scalar("SELECT 1").fetch_one(&self.pool).await?;
+        if value != 1 {
+            return Err(RelayError::Unavailable("relay 数据库就绪检查失败".into()));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn close_for_test(&self) {
+        self.pool.close().await;
+    }
+
     pub async fn register_account(
         &self,
         input: RegisterAccountInput,
