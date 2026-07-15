@@ -61,6 +61,9 @@ impl LocalShellManager {
         command.arg("-l");
         command.env("TERM", "xterm-256color");
         for (key, value) in &profile.environment {
+            if crate::serial::is_option_key(key) {
+                continue;
+            }
             command.env(key, value);
         }
         let child = pty

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Eye, EyeOff, FolderOpen, HardDrive, KeyRound, LoaderCircle, Monitor, RefreshCw, ShieldCheck, TerminalSquare, Volume2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Eye, EyeOff, FolderOpen, HardDrive, KeyRound, LoaderCircle, Monitor, RefreshCw, ShieldCheck, TerminalSquare, Usb, Volume2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, Fido2Identity, Folder, Protocol, ProxyProfile, RdpConnectionOptions, RdpDisplay, SaveConnectionInput, SshCertificateInfo } from "../../types";
+import type { AuthType, Fido2Identity, Folder, Protocol, ProxyProfile, RdpConnectionOptions, RdpDisplay, SaveConnectionInput, SerialConnectionOptions, SerialDeviceInfo, SshCertificateInfo } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -24,6 +24,8 @@ export function ConnectionEditor() {
   const [fido2Busy, setFido2Busy] = useState(false);
   const [rdpOptions,setRdpOptions]=useState<RdpConnectionOptions>(()=>defaultRdpOptions(initial.id));
   const [rdpDisplays,setRdpDisplays]=useState<RdpDisplay[]>([]);
+  const [serialOptions,setSerialOptions]=useState<SerialConnectionOptions>(()=>defaultSerialOptions(initial.id));
+  const [serialDevices,setSerialDevices]=useState<SerialDeviceInfo[]>([]);
   const [overrideEnabled,setOverrideEnabled]=useState(false);
   const [terminalOverride,setTerminalOverride]=useState(settings.terminal);
   useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
@@ -35,9 +37,15 @@ export function ConnectionEditor() {
     setFido2Identities(null);
     setRdpOptions(defaultRdpOptions(initial.id));
     setRdpDisplays([]);
+    setSerialOptions(defaultSerialOptions(initial.id));
+    setSerialDevices([]);
     if(editingConnection?.protocol==="rdp"){
       void api.getRdpOptions(initial.id).then(setRdpOptions).catch((error)=>setError(errorMessage(error)));
       void api.rdpDisplays().then(setRdpDisplays).catch((error)=>setError(errorMessage(error)));
+    }
+    if(editingConnection?.protocol==="serial"){
+      void api.getSerialOptions(initial.id).then(setSerialOptions).catch((error)=>setError(errorMessage(error)));
+      void api.serialDevices().then(setSerialDevices).catch((error)=>setError(errorMessage(error)));
     }
     const override=settings.terminalOverrides[initial.id];
     setOverrideEnabled(Boolean(override));
@@ -47,7 +55,7 @@ export function ConnectionEditor() {
   const change = <K extends keyof SaveConnectionInput>(key: K, value: SaveConnectionInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true);
-    try { await api.saveConnection(form);if(form.protocol==="rdp")await api.saveRdpOptions({...rdpOptions,connectionId:form.id});const terminalOverrides={...settings.terminalOverrides};if(form.protocol==="ssh"&&overrideEnabled)terminalOverrides[form.id]=terminalOverride;else delete terminalOverrides[form.id];await saveSettings({...settings,terminalOverrides});await refreshConnections(); closeConnectionEditor(); }
+    try { await api.saveConnection(form);if(form.protocol==="rdp")await api.saveRdpOptions({...rdpOptions,connectionId:form.id});if(form.protocol==="serial")await api.saveSerialOptions({...serialOptions,connectionId:form.id});const terminalOverrides={...settings.terminalOverrides};if(form.protocol==="ssh"&&overrideEnabled)terminalOverrides[form.id]=terminalOverride;else delete terminalOverrides[form.id];await saveSettings({...settings,terminalOverrides});await refreshConnections(); closeConnectionEditor(); }
     catch (error) { setError(errorMessage(error)); } finally { setSaving(false); }
   };
   const choosePrivateKey = async () => {
@@ -95,14 +103,18 @@ export function ConnectionEditor() {
       if(selected)setRdpOptions((current)=>({...current,drivePath:selected}));
     } catch(error){setError(errorMessage(error));}
   };
+  const refreshSerialDevices = async () => {
+    try { const devices=await api.serialDevices();setSerialDevices(devices);setForm((current)=>current.protocol==="serial"&&!current.host&&devices[0]?{...current,host:devices[0].path}:current); }
+    catch(error){setError(errorMessage(error));}
+  };
   return <Modal title={editingConnection ? "编辑连接" : "新建连接"} onClose={closeConnectionEditor} wide>
     <form onSubmit={submit} className="connection-form">
       <div className="form-section-title"><span><ShieldCheck size={17}/>常规</span><small>连接资料仅保存在这台 Mac</small></div>
       <div className="form-grid">
-        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as Protocol;setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:protocol==="local"?{...current,protocol,host:"localhost",port:0,username:current.username||"本机用户",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict"}:protocol==="telnet"?{...current,protocol,port:23,username:"anonymous",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict",startupCommand:null,environment:{}}:{...current,protocol,port:22,authType:current.authType==="none"?"password":current.authType});setCertificateInfo(null);if(protocol==="rdp"){setRdpOptions(defaultRdpOptions(form.id));void api.rdpDisplays().then(setRdpDisplays).catch(()=>setRdpDisplays([]));} }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option><option value="local">本地 Shell</option><option value="telnet">Telnet（未加密）</option></select></label>
+        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as Protocol;setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:protocol==="local"?{...current,protocol,host:"localhost",port:0,username:current.username||"本机用户",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict",environment:current.protocol==="serial"?{}:current.environment}:protocol==="telnet"?{...current,protocol,port:23,username:"anonymous",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict",startupCommand:null,environment:{}}:protocol==="serial"?{...current,protocol,host:"",port:115200,username:"serial",authType:"none",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,hostKeyPolicy:"strict",startupCommand:null,environment:{}}:{...current,protocol,port:22,authType:current.authType==="none"?"password":current.authType,environment:current.protocol==="serial"?{}:current.environment});setCertificateInfo(null);if(protocol==="rdp"){setRdpOptions(defaultRdpOptions(form.id));void api.rdpDisplays().then(setRdpDisplays).catch(()=>setRdpDisplays([]));}if(protocol==="serial"){setSerialOptions(defaultSerialOptions(form.id));void refreshSerialDevices();} }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option><option value="local">本地 Shell</option><option value="telnet">Telnet（未加密）</option><option value="serial">Serial 串口</option></select></label>
         <label><span>名称</span><input required autoFocus value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="生产服务器" /></label>
-        {form.protocol !== "local" && <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>}
-        {form.protocol === "local" ? <label><span>本机用户</span><input value={form.username} onChange={(event) => change("username", event.target.value)} placeholder="当前 macOS 用户" /></label> : <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>}
+        {form.protocol === "serial" ? <><label className="span-2"><span>串口设备</span><div className="private-key-field"><select aria-label="串口设备" value={serialDevices.some((item)=>item.path===form.host)?form.host:""} onChange={(event)=>change("host",event.target.value)}><option value="">手动输入设备路径</option>{serialDevices.map((device)=><option key={device.path} value={device.path}>{device.label} · {device.path}</option>)}</select><button type="button" className="button secondary" onClick={()=>void refreshSerialDevices()}><RefreshCw size={14}/>刷新</button></div></label><label><span>设备路径</span><input required value={form.host} onChange={(event)=>change("host",event.target.value)} placeholder="/dev/cu.usbserial-..." aria-label="设备路径"/></label><label><span>波特率</span><select value={form.port} onChange={(event)=>change("port",Number(event.target.value))}>{[300,1200,2400,4800,9600,19200,38400,57600,115200,230400,460800,921600].map((rate)=><option key={rate} value={rate}>{rate}</option>)}</select></label></> : form.protocol !== "local" && <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>}
+        {form.protocol === "local" ? <label><span>本机用户</span><input value={form.username} onChange={(event) => change("username", event.target.value)} placeholder="当前 macOS 用户" /></label> : form.protocol !== "serial" && <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>}
         <label><span>标签</span><input value={form.tags.join(", ")} onChange={(event) => change("tags", event.target.value.split(",").map((value) => value.trim()).filter(Boolean))} placeholder="生产, 香港" /></label>
         <label className="span-2"><span>文件夹</span><select value={form.folderId??""} onChange={(event)=>change("folderId",event.target.value||null)}><option value="">未分组</option>{folderOptions(folders).map((folder)=><option key={folder.id} value={folder.id}>{folder.label}</option>)}</select></label>
       </div>
@@ -126,6 +138,7 @@ export function ConnectionEditor() {
         <div className="form-grid"><label className="span-2"><span>启动命令（可选）</span><input value={form.startupCommand ?? ""} onChange={(event) => change("startupCommand", event.target.value || null)} placeholder="例如：tmux attach || tmux" /></label><label className="span-2"><span>环境变量</span><input value={Object.entries(form.environment).map(([key,value])=>`${key}=${value}`).join("; ")} onChange={(event)=>change("environment",parseEnvironment(event.target.value))} placeholder="LANG=zh_CN.UTF-8; APP_ENV=development" /></label></div>
       </>}
       {form.protocol === "telnet" && <div className="inline-warning"><AlertTriangle size={15}/><span>Telnet 未加密，用户名、命令和服务器输出都可能被网络中的其他人读取。CNshell 不保存 Telnet 密码；请只在受控内网或遗留设备维护场景使用。</span></div>}
+      {form.protocol === "serial" && <><div className="form-section-title"><span><Usb size={17}/>串口参数</span><small>独占设备；拔出后自动等待同一路径重新接入</small></div><div className="form-grid"><label><span>数据位</span><select value={serialOptions.dataBits} onChange={(event)=>setSerialOptions({...serialOptions,dataBits:Number(event.target.value)})}>{[5,6,7,8].map((bits)=><option key={bits} value={bits}>{bits}</option>)}</select></label><label><span>校验位</span><select value={serialOptions.parity} onChange={(event)=>setSerialOptions({...serialOptions,parity:event.target.value})}><option value="none">无</option><option value="odd">奇校验</option><option value="even">偶校验</option></select></label><label><span>停止位</span><select value={serialOptions.stopBits} onChange={(event)=>setSerialOptions({...serialOptions,stopBits:Number(event.target.value)})}><option value={1}>1</option><option value={2}>2</option></select></label><label><span>流控</span><select value={serialOptions.flowControl} onChange={(event)=>setSerialOptions({...serialOptions,flowControl:event.target.value})}><option value="none">无</option><option value="software">软件 XON/XOFF</option><option value="hardware">硬件 RTS/CTS</option></select></label><label className="check-row"><input type="checkbox" checked={serialOptions.dtr} onChange={(event)=>setSerialOptions({...serialOptions,dtr:event.target.checked})}/><span>连接时启用 DTR</span></label><label className="check-row"><input type="checkbox" checked={serialOptions.rts} onChange={(event)=>setSerialOptions({...serialOptions,rts:event.target.checked})}/><span>连接时启用 RTS</span></label></div></>}
       {form.protocol === "rdp" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>远程桌面认证</span><small>密码通过 stdin 安全传递给 FreeRDP</small></div>
         <div className="form-grid"><label className="span-2"><span>Windows 密码</span><div className="password-field"><input required={!editingConnection?.hasCredential} type={showSecret?"text":"password"} value={form.credential??""} onChange={(event)=>change("credential",event.target.value)} placeholder={editingConnection?.hasCredential?"留空以保留已保存凭据":""} autoComplete="new-password"/><button type="button" onClick={()=>setShowSecret(!showSecret)} aria-label={showSecret?"隐藏密码":"显示密码"}>{showSecret?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></label></div>
@@ -154,4 +167,5 @@ export function ConnectionEditor() {
 
 function parseEnvironment(value:string):Record<string,string>{const result:Record<string,string>={};for(const pair of value.split(";")){const[key,...rest]=pair.trim().split("=");if(key&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))result[key]=rest.join("=");}return result;}
 function defaultRdpOptions(connectionId:string):RdpConnectionOptions{return{connectionId,displayMode:"window",displayId:null,scaleMode:"dynamic",quality:"auto",clipboard:true,audioMode:"off",microphone:false,drivePath:null};}
+function defaultSerialOptions(connectionId:string):SerialConnectionOptions{return{connectionId,dataBits:8,parity:"none",stopBits:1,flowControl:"none",dtr:true,rts:true};}
 function folderOptions(folders:Folder[]){const byId=new Map(folders.map((folder)=>[folder.id,folder]));const label=(folder:Folder,seen=new Set<string>()):string=>{if(seen.has(folder.id))return folder.name;seen.add(folder.id);const parent=folder.parentId?byId.get(folder.parentId):undefined;return parent?`${label(parent,seen)} / ${folder.name}`:folder.name;};return folders.map((folder)=>({...folder,label:label(folder)})).sort((left,right)=>left.label.localeCompare(right.label,"zh-CN"));}

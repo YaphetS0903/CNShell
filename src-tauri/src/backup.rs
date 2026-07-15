@@ -525,6 +525,90 @@ mod tests {
         assert_eq!(restored.tags, vec!["production"]);
     }
     #[tokio::test]
+    async fn serial_options_survive_export_import_and_encrypted_sync() {
+        let directory = tempfile::tempdir().unwrap();
+        let source = Database::open(&directory.path().join("serial-source.sqlite"))
+            .await
+            .unwrap();
+        let options = crate::models::SerialConnectionOptions {
+            connection_id: "serial-backup".into(),
+            data_bits: 7,
+            parity: "odd".into(),
+            stop_bits: 2,
+            flow_control: "hardware".into(),
+            dtr: false,
+            rts: true,
+        };
+        let input = SaveConnectionInput {
+            id: options.connection_id.clone(),
+            folder_id: None,
+            protocol: "serial".into(),
+            name: "Console cable".into(),
+            host: "/dev/cu.usbserial-test".into(),
+            port: 115_200,
+            username: "serial".into(),
+            auth_type: "none".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: String::new(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: crate::serial::environment_with_options(&Default::default(), &options)
+                .unwrap(),
+            credential: None,
+        };
+        source.save_connection(&input, None).await.unwrap();
+
+        let export_path = directory.path().join("serial.json");
+        export_one(&source, &input.id, export_path.to_str().unwrap())
+            .await
+            .unwrap();
+        let imported = Database::open(&directory.path().join("serial-import.sqlite"))
+            .await
+            .unwrap();
+        import(&imported, export_path.to_str().unwrap(), None)
+            .await
+            .unwrap();
+        assert_eq!(
+            crate::serial::options_from_profile(&imported.get_connection(&input.id).await.unwrap())
+                .unwrap(),
+            options
+        );
+
+        let sync_folder = directory.path().join("sync");
+        std::fs::create_dir(&sync_folder).unwrap();
+        sync_write(
+            &source,
+            sync_folder.to_str().unwrap(),
+            "serial-sync-password",
+            &SyncOptions {
+                include_hosts: true,
+                include_private_key_paths: false,
+                include_credentials: false,
+            },
+        )
+        .await
+        .unwrap();
+        let synced = Database::open(&directory.path().join("serial-sync.sqlite"))
+            .await
+            .unwrap();
+        sync_read(
+            &synced,
+            sync_folder.to_str().unwrap(),
+            "serial-sync-password",
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            crate::serial::options_from_profile(&synced.get_connection(&input.id).await.unwrap())
+                .unwrap(),
+            options
+        );
+    }
+    #[tokio::test]
     async fn encrypted_sync_hides_hosts_preserves_versions_and_import_conflicts() {
         let directory = tempfile::tempdir().unwrap();
         let db = Database::open(&directory.path().join("sync.sqlite"))

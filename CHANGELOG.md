@@ -9,6 +9,11 @@
 - 设置中的“反馈与诊断”可打开预填运行环境的错误报告、功能建议和当前 Release。
 - 错误报告只预填 CNshell 版本、macOS 版本和运行架构，不读取或附带连接资料。
 - 脱敏诊断导出成功后可直接在 Finder 中显示文件；诊断文件仍由用户检查并主动选择是否上传。
+- 新增原生本地 Shell、受管 Telnet 和 Serial 串口连接；Serial 支持设备枚举、波特率、数据位、校验位、停止位、流控、DTR/RTS、独占打开及同路径拔出重连。
+- Zmodem 已接管 SSH 原始协议流并支持安全的多文件上传、下载、冲突处理、取消和断线恢复；Mosh 已作为受管内置客户端接入现有终端工作区。
+- 新增 SSH Certificate、X11 转发、FIDO2 Agent 身份筛选和 Touch ID 同步密钥保险库。
+- 新增受控 Python 自动化、结构化操作录制、运行时定时任务以及原生 WebDAV 加密同步。
+- AI 辅助支持隐私预览、脱敏、BYOK 兼容接口与本地 Ollama；未受信任插件可登记、审计、禁用和移除，但仍禁止执行第三方代码。
 
 ### 调整
 
@@ -59,7 +64,7 @@
 ### 已知限制
 
 - Developer ID、公证和正式 updater 仍需发行凭据与正式 HTTPS 服务。
-- RDP 当前打开独立 FreeRDP 窗口，尚未内嵌画面；真实 Windows 互操作仍待验收。
-- Debian、Rocky、Alpine，多版本/Intel Mac，完整弱网及 VoiceOver 真机矩阵尚未完成。
-- 本机未安装 `rz/sz`、Mosh 或 XQuartz；Zmodem/Mosh/X11 当前只显示真实依赖状态，不声明协议互操作完成。
-- AI、通用插件和团队协作仍按安全路线图延期。
+- RDP 当前采用受管独立 FreeRDP 窗口深度联动；真实 Windows 画面、输入法、剪贴板和重连矩阵仍待可用主机验收。
+- Debian、Rocky、Alpine，多版本/Intel Mac，完整弱网、VoiceOver 和干净 Mac 安装矩阵尚未完成。
+- X11 已完成协议与本地转发代码，但本机缺少 XQuartz 图形端到端证据；FIDO2、Touch ID 和 Serial 仍缺对应实体硬件的完整人工验收。
+- 插件执行沙箱、团队 RBAC、多人终端、安全分享、X/Ymodem 和 Kermit 仍按后续规划开发。

@@ -11,6 +11,8 @@ const requiredDeliverables = [
   "docs/TROUBLESHOOTING.md",
   "docs/INSTALLATION.md",
   "docs/ACCEPTANCE.md",
+  "docs/THIRD_PARTY_NOTICES.md",
+  "src-tauri/resources/licenses/serialport-MPL-2.0.txt",
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
 ];

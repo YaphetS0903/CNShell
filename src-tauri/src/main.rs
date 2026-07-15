@@ -8,6 +8,10 @@ fn main() {
             println!("{}", cnshell_lib::rdp_displays_json());
             return;
         }
+        Some("--serial-devices") => {
+            println!("{}", cnshell_lib::serial_devices_json());
+            return;
+        }
         _ => {}
     }
     cnshell_lib::run();

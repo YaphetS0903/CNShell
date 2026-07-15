@@ -43,6 +43,20 @@ describe("ConnectionEditor", () => {
     expect(screen.queryByLabelText("Windows 密码")).not.toBeInTheDocument();
   });
 
+  it("enumerates Serial devices and exposes bounded line settings", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "serialDevices").mockResolvedValue([{ path: "/dev/cu.usbserial-A", kind: "usb", label: "USB UART", vendorId: 1, productId: 2, serialNumber: "A", manufacturer: "Acme", product: "UART" }]);
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "serial");
+
+    expect(await screen.findByRole("option", { name: /USB UART/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("设备路径")).toHaveValue("/dev/cu.usbserial-A");
+    expect(screen.getByRole("combobox", { name: "波特率" })).toHaveValue("115200");
+    expect(screen.getByRole("combobox", { name: "数据位" })).toHaveValue("8");
+    expect(screen.getByRole("checkbox", { name: "连接时启用 DTR" })).toBeChecked();
+  });
+
   it("configures RDP display and least-privilege redirection options", async () => {
     const user=userEvent.setup();
     vi.spyOn(api,"rdpDisplays").mockResolvedValue([{id:1,name:"Built-in Retina Display",width:1352,height:878,primary:true}]);

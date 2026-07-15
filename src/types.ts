@@ -46,6 +46,8 @@ import type {
   RdpPreflight,
   RdpConnectionOptions as GeneratedRdpConnectionOptions,
   RdpDisplay,
+  SerialDeviceInfo,
+  SerialConnectionOptions,
   SshCertificateInfo,
   Fido2Identity,
   TouchIdSyncStatus,
@@ -62,7 +64,7 @@ import type {
   ZmodemEvent as GeneratedZmodemEvent,
 } from "./generated/ipc";
 
-export type Protocol = "ssh" | "rdp" | "local" | "telnet";
+export type Protocol = "ssh" | "rdp" | "local" | "telnet" | "serial";
 export type AuthType = "none" | "password" | "privateKey" | "sshCertificate" | "sshAgent" | "fido2Agent";
 export type HostKeyPolicy = "strict" | "acceptNew";
 export type SessionStatus = "connecting" | "online" | "reconnecting" | "failed" | "closed";
@@ -110,7 +112,7 @@ export type ConnectionDiagnostic = Omit<GeneratedConnectionDiagnostic, "stage"> 
 };
 export type TerminalSession = Omit<GeneratedTerminalSession, "status" | "sessionType"> & {
   status: SessionStatus;
-  sessionType: "terminal" | "mosh" | "rdp" | "local" | "telnet";
+  sessionType: "terminal" | "mosh" | "rdp" | "local" | "telnet" | "serial";
 };
 export type TerminalStatus = Omit<GeneratedTerminalStatus, "status"> & { status: SessionStatus };
 export type RemoteFile = Omit<GeneratedRemoteFile, "kind"> & { kind: "file" | "directory" | "symlink" | "other" };
@@ -141,7 +143,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput, WebDavProfile, WebDavSyncProgress };
+export type { AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SerialDeviceInfo, SerialConnectionOptions, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput, WebDavProfile, WebDavSyncProgress };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

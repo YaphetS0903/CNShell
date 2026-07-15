@@ -492,6 +492,69 @@ pub async fn protocol_options_save(
 }
 
 #[tauri::command]
+pub async fn serial_device_list() -> AppResult<Vec<SerialDeviceInfo>> {
+    tokio::task::spawn_blocking(crate::serial::devices)
+        .await
+        .map_err(|error| AppError::Internal(format!("串口枚举任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn serial_options_get(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<SerialConnectionOptions> {
+    let profile = state.db.get_connection(&connection_id).await?;
+    if profile.protocol != "serial" {
+        return Err(AppError::Validation("该连接不是 Serial 类型".into()));
+    }
+    serial_options_for_profile(&state.db, &profile).await
+}
+
+#[tauri::command]
+pub async fn serial_options_save(
+    state: State<'_, AppState>,
+    options: SerialConnectionOptions,
+) -> AppResult<SerialConnectionOptions> {
+    crate::serial::validate_options(&options)?;
+    let profile = state.db.get_connection(&options.connection_id).await?;
+    if profile.protocol != "serial" {
+        return Err(AppError::Validation("该连接不是 Serial 类型".into()));
+    }
+    let environment = crate::serial::environment_with_options(&profile.environment, &options)?;
+    state
+        .db
+        .set_connection_environment(&options.connection_id, &environment)
+        .await?;
+    state
+        .db
+        .delete_named_state(&format!("cnshell.serial.{}", options.connection_id))
+        .await?;
+    Ok(options)
+}
+
+async fn serial_options_for_profile(
+    db: &crate::db::Database,
+    profile: &ConnectionProfile,
+) -> AppResult<SerialConnectionOptions> {
+    if crate::serial::has_persisted_options(profile) {
+        return crate::serial::options_from_profile(profile);
+    }
+    let legacy_key = format!("cnshell.serial.{}", profile.id);
+    if let Some(mut options) = db
+        .load_named_state::<SerialConnectionOptions>(&legacy_key)
+        .await?
+    {
+        options.connection_id = profile.id.clone();
+        let environment = crate::serial::environment_with_options(&profile.environment, &options)?;
+        db.set_connection_environment(&profile.id, &environment)
+            .await?;
+        db.delete_named_state(&legacy_key).await?;
+        return Ok(options);
+    }
+    Ok(crate::serial::default_options(profile.id.clone()))
+}
+
+#[tauri::command]
 pub fn automation_validate(plan: AutomationPlan) -> AppResult<AutomationPlan> {
     crate::automation::validate(&plan)?;
     Ok(plan)
@@ -877,6 +940,14 @@ pub async fn terminal_open(
         let _ = state.db.mark_connected(&connection_id).await;
         return Ok(session);
     }
+    if profile.protocol == "serial" {
+        let options = serial_options_for_profile(&state.db, &profile).await?;
+        let session = state
+            .serial
+            .open(app, profile, options, state.logs.clone())?;
+        let _ = state.db.mark_connected(&connection_id).await;
+        return Ok(session);
+    }
     if profile.protocol != "ssh" {
         return Err(AppError::Validation("RDP 连接请使用远程桌面入口".into()));
     }
@@ -937,6 +1008,9 @@ pub async fn terminal_input(
     if state.telnet.contains(&session_id) {
         return state.telnet.input(&session_id, &data);
     }
+    if state.serial.contains(&session_id) {
+        return state.serial.input(&session_id, &data);
+    }
     if state.mosh.contains(&session_id) {
         return state.mosh.input(&session_id, &data);
     }
@@ -956,6 +1030,9 @@ pub async fn terminal_resize(
     if state.telnet.contains(&session_id) {
         return state.telnet.resize(&session_id, cols, rows);
     }
+    if state.serial.contains(&session_id) {
+        return state.serial.resize(&session_id, cols, rows);
+    }
     if state.mosh.contains(&session_id) {
         return state.mosh.resize(&session_id, cols, rows);
     }
@@ -968,6 +1045,8 @@ pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> A
         state.local_shell.close(&session_id)
     } else if state.telnet.contains(&session_id) {
         state.telnet.close(&session_id)
+    } else if state.serial.contains(&session_id) {
+        state.serial.close(&session_id)
     } else if state.mosh.contains(&session_id) {
         state.mosh.close(&session_id)
     } else {

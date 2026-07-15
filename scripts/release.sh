@@ -89,6 +89,11 @@ MOSH_ARCHITECTURES="$(lipo -archs "$MOSH_CLIENT")"
 "$MOSH_CLIENT" -c >/dev/null
 codesign --verify --strict --verbose=2 "$MOSH_CLIENT"
 
+[[ -s "$APP_PATH/Contents/Resources/licenses/serialport-MPL-2.0.txt" ]] || {
+  echo "发布失败：serialport-rs MPL-2.0 许可证缺失。" >&2
+  exit 1
+}
+
 DMG_PATHS=("$BUNDLE_ROOT"/dmg/*.dmg(N))
 (( ${#DMG_PATHS[@]} == 1 )) || {
   echo "发布失败：预期生成且仅生成一个 DMG，实际为 ${#DMG_PATHS[@]} 个。" >&2

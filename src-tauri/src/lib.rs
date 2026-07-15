@@ -18,6 +18,7 @@ mod plugin;
 mod protocols;
 mod python_automation;
 mod rdp;
+mod serial;
 mod session_log;
 mod sftp;
 mod ssh;
@@ -37,6 +38,7 @@ use local_shell::LocalShellManager;
 use monitor::MonitorState;
 use mosh::MoshManager;
 use rdp::RdpManager;
+use serial::SerialManager;
 use session_log::SessionLogManager;
 use sftp::TransferManager;
 use ssh::SessionManager;
@@ -63,6 +65,7 @@ pub struct AppState {
     ai: AiManager,
     local_shell: LocalShellManager,
     telnet: TelnetManager,
+    serial: SerialManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -72,6 +75,15 @@ pub fn rdp_preflight_json() -> String {
 pub fn rdp_displays_json() -> String {
     match rdp::displays() {
         Ok(displays) => serde_json::json!({"available": true, "displays": displays}).to_string(),
+        Err(error) => {
+            serde_json::json!({"available": false, "message": error.to_string()}).to_string()
+        }
+    }
+}
+
+pub fn serial_devices_json() -> String {
+    match serial::devices() {
+        Ok(devices) => serde_json::json!({"available": true, "devices": devices}).to_string(),
         Err(error) => {
             serde_json::json!({"available": false, "message": error.to_string()}).to_string()
         }
@@ -174,6 +186,7 @@ pub fn run() {
                 ai: AiManager::default(),
                 local_shell: LocalShellManager::default(),
                 telnet: TelnetManager::default(),
+                serial: SerialManager::default(),
             });
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
@@ -193,6 +206,7 @@ pub fn run() {
                 window.state::<AppState>().mosh.close_all();
                 window.state::<AppState>().local_shell.close_all();
                 window.state::<AppState>().telnet.close_all();
+                window.state::<AppState>().serial.close_all();
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -217,6 +231,9 @@ pub fn run() {
             commands::protocol_capabilities,
             commands::protocol_options_get,
             commands::protocol_options_save,
+            commands::serial_device_list,
+            commands::serial_options_get,
+            commands::serial_options_save,
             commands::automation_validate,
             commands::automation_start,
             commands::automation_schedule_list,

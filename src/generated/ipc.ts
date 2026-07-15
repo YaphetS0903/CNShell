@@ -591,6 +591,27 @@ export interface RdpDisplay {
   primary: boolean;
 }
 
+export interface SerialDeviceInfo {
+  path: string;
+  kind: string;
+  label: string;
+  vendorId: number | null;
+  productId: number | null;
+  serialNumber: string | null;
+  manufacturer: string | null;
+  product: string | null;
+}
+
+export interface SerialConnectionOptions {
+  connectionId: string;
+  dataBits: number;
+  parity: string;
+  stopBits: number;
+  flowControl: string;
+  dtr: boolean;
+  rts: boolean;
+}
+
 export interface TerminalPreferences {
   fontFamily: string;
   fontSize: number;

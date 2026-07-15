@@ -1149,6 +1149,9 @@ fn open_pty(
     }
     channel.request_pty("xterm-256color", None, Some((cols, rows, 0, 0)))?;
     for (key, value) in &profile.environment {
+        if crate::serial::is_option_key(key) {
+            continue;
+        }
         channel.setenv(key, value)?;
     }
     let x11_forwarder = if x11_enabled {

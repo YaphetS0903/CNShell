@@ -763,7 +763,7 @@ export default function TerminalWorkspace({
                     aria-labelledby={`tool-tab-${activePanel}`}
                     className="panel-content"
                   >
-                    {activePanel === "files" && (["local","telnet"].includes(active.sessionType) ? <div className="empty-files"><Files size={28}/><span>{active.sessionType === "telnet" ? "Telnet 会话不提供远程文件面板" : "本地 Shell 使用终端命令访问本机文件"}</span></div> : <FileManager key={active.id} session={active} />)}{" "}
+                    {activePanel === "files" && (["local","telnet","serial"].includes(active.sessionType) ? <div className="empty-files"><Files size={28}/><span>{active.sessionType === "serial" ? "Serial 会话不提供远程文件面板" : active.sessionType === "telnet" ? "Telnet 会话不提供远程文件面板" : "本地 Shell 使用终端命令访问本机文件"}</span></div> : <FileManager key={active.id} session={active} />)}{" "}
                     {activePanel === "commands" && (
                       <CommandPanel session={active} onError={setError} />
                     )}{" "}

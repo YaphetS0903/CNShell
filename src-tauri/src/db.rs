@@ -129,11 +129,35 @@ impl Database {
         self.get_connection(id).await
     }
 
+    pub async fn set_connection_environment(
+        &self,
+        id: &str,
+        environment: &std::collections::BTreeMap<String, String>,
+    ) -> AppResult<ConnectionProfile> {
+        validate_environment(environment)?;
+        let serialized = serde_json::to_string(environment)
+            .map_err(|error| AppError::Internal(error.to_string()))?;
+        let affected = sqlx::query(
+            "UPDATE connections SET environment=?,updated_at=? WHERE id=? AND deleted_at IS NULL",
+        )
+        .bind(serialized)
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(&self.pool)
+        .await?
+        .rows_affected();
+        if affected == 0 {
+            return Err(AppError::NotFound(id.into()));
+        }
+        self.get_connection(id).await
+    }
+
     pub async fn remove_inserted_connection(&self, id: &str) -> AppResult<()> {
         let mut transaction = self.pool.begin().await?;
-        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?)")
+        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?,?)")
             .bind(format!("cnshell.protocol.{id}"))
             .bind(format!("cnshell.rdp.{id}"))
+            .bind(format!("cnshell.serial.{id}"))
             .execute(&mut *transaction)
             .await?;
         sqlx::query("DELETE FROM connections WHERE id=?")
@@ -203,9 +227,10 @@ impl Database {
             .bind(id)
             .execute(&mut *transaction)
             .await?;
-        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?)")
+        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?,?)")
             .bind(format!("cnshell.protocol.{id}"))
             .bind(format!("cnshell.rdp.{id}"))
+            .bind(format!("cnshell.serial.{id}"))
             .execute(&mut *transaction)
             .await?;
         let affected = sqlx::query("DELETE FROM connections WHERE id=? AND deleted_at IS NOT NULL")
@@ -566,6 +591,17 @@ impl Database {
             })
             .transpose()
     }
+
+    pub async fn delete_named_state(&self, key: &str) -> AppResult<()> {
+        if !key.starts_with("cnshell.") {
+            return Err(AppError::Validation("状态键无效".into()));
+        }
+        sqlx::query("DELETE FROM workspace_state WHERE key=?")
+            .bind(key)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }
 
 fn backup_database_files(path: &Path) -> AppResult<()> {
@@ -682,13 +718,14 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
     {
         return Err(AppError::Validation("主机地址无效".into()));
     }
-    if input.protocol != "local" && !(1..=65535).contains(&input.port) {
+    if !["local", "serial"].contains(&input.protocol.as_str()) && !(1..=65535).contains(&input.port)
+    {
         return Err(AppError::Validation("端口必须在 1 到 65535 之间".into()));
     }
     if input.username.trim().is_empty() || input.username.chars().any(char::is_control) {
         return Err(AppError::Validation("用户名不能为空或包含控制字符".into()));
     }
-    if !["ssh", "rdp", "local", "telnet"].contains(&input.protocol.as_str()) {
+    if !["ssh", "rdp", "local", "telnet", "serial"].contains(&input.protocol.as_str()) {
         return Err(AppError::Validation("不支持的协议".into()));
     }
     if input.protocol == "local" {
@@ -714,6 +751,28 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
             return Err(AppError::Validation("Telnet 不允许保存密码".into()));
         }
         return Ok(());
+    }
+    if input.protocol == "serial" {
+        if !input.host.starts_with("/dev/") {
+            return Err(AppError::Validation(
+                "Serial 设备必须是 /dev 下的设备路径".into(),
+            ));
+        }
+        if !(300..=4_000_000).contains(&input.port) {
+            return Err(AppError::Validation(
+                "串口波特率必须在 300 到 4000000 之间".into(),
+            ));
+        }
+        if input.auth_type != "none"
+            || input
+                .credential
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        {
+            return Err(AppError::Validation(
+                "Serial 连接不使用或保存认证凭据".into(),
+            ));
+        }
     }
     if input.protocol == "ssh"
         && ![
@@ -745,7 +804,14 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
     if input.encoding != "UTF-8" {
         return Err(AppError::Validation("当前版本仅支持 UTF-8 终端编码".into()));
     }
-    if input.environment.iter().any(|(key, value)| {
+    validate_environment(&input.environment)?;
+    Ok(())
+}
+
+pub fn validate_environment(
+    environment: &std::collections::BTreeMap<String, String>,
+) -> AppResult<()> {
+    if environment.iter().any(|(key, value)| {
         key.is_empty()
             || key.len() > 128
             || value.len() > 4096
@@ -951,6 +1017,34 @@ mod tests {
         let mut safe = input;
         safe.credential = None;
         assert!(validate_connection(&safe).is_ok());
+    }
+
+    #[test]
+    fn serial_profile_requires_a_device_path_and_baud_rate() {
+        let input = SaveConnectionInput {
+            id: "serial".into(),
+            folder_id: None,
+            protocol: "serial".into(),
+            name: "USB UART".into(),
+            host: "/dev/cu.usbserial-A".into(),
+            port: 115200,
+            username: "serial".into(),
+            auth_type: "none".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        assert!(validate_connection(&input).is_ok());
+        let mut invalid = input;
+        invalid.host = "serial.example".into();
+        assert!(validate_connection(&invalid).is_err());
     }
     #[test]
     fn rejects_invalid_settings_and_environment() {
