@@ -13,8 +13,12 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
+import { waitForTask } from "../../lib/background-task";
 import { errorMessage } from "../../lib/format";
+import { workspaceRuntime } from "../../lib/workspace-runtime";
+import { useAppStore } from "../../store/app-store";
 import type {
+  ConnectionProfile,
   PluginAuditEvent,
   PluginInstallRecord,
   PluginPermissionReport,
@@ -22,13 +26,16 @@ import type {
   PluginRunResult,
 } from "../../types";
 
-export function PluginSettings({ onError }: { onError: (message: string) => void }) {
+export function PluginSettings({ connections, onError }: { connections: ConnectionProfile[]; onError: (message: string) => void }) {
   const [report, setReport] = useState<PluginPermissionReport | null>(null);
   const [records, setRecords] = useState<PluginInstallRecord[]>([]);
   const [publishers, setPublishers] = useState<PluginPublisherRoot[]>([]);
   const [audit, setAudit] = useState<PluginAuditEvent[]>([]);
   const [lastRun, setLastRun] = useState<PluginRunResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [connectionId, setConnectionId] = useState("");
+  const [proxyStatus, setProxyStatus] = useState("");
+  const activeSessionId = useAppStore((state) => state.activeSessionId);
 
   const refresh = useCallback(async () => {
     try {
@@ -89,10 +96,29 @@ export function PluginSettings({ onError }: { onError: (message: string) => void
     catch (error) { onError(errorMessage(error)); }
   };
 
-  const run = async (id: string) => {
-    try { setBusy(true); setLastRun(await api.runPlugin(id)); await refresh(); }
+  const run = async (record: PluginInstallRecord) => {
+    const needsConnection = record.grantedPermissions.some((permission) => permission === "connectionMetadata" || permission === "credentialProxy");
+    const selectedText = workspaceRuntime.terminalSelectionBySession.get(activeSessionId ?? "") ?? "";
+    if (needsConnection && !connectionId) { onError("请先为插件本次运行选择一个连接"); return; }
+    if (record.grantedPermissions.includes("terminalRead") && !selectedText) { onError("请先在当前终端中选中文本；插件只能读取这次明确选中的内容"); return; }
+    try { setBusy(true); setProxyStatus(""); setLastRun(await api.runPlugin({id:record.id,connectionId:connectionId||null,selectedText:record.grantedPermissions.includes("terminalRead")?selectedText:null})); await refresh(); }
     catch (error) { onError(errorMessage(error)); }
     finally { setBusy(false); }
+  };
+
+  const approveProxy = async () => {
+    const request = lastRun?.credentialProxyRequest;
+    if (!request || !confirm(`${request.pluginName} 请求由 CNshell 对 ${request.connectionName} 执行一次连接诊断。插件不会获得密码、私钥或诊断明文，是否允许？`)) return;
+    try { setBusy(true); const task = await api.approvePluginCredentialProxy(request.requestId); await waitForTask(task); setProxyStatus("一次性连接诊断已完成；凭据始终由 CNshell 后端持有。"); setLastRun({...lastRun,credentialProxyRequest:null}); await refresh(); }
+    catch (error) { onError(errorMessage(error)); }
+    finally { setBusy(false); }
+  };
+
+  const rejectProxy = async () => {
+    const request = lastRun?.credentialProxyRequest;
+    if (!request) return;
+    try { await api.rejectPluginCredentialProxy(request.requestId); setProxyStatus("已拒绝凭据代理请求，未读取或使用凭据。"); setLastRun({...lastRun,credentialProxyRequest:null}); await refresh(); }
+    catch (error) { onError(errorMessage(error)); }
   };
 
   const revokePublisher = async (root: PluginPublisherRoot) => {
@@ -139,6 +165,7 @@ export function PluginSettings({ onError }: { onError: (message: string) => void
     </div>
     <div className="plugin-report">
       <strong>已登记插件</strong>
+      <label><span>本次运行使用的连接（仅按插件权限提供有界元数据或代办诊断）</span><select value={connectionId} onChange={(event)=>setConnectionId(event.target.value)}><option value="">不提供连接</option>{connections.map((connection)=><option key={connection.id} value={connection.id}>{connection.name} · {connection.protocol.toUpperCase()}</option>)}</select></label>
       {records.length === 0 ? <p>暂无插件登记。</p> : records.map((record) => <div className="plugin-record" key={`${record.id}-${record.digest}`}>
         <div>
           <strong>{record.name} {record.version}</strong>
@@ -148,12 +175,12 @@ export function PluginSettings({ onError }: { onError: (message: string) => void
         </div>
         <div>
           {record.executable && !record.enabled && <button className="mini-button" onClick={() => void enable(record)} disabled={busy}><ShieldCheck size={13}/>启用</button>}
-          {record.enabled && <button className="mini-button" onClick={() => void run(record.id)} disabled={busy}><Play size={13}/>运行</button>}
+          {record.enabled && <button className="mini-button" onClick={() => void run(record)} disabled={busy}><Play size={13}/>运行</button>}
           {record.enabled && <button className="mini-button" onClick={() => void disable(record.id)}><Ban size={13}/>禁用</button>}
           <button className="icon-button" aria-label={`移除 ${record.name}`} onClick={() => void remove(record.id)}><Trash2 size={14}/></button>
         </div>
       </div>)}
-      {lastRun && <small aria-live="polite">最近运行：{lastRun.pluginId} · 状态码 {lastRun.statusCode} · 燃料 {lastRun.fuelConsumed} · {lastRun.durationMs} ms</small>}
+      {lastRun && <div aria-live="polite"><small>最近运行：{lastRun.pluginId} · 状态码 {lastRun.statusCode} · 燃料 {lastRun.fuelConsumed} · {lastRun.durationMs} ms</small>{lastRun.logs.map((message,index)=><code key={`${index}-${message}`}>{message}</code>)}{lastRun.credentialProxyRequest&&<div><small>{lastRun.credentialProxyRequest.pluginName} 请求一次性 connectionTest，{new Date(lastRun.credentialProxyRequest.expiresAt).toLocaleTimeString()} 前有效。</small><button className="mini-button" onClick={()=>void approveProxy()} disabled={busy}><ShieldCheck size={13}/>允许一次</button><button className="mini-button" onClick={()=>void rejectProxy()} disabled={busy}><Ban size={13}/>拒绝</button></div>}{proxyStatus&&<small>{proxyStatus}</small>}</div>}
     </div>
     <div className="plugin-report">
       <strong>最近审计</strong>

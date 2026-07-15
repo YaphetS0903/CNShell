@@ -157,7 +157,7 @@ export default function SettingsModal() {
         <EncryptedSyncSettings onError={(message) => setError(message)} />
         <WebDavSyncSettings onError={(message) => setError(message)} />
         <AiSettings onError={(message) => setError(message)} />
-        <PluginSettings onError={(message) => setError(message)} />
+        <PluginSettings connections={connections} onError={(message) => setError(message)} />
         <TeamSettings
           connections={connections}
           onConnectionImported={refreshConnections}

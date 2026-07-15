@@ -8,6 +8,7 @@ export const workspaceRuntime={
   terminalSearchBySession:new Map<string,(query:string)=>import("../features/terminal/terminal-safety").GlobalSearchMatch[]>(),
   terminalTimestampsBySession:new Map<string,import("../features/terminal/terminal-safety").TerminalLineTimestamp[]>(),
   terminalActivity:new Set<string>(),
+  terminalSelectionBySession:new Map<string,string>(),
   remoteFileBrowserBySession:new Map<string,{path:string;expandedPaths:string[]}>()
 };
 

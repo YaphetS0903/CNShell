@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { PluginAuditEvent, PluginInstallRecord, PluginPublisherRoot } from "../../types";
+import type { ConnectionProfile, PluginAuditEvent, PluginInstallRecord, PluginPublisherRoot } from "../../types";
 import { PluginSettings } from "./PluginSettings";
 
 const dialog = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }));
@@ -42,6 +42,13 @@ const audit: PluginAuditEvent = {
   digest: record.digest,
   createdAt: "2026-07-15T00:00:00Z",
 };
+const connection = {
+  id: "server-1",
+  name: "Production",
+  protocol: "ssh",
+  host: "server.example.com",
+  port: 22,
+} as ConnectionProfile;
 
 describe("PluginSettings", () => {
   beforeEach(() => {
@@ -59,7 +66,7 @@ describe("PluginSettings", () => {
     const remove = vi.spyOn(api, "removePlugin").mockResolvedValue();
     dialog.save.mockResolvedValue("/tmp/plugin-audit.json");
     const exportAudit = vi.spyOn(api, "exportPluginAudit").mockResolvedValue(1);
-    render(<PluginSettings onError={vi.fn()}/>);
+    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
 
     expect(await screen.findByText("Status 1.0.0")).toBeInTheDocument();
     expect(screen.getByText(/签名可执行 · 已禁用/)).toBeInTheDocument();
@@ -76,7 +83,7 @@ describe("PluginSettings", () => {
     dialog.open.mockResolvedValue("/tmp/plugin/manifest.json");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const register = vi.spyOn(api, "registerPlugin").mockResolvedValue(record);
-    render(<PluginSettings onError={vi.fn()}/>);
+    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
 
     await user.click(screen.getByRole("button", { name: "登记插件" }));
     await waitFor(() => expect(register).toHaveBeenCalledWith("/tmp/plugin/manifest.json"));
@@ -87,10 +94,42 @@ describe("PluginSettings", () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const enable = vi.spyOn(api, "enablePlugin").mockResolvedValue({ ...record, enabled: true, grantedPermissions: ["ui"] });
-    render(<PluginSettings onError={vi.fn()}/>);
+    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
 
     await user.click(await screen.findByRole("button", { name: "启用" }));
     await waitFor(() => expect(enable).toHaveBeenCalledWith(record.id));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("无 WASI"));
+  });
+
+  it("passes only the selected connection and exposes a rejectable one-shot proxy request", async () => {
+    const user = userEvent.setup();
+    const enabled = { ...record, enabled: true, grantedPermissions: ["connectionMetadata", "credentialProxy"] };
+    vi.spyOn(api, "listPlugins").mockResolvedValue([enabled]);
+    const run = vi.spyOn(api, "runPlugin").mockResolvedValue({
+      pluginId: enabled.id,
+      version: enabled.version,
+      statusCode: 0,
+      fuelConsumed: 12,
+      durationMs: 1,
+      logs: [],
+      credentialProxyRequest: {
+        requestId: "request-1",
+        pluginId: enabled.id,
+        pluginName: enabled.name,
+        connectionId: connection.id,
+        connectionName: connection.name,
+        operation: "connectionTest",
+        expiresAt: "2026-07-15T00:02:00Z",
+      },
+    });
+    const reject = vi.spyOn(api, "rejectPluginCredentialProxy").mockResolvedValue();
+    render(<PluginSettings connections={[connection]} onError={vi.fn()}/>);
+
+    await user.selectOptions(await screen.findByRole("combobox", { name: /本次运行使用的连接/ }), connection.id);
+    await user.click(screen.getByRole("button", { name: "运行" }));
+    await waitFor(() => expect(run).toHaveBeenCalledWith({ id: enabled.id, connectionId: connection.id, selectedText: null }));
+    expect(await screen.findByText(/请求一次性 connectionTest/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "拒绝" }));
+    await waitFor(() => expect(reject).toHaveBeenCalledWith("request-1"));
   });
 });

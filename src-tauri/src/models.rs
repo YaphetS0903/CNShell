@@ -588,6 +588,28 @@ pub struct PluginRunResult {
     pub status_code: i32,
     pub fuel_consumed: u64,
     pub duration_ms: u64,
+    pub logs: Vec<String>,
+    pub credential_proxy_request: Option<PluginCredentialProxyRequest>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PluginRunInput {
+    pub id: String,
+    pub connection_id: Option<String>,
+    pub selected_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginCredentialProxyRequest {
+    pub request_id: String,
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub operation: String,
+    pub expires_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]

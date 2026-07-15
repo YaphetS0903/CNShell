@@ -2,23 +2,27 @@ use crate::{
     db::Database,
     error::{AppError, AppResult},
     models::{
-        PluginAuditEvent, PluginInstallRecord, PluginManifest, PluginPermissionReport,
-        PluginPublisherRoot, PluginRunResult,
+        PluginAuditEvent, PluginCredentialProxyRequest, PluginInstallRecord, PluginManifest,
+        PluginPermissionReport, PluginPublisherRoot, PluginRunInput, PluginRunResult,
     },
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::Write,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Instant,
 };
-use wasmi::{Config, Engine, Linker, Module, Store, StoreLimits, StoreLimitsBuilder};
+use wasmi::{
+    Caller, Config, Engine, Extern, Linker, Module, Store, StoreLimits, StoreLimitsBuilder,
+};
 
 const MAX_MANIFEST_BYTES: u64 = 256 * 1024;
 const MAX_PUBLISHER_KEY_BYTES: u64 = 64 * 1024;
@@ -28,6 +32,12 @@ const MAX_INSTALLED_PLUGINS: usize = 256;
 const MAX_PUBLISHER_ROOTS: usize = 128;
 const SANDBOX_FUEL: u64 = 10_000_000;
 const SANDBOX_MEMORY_BYTES: usize = 32 * 1024 * 1024;
+const MAX_PLUGIN_LOG_BYTES: usize = 8 * 1024;
+const MAX_PLUGIN_LOGS: usize = 32;
+const MAX_PLUGIN_LOG_TOTAL_BYTES: usize = 32 * 1024;
+const MAX_CONNECTION_METADATA_BYTES: usize = 16 * 1024;
+const MAX_TERMINAL_SELECTION_BYTES: usize = 64 * 1024;
+const MAX_PENDING_PROXY_REQUESTS: usize = 32;
 const KNOWN_PERMISSIONS: &[&str] = &[
     "ui",
     "network",
@@ -67,6 +77,86 @@ struct VerifiedPackage {
 
 struct SandboxState {
     limits: StoreLimits,
+    permissions: HashSet<String>,
+    connection_metadata: Vec<u8>,
+    terminal_selection: Vec<u8>,
+    logs: Vec<String>,
+    log_bytes: usize,
+    credential_proxy_requested: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct PendingPluginProxyRequest {
+    pub plugin_id: String,
+    pub plugin_digest: String,
+    pub connection_id: String,
+    pub operation: String,
+    pub expires_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Clone, Default)]
+pub struct PluginManager {
+    pending_proxy_requests: Arc<Mutex<HashMap<String, PendingPluginProxyRequest>>>,
+}
+
+impl PluginManager {
+    fn create_proxy_request(
+        &self,
+        record: &PluginInstallRecord,
+        connection_id: &str,
+        connection_name: &str,
+    ) -> AppResult<PluginCredentialProxyRequest> {
+        let now = Utc::now();
+        let expires_at = now + ChronoDuration::minutes(2);
+        let mut pending = self.pending_proxy_requests.lock();
+        pending.retain(|_, request| request.expires_at > now);
+        if pending.len() >= MAX_PENDING_PROXY_REQUESTS {
+            return Err(AppError::Unavailable(
+                "待确认的插件凭据代理请求过多，请先处理已有请求".into(),
+            ));
+        }
+        let request_id = uuid::Uuid::new_v4().to_string();
+        pending.insert(
+            request_id.clone(),
+            PendingPluginProxyRequest {
+                plugin_id: record.id.clone(),
+                plugin_digest: record.digest.clone(),
+                connection_id: connection_id.into(),
+                operation: "connectionTest".into(),
+                expires_at,
+            },
+        );
+        Ok(PluginCredentialProxyRequest {
+            request_id,
+            plugin_id: record.id.clone(),
+            plugin_name: record.name.clone(),
+            connection_id: connection_id.into(),
+            connection_name: connection_name.into(),
+            operation: "connectionTest".into(),
+            expires_at: expires_at.to_rfc3339(),
+        })
+    }
+
+    pub fn take_proxy_request(&self, request_id: &str) -> AppResult<PendingPluginProxyRequest> {
+        if request_id.len() > 128 {
+            return Err(AppError::Validation("插件凭据代理请求 ID 无效".into()));
+        }
+        let request = self
+            .pending_proxy_requests
+            .lock()
+            .remove(request_id)
+            .ok_or_else(|| AppError::NotFound("插件凭据代理请求已过期或已使用".into()))?;
+        if request.expires_at <= Utc::now() {
+            return Err(AppError::Unavailable(
+                "插件凭据代理请求已过期，请重新运行插件".into(),
+            ));
+        }
+        Ok(request)
+    }
+
+    pub fn reject_proxy_request(&self, request_id: &str) -> AppResult<PendingPluginProxyRequest> {
+        self.take_proxy_request(request_id)
+    }
 }
 
 pub fn inspect_file(path: &str) -> AppResult<PluginPermissionReport> {
@@ -167,7 +257,12 @@ pub fn validate(manifest: &PluginManifest) -> AppResult<PluginPermissionReport> 
     let default_granted_permissions = manifest
         .permissions
         .iter()
-        .filter(|permission| matches!(permission.as_str(), "ui"))
+        .filter(|permission| {
+            matches!(
+                permission.as_str(),
+                "ui" | "terminalRead" | "connectionMetadata" | "credentialProxy"
+            )
+        })
         .cloned()
         .collect::<Vec<_>>();
     let denied_permissions = manifest
@@ -797,7 +892,75 @@ pub async fn enable(db: &Database, id: &str) -> AppResult<PluginInstallRecord> {
     Ok(result)
 }
 
-fn run_wasm(plugin_id: String, version: String, bytes: Vec<u8>) -> AppResult<PluginRunResult> {
+struct WasmRunOutput {
+    result: PluginRunResult,
+    credential_proxy_requested: bool,
+}
+
+fn required_permission_for_import(name: &str) -> Option<&'static str> {
+    match name {
+        "log" => Some("ui"),
+        "connection_metadata_len" | "connection_metadata_read" => Some("connectionMetadata"),
+        "terminal_selection_len" | "terminal_selection_read" => Some("terminalRead"),
+        "credential_proxy_connection_test" => Some("credentialProxy"),
+        _ => None,
+    }
+}
+
+fn guest_memory(caller: &Caller<'_, SandboxState>) -> Option<wasmi::Memory> {
+    caller.get_export("memory").and_then(Extern::into_memory)
+}
+
+fn read_guest_bytes(
+    caller: &Caller<'_, SandboxState>,
+    pointer: i32,
+    length: i32,
+    maximum: usize,
+) -> Option<Vec<u8>> {
+    let pointer = usize::try_from(pointer).ok()?;
+    let length = usize::try_from(length).ok()?;
+    if length > maximum {
+        return None;
+    }
+    let mut bytes = vec![0; length];
+    guest_memory(caller)?
+        .read(caller, pointer, &mut bytes)
+        .ok()?;
+    Some(bytes)
+}
+
+fn write_guest_bytes(
+    caller: &mut Caller<'_, SandboxState>,
+    pointer: i32,
+    capacity: i32,
+    bytes: &[u8],
+) -> i32 {
+    let Ok(pointer) = usize::try_from(pointer) else {
+        return -1;
+    };
+    let Ok(capacity) = usize::try_from(capacity) else {
+        return -1;
+    };
+    if capacity < bytes.len() {
+        return -3;
+    }
+    let Some(memory) = guest_memory(caller) else {
+        return -1;
+    };
+    if memory.write(caller, pointer, bytes).is_err() {
+        return -1;
+    }
+    i32::try_from(bytes.len()).unwrap_or(-3)
+}
+
+fn run_wasm(
+    plugin_id: String,
+    version: String,
+    bytes: Vec<u8>,
+    permissions: HashSet<String>,
+    connection_metadata: Vec<u8>,
+    terminal_selection: Vec<u8>,
+) -> AppResult<WasmRunOutput> {
     if bytes.is_empty() || bytes.len() as u64 > MAX_WASM_BYTES {
         return Err(AppError::Validation("插件 WASM 大小无效".into()));
     }
@@ -811,10 +974,26 @@ fn run_wasm(plugin_id: String, version: String, bytes: Vec<u8>) -> AppResult<Plu
     let engine = Engine::new(&config);
     let module = Module::new(&engine, bytes.as_slice())
         .map_err(|error| AppError::Validation(format!("WASM 模块无效：{error}")))?;
-    if module.imports().next().is_some() {
-        return Err(AppError::Validation(
-            "插件导入了未授权宿主能力；CNshell v1 沙箱不提供 WASI、网络、文件或凭据接口".into(),
-        ));
+    for import in module.imports() {
+        let permission = if import.module() == "cnshell_v1" {
+            required_permission_for_import(import.name())
+        } else {
+            None
+        }
+        .ok_or_else(|| {
+            AppError::Validation(format!(
+                "插件导入了未知宿主能力：{}.{}",
+                import.module(),
+                import.name()
+            ))
+        })?;
+        if !permissions.contains(permission) {
+            return Err(AppError::Validation(format!(
+                "插件导入 {} 但未获 {} 权限",
+                import.name(),
+                permission
+            )));
+        }
     }
     let limits = StoreLimitsBuilder::new()
         .memory_size(SANDBOX_MEMORY_BYTES)
@@ -824,12 +1003,113 @@ fn run_wasm(plugin_id: String, version: String, bytes: Vec<u8>) -> AppResult<Plu
         .tables(1)
         .trap_on_grow_failure(true)
         .build();
-    let mut store = Store::new(&engine, SandboxState { limits });
+    let mut store = Store::new(
+        &engine,
+        SandboxState {
+            limits,
+            permissions,
+            connection_metadata,
+            terminal_selection,
+            logs: Vec::new(),
+            log_bytes: 0,
+            credential_proxy_requested: false,
+        },
+    );
     store.limiter(|state| &mut state.limits);
     store
         .set_fuel(SANDBOX_FUEL)
         .map_err(|error| AppError::Internal(format!("配置 WASM 燃料失败：{error}")))?;
-    let linker = Linker::<SandboxState>::new(&engine);
+    let mut linker = Linker::<SandboxState>::new(&engine);
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "log",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, length: i32| -> i32 {
+                if !caller.data().permissions.contains("ui") {
+                    return -2;
+                }
+                let Some(bytes) = read_guest_bytes(&caller, pointer, length, MAX_PLUGIN_LOG_BYTES)
+                else {
+                    return -1;
+                };
+                let Ok(message) = String::from_utf8(bytes) else {
+                    return -1;
+                };
+                let state = caller.data_mut();
+                if state.logs.len() >= MAX_PLUGIN_LOGS
+                    || state.log_bytes.saturating_add(message.len()) > MAX_PLUGIN_LOG_TOTAL_BYTES
+                {
+                    return -3;
+                }
+                state.log_bytes += message.len();
+                state.logs.push(message);
+                0
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册插件日志 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "connection_metadata_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("connectionMetadata") {
+                    return -2;
+                }
+                i32::try_from(caller.data().connection_metadata.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册连接元数据 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "connection_metadata_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("connectionMetadata") {
+                    return -2;
+                }
+                let bytes = caller.data().connection_metadata.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册连接元数据读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "terminal_selection_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("terminalRead") {
+                    return -2;
+                }
+                i32::try_from(caller.data().terminal_selection.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册终端选区 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "terminal_selection_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("terminalRead") {
+                    return -2;
+                }
+                let bytes = caller.data().terminal_selection.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册终端选区读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "credential_proxy_connection_test",
+            |mut caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("credentialProxy") {
+                    return -2;
+                }
+                caller.data_mut().credential_proxy_requested = true;
+                0
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册凭据代理 ABI 失败：{error}")))?;
     let instance = linker
         .instantiate_and_start(&mut store, &module)
         .map_err(|error| AppError::Validation(format!("WASM 初始化失败：{error}")))?;
@@ -842,16 +1122,46 @@ fn run_wasm(plugin_id: String, version: String, bytes: Vec<u8>) -> AppResult<Plu
     let remaining = store
         .get_fuel()
         .map_err(|error| AppError::Internal(format!("读取 WASM 燃料失败：{error}")))?;
-    Ok(PluginRunResult {
-        plugin_id,
-        version,
-        status_code,
-        fuel_consumed: SANDBOX_FUEL.saturating_sub(remaining),
-        duration_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+    let state = store.data();
+    Ok(WasmRunOutput {
+        result: PluginRunResult {
+            plugin_id,
+            version,
+            status_code,
+            fuel_consumed: SANDBOX_FUEL.saturating_sub(remaining),
+            duration_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
+            logs: state.logs.clone(),
+            credential_proxy_request: None,
+        },
+        credential_proxy_requested: state.credential_proxy_requested,
     })
 }
 
-pub async fn run(db: &Database, id: &str) -> AppResult<PluginRunResult> {
+fn sanitized_connection_metadata(profile: &crate::models::ConnectionProfile) -> AppResult<Vec<u8>> {
+    let bytes = serde_json::to_vec(&serde_json::json!({
+        "id": profile.id,
+        "name": profile.name,
+        "protocol": profile.protocol,
+        "host": profile.host,
+        "port": profile.port,
+        "username": profile.username,
+        "tags": profile.tags,
+        "encoding": profile.encoding,
+        "hasCredential": profile.has_credential,
+    }))
+    .map_err(|error| AppError::Internal(format!("生成插件连接元数据失败：{error}")))?;
+    if bytes.len() > MAX_CONNECTION_METADATA_BYTES {
+        return Err(AppError::Validation("插件连接元数据超过 16 KB".into()));
+    }
+    Ok(bytes)
+}
+
+pub async fn run(
+    manager: &PluginManager,
+    db: &Database,
+    input: PluginRunInput,
+) -> AppResult<PluginRunResult> {
+    let id = input.id.as_str();
     if !valid_id(id) {
         return Err(AppError::Validation("插件 ID 无效".into()));
     }
@@ -876,17 +1186,67 @@ pub async fn run(db: &Database, id: &str) -> AppResult<PluginRunResult> {
         invalidate_record(db, id, "读取期间 WASM 摘要发生变化".into()).await?;
         return Err(AppError::Validation("插件 WASM 在读取期间发生变化".into()));
     }
+    let permissions = record
+        .granted_permissions
+        .iter()
+        .cloned()
+        .collect::<HashSet<_>>();
+    let needs_connection =
+        permissions.contains("connectionMetadata") || permissions.contains("credentialProxy");
+    let connection = match input.connection_id.as_deref() {
+        Some(connection_id) => Some(db.get_connection(connection_id).await?),
+        None if needs_connection => {
+            return Err(AppError::Validation(
+                "该插件需要用户明确选择一个连接后才能运行".into(),
+            ));
+        }
+        None => None,
+    };
+    if permissions.contains("credentialProxy")
+        && connection
+            .as_ref()
+            .is_some_and(|profile| profile.protocol != "ssh")
+    {
+        return Err(AppError::Validation(
+            "凭据代理 connectionTest 当前只支持 SSH 连接".into(),
+        ));
+    }
+    let connection_metadata = if permissions.contains("connectionMetadata") {
+        sanitized_connection_metadata(connection.as_ref().expect("connection required"))?
+    } else {
+        Vec::new()
+    };
+    let terminal_selection = if permissions.contains("terminalRead") {
+        let selected = input.selected_text.ok_or_else(|| {
+            AppError::Validation("该插件需要用户明确提供终端选中文本后才能运行".into())
+        })?;
+        if selected.len() > MAX_TERMINAL_SELECTION_BYTES {
+            return Err(AppError::Validation("终端选中文本超过 64 KB".into()));
+        }
+        selected.into_bytes()
+    } else {
+        Vec::new()
+    };
     let plugin_id = record.id.clone();
     let version = record.version.clone();
-    let result = tokio::task::spawn_blocking(move || run_wasm(plugin_id, version, bytes))
-        .await
-        .map_err(|error| AppError::Internal(format!("插件沙箱任务失败：{error}")))?;
+    let result = tokio::task::spawn_blocking(move || {
+        run_wasm(
+            plugin_id,
+            version,
+            bytes,
+            permissions,
+            connection_metadata,
+            terminal_selection,
+        )
+    })
+    .await
+    .map_err(|error| AppError::Internal(format!("插件沙箱任务失败：{error}")))?;
     let (action, detail) = match &result {
         Ok(value) => (
             "run-completed",
             format!(
                 "WASM 沙箱运行完成，状态码 {}，消耗燃料 {}",
-                value.status_code, value.fuel_consumed
+                value.result.status_code, value.result.fuel_consumed
             ),
         ),
         Err(error) => ("run-failed", format!("WASM 沙箱拒绝或终止运行：{error}")),
@@ -898,12 +1258,90 @@ pub async fn run(db: &Database, id: &str) -> AppResult<PluginRunResult> {
             plugin_id: id.into(),
             action: action.into(),
             detail,
-            digest: record.digest,
+            digest: record.digest.clone(),
             created_at: Utc::now().to_rfc3339(),
         },
     )
     .await?;
-    result
+    let mut output = result?;
+    if output.credential_proxy_requested {
+        let profile = connection
+            .ok_or_else(|| AppError::Validation("插件请求凭据代理时必须选择 SSH 连接".into()))?;
+        let request = manager.create_proxy_request(&record, &profile.id, &profile.name)?;
+        append_audit(
+            db,
+            PluginAuditEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                plugin_id: id.into(),
+                action: "credential-proxy-requested".into(),
+                detail: "插件申请一次性 connectionTest；尚未使用凭据，等待用户确认".into(),
+                digest: record.digest,
+                created_at: Utc::now().to_rfc3339(),
+            },
+        )
+        .await?;
+        output.result.credential_proxy_request = Some(request);
+    }
+    Ok(output.result)
+}
+
+pub async fn validate_proxy_approval(
+    db: &Database,
+    request: &PendingPluginProxyRequest,
+) -> AppResult<crate::models::ConnectionProfile> {
+    if request.operation != "connectionTest" {
+        return Err(AppError::Validation("插件凭据代理操作无效".into()));
+    }
+    let record = list_installed(db)
+        .await?
+        .into_iter()
+        .find(|record| record.id == request.plugin_id)
+        .ok_or_else(|| AppError::NotFound(format!("插件 {}", request.plugin_id)))?;
+    if !record.enabled
+        || !record.executable
+        || record.digest != request.plugin_digest
+        || !record
+            .granted_permissions
+            .contains(&"credentialProxy".into())
+    {
+        return Err(AppError::Unavailable(
+            "插件已禁用、变更或凭据代理权限已失效".into(),
+        ));
+    }
+    let profile = db.get_connection(&request.connection_id).await?;
+    if profile.protocol != "ssh" {
+        return Err(AppError::Validation(
+            "凭据代理 connectionTest 只支持 SSH 连接".into(),
+        ));
+    }
+    Ok(profile)
+}
+
+pub async fn audit_proxy_decision(
+    db: &Database,
+    request: &PendingPluginProxyRequest,
+    approved: bool,
+) -> AppResult<()> {
+    append_audit(
+        db,
+        PluginAuditEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            plugin_id: request.plugin_id.clone(),
+            action: if approved {
+                "credential-proxy-approved".into()
+            } else {
+                "credential-proxy-rejected".into()
+            },
+            detail: if approved {
+                "用户批准一次性 connectionTest；凭据仅由 CNshell 后端使用".into()
+            } else {
+                "用户拒绝一次性 connectionTest；未读取或使用凭据".into()
+            },
+            digest: request.plugin_digest.clone(),
+            created_at: Utc::now().to_rfc3339(),
+        },
+    )
+    .await
 }
 
 pub async fn remove(db: &Database, id: &str) -> AppResult<()> {
@@ -1005,8 +1443,11 @@ mod tests {
     #[test]
     fn grants_only_low_risk_permissions_by_default() {
         let report = validate(&manifest()).unwrap();
-        assert_eq!(report.default_granted_permissions, vec!["ui"]);
-        assert_eq!(report.denied_permissions, vec!["terminalRead", "network"]);
+        assert_eq!(
+            report.default_granted_permissions,
+            vec!["ui", "terminalRead"]
+        );
+        assert_eq!(report.denied_permissions, vec!["network"]);
         assert_eq!(report.signature_status, "unsigned");
     }
 
@@ -1139,6 +1580,14 @@ mod tests {
         (value, manifest_path)
     }
 
+    fn run_input(id: &str) -> PluginRunInput {
+        PluginRunInput {
+            id: id.into(),
+            connection_id: None,
+            selected_text: None,
+        }
+    }
+
     #[tokio::test]
     async fn trusted_signed_plugin_runs_and_revocation_disables_it() {
         let directory = tempdir().unwrap();
@@ -1162,7 +1611,10 @@ mod tests {
         let enabled = enable(&database, &registered.id).await.unwrap();
         assert!(enabled.enabled);
         assert_eq!(enabled.granted_permissions, vec!["ui"]);
-        let result = run(&database, &registered.id).await.unwrap();
+        let manager = PluginManager::default();
+        let result = run(&manager, &database, run_input(&registered.id))
+            .await
+            .unwrap();
         assert_eq!(result.status_code, 7);
         assert!(result.fuel_consumed > 0);
 
@@ -1174,7 +1626,11 @@ mod tests {
         assert!(!disabled.enabled);
         assert!(!disabled.executable);
         assert_eq!(disabled.signature_status, "publisher-revoked");
-        assert!(run(&database, &registered.id).await.is_err());
+        assert!(
+            run(&manager, &database, run_input(&registered.id))
+                .await
+                .is_err()
+        );
 
         let replacement_key = SigningKey::from_bytes(&[8_u8; 32]);
         let replacement_path = directory.path().join("replacement-publisher.json");
@@ -1217,7 +1673,11 @@ mod tests {
         )
         .unwrap();
 
-        assert!(run(&database, &record.id).await.is_err());
+        assert!(
+            run(&PluginManager::default(), &database, run_input(&record.id))
+                .await
+                .is_err()
+        );
         let invalidated = list_installed(&database).await.unwrap().remove(0);
         assert!(!invalidated.enabled);
         assert!(!invalidated.executable);
@@ -1230,12 +1690,89 @@ mod tests {
             "(module (import \"wasi_snapshot_preview1\" \"fd_write\" (func)) (func (export \"cnshell_main\") (result i32) i32.const 0))",
         )
         .unwrap();
-        assert!(run_wasm("com.example.import".into(), "1".into(), imported).is_err());
+        assert!(
+            run_wasm(
+                "com.example.import".into(),
+                "1".into(),
+                imported,
+                HashSet::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+            .is_err()
+        );
         let looping = wat::parse_str(
             "(module (func (export \"cnshell_main\") (result i32) (loop br 0) i32.const 0))",
         )
         .unwrap();
-        let error = run_wasm("com.example.loop".into(), "1".into(), looping).unwrap_err();
+        let error = run_wasm(
+            "com.example.loop".into(),
+            "1".into(),
+            looping,
+            HashSet::new(),
+            Vec::new(),
+            Vec::new(),
+        )
+        .err()
+        .unwrap();
         assert!(error.to_string().contains("燃料") || error.to_string().contains("fuel"));
+    }
+
+    #[test]
+    fn bounded_host_abi_exposes_only_granted_explicit_inputs() {
+        let wasm = wat::parse_str(
+            r#"(module
+                (import "cnshell_v1" "log" (func $log (param i32 i32) (result i32)))
+                (import "cnshell_v1" "connection_metadata_len" (func $metadata_len (result i32)))
+                (import "cnshell_v1" "connection_metadata_read" (func $metadata_read (param i32 i32) (result i32)))
+                (import "cnshell_v1" "terminal_selection_len" (func $selection_len (result i32)))
+                (import "cnshell_v1" "terminal_selection_read" (func $selection_read (param i32 i32) (result i32)))
+                (import "cnshell_v1" "credential_proxy_connection_test" (func $proxy (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 0) "hello")
+                (func (export "cnshell_main") (result i32)
+                    i32.const 0 i32.const 5 call $log drop
+                    i32.const 128 call $metadata_len call $metadata_read drop
+                    i32.const 512 call $selection_len call $selection_read drop
+                    call $proxy drop
+                    i32.const 0))"#,
+        )
+        .unwrap();
+        let permissions = [
+            "ui",
+            "connectionMetadata",
+            "terminalRead",
+            "credentialProxy",
+        ]
+        .into_iter()
+        .map(str::to_string)
+        .collect();
+        let output = run_wasm(
+            "com.example.abi".into(),
+            "1".into(),
+            wasm.clone(),
+            permissions,
+            br#"{"name":"server"}"#.to_vec(),
+            b"selected output".to_vec(),
+        )
+        .unwrap();
+        assert_eq!(output.result.logs, vec!["hello"]);
+        assert!(output.credential_proxy_requested);
+
+        let missing_permission = ["ui", "connectionMetadata", "terminalRead"]
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        assert!(
+            run_wasm(
+                "com.example.abi".into(),
+                "1".into(),
+                wasm,
+                missing_permission,
+                Vec::new(),
+                Vec::new(),
+            )
+            .is_err()
+        );
     }
 }

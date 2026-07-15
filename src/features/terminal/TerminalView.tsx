@@ -297,6 +297,11 @@ export const TerminalView = forwardRef<
           10,
         );
     });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      const selected = terminal.getSelection();
+      if (selected) workspaceRuntime.terminalSelectionBySession.set(session.id, selected.slice(0, 64 * 1024));
+      else workspaceRuntime.terminalSelectionBySession.delete(session.id);
+    });
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
       if (
@@ -422,12 +427,14 @@ export const TerminalView = forwardRef<
       window.removeEventListener("cnshell-trigger-config", configHandler);
       workspaceRuntime.terminalSearchBySession.delete(session.id);
       workspaceRuntime.terminalTimestampsBySession.delete(session.id);
+      workspaceRuntime.terminalSelectionBySession.delete(session.id);
       decorations.forEach((items) => items.forEach((item) => item.dispose()));
       void unlistenPromise.then((unlisten) => unlisten());
       resize.disconnect();
       scrollDisposable.dispose();
       dataDisposable.dispose();
       bellDisposable.dispose();
+      selectionDisposable.dispose();
       cwdHandler.dispose();
       promptHandler.dispose();
       terminal.dispose();

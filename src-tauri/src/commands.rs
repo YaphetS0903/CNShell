@@ -911,8 +911,44 @@ pub async fn plugin_enable(
 }
 
 #[tauri::command]
-pub async fn plugin_run(state: State<'_, AppState>, id: String) -> AppResult<PluginRunResult> {
-    crate::plugin::run(&state.db, &id).await
+pub async fn plugin_run(
+    state: State<'_, AppState>,
+    input: PluginRunInput,
+) -> AppResult<PluginRunResult> {
+    crate::plugin::run(&state.plugins, &state.db, input).await
+}
+
+#[tauri::command]
+pub async fn plugin_credential_proxy_approve(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<BackgroundTask> {
+    let request = state.plugins.take_proxy_request(&request_id)?;
+    let profile = match crate::plugin::validate_proxy_approval(&state.db, &request).await {
+        Ok(profile) => profile,
+        Err(error) => {
+            let _ = crate::plugin::audit_proxy_decision(&state.db, &request, false).await;
+            return Err(error);
+        }
+    };
+    crate::plugin::audit_proxy_decision(&state.db, &request, true).await?;
+    let db = state.db.clone();
+    Ok(state
+        .tasks
+        .spawn(app, "pluginCredentialProxy", move |_| async move {
+            serde_json::to_value(crate::ssh::diagnose(&db, &profile).await)
+                .map_err(|error| AppError::Internal(error.to_string()))
+        }))
+}
+
+#[tauri::command]
+pub async fn plugin_credential_proxy_reject(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<()> {
+    let request = state.plugins.reject_proxy_request(&request_id)?;
+    crate::plugin::audit_proxy_decision(&state.db, &request, false).await
 }
 
 #[tauri::command]

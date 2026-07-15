@@ -43,6 +43,7 @@ use external_edit::ExternalEditManager;
 use local_shell::LocalShellManager;
 use monitor::MonitorState;
 use mosh::MoshManager;
+use plugin::PluginManager;
 use rdp::RdpManager;
 use serial::SerialManager;
 use session_log::SessionLogManager;
@@ -70,6 +71,7 @@ pub struct AppState {
     batches: BatchManager,
     external_edits: ExternalEditManager,
     ai: AiManager,
+    plugins: PluginManager,
     local_shell: LocalShellManager,
     telnet: TelnetManager,
     serial: SerialManager,
@@ -193,6 +195,7 @@ pub fn run() {
                 batches: BatchManager::default(),
                 external_edits: ExternalEditManager::default(),
                 ai: AiManager::default(),
+                plugins: PluginManager::default(),
                 local_shell: LocalShellManager::default(),
                 telnet: TelnetManager::default(),
                 serial: SerialManager::default(),
@@ -283,6 +286,8 @@ pub fn run() {
             commands::plugin_enable,
             commands::plugin_disable,
             commands::plugin_run,
+            commands::plugin_credential_proxy_approve,
+            commands::plugin_credential_proxy_reject,
             commands::plugin_remove,
             commands::plugin_audit_export,
             commands::team_workspace_list,

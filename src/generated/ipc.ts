@@ -449,6 +449,24 @@ export interface PluginRunResult {
   statusCode: number;
   fuelConsumed: number;
   durationMs: number;
+  logs: string[];
+  credentialProxyRequest: PluginCredentialProxyRequest | null;
+}
+
+export interface PluginRunInput {
+  id: string;
+  connectionId?: string | null;
+  selectedText?: string | null;
+}
+
+export interface PluginCredentialProxyRequest {
+  requestId: string;
+  pluginId: string;
+  pluginName: string;
+  connectionId: string;
+  connectionName: string;
+  operation: string;
+  expiresAt: string;
 }
 
 export interface TeamWorkspace {
