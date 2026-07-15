@@ -851,8 +851,11 @@ pub async fn ai_execute(
 }
 
 #[tauri::command]
-pub fn plugin_manifest_inspect(path: String) -> AppResult<PluginPermissionReport> {
-    crate::plugin::inspect_file(&path)
+pub async fn plugin_manifest_inspect(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<PluginPermissionReport> {
+    crate::plugin::inspect_verified(&state.db, &path).await
 }
 
 #[tauri::command]
@@ -866,6 +869,26 @@ pub async fn plugin_audit_list(state: State<'_, AppState>) -> AppResult<Vec<Plug
 }
 
 #[tauri::command]
+pub async fn plugin_publisher_list(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<PluginPublisherRoot>> {
+    crate::plugin::list_publishers(&state.db).await
+}
+
+#[tauri::command]
+pub async fn plugin_publisher_import(
+    state: State<'_, AppState>,
+    path: String,
+) -> AppResult<PluginPublisherRoot> {
+    crate::plugin::import_publisher(&state.db, &path).await
+}
+
+#[tauri::command]
+pub async fn plugin_publisher_revoke(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::plugin::revoke_publisher(&state.db, &id).await
+}
+
+#[tauri::command]
 pub async fn plugin_register(
     state: State<'_, AppState>,
     path: String,
@@ -876,6 +899,19 @@ pub async fn plugin_register(
 #[tauri::command]
 pub async fn plugin_disable(state: State<'_, AppState>, id: String) -> AppResult<()> {
     crate::plugin::disable(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn plugin_enable(
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<PluginInstallRecord> {
+    crate::plugin::enable(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn plugin_run(state: State<'_, AppState>, id: String) -> AppResult<PluginRunResult> {
+    crate::plugin::run(&state.db, &id).await
 }
 
 #[tauri::command]

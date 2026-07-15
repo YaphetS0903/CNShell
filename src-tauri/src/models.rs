@@ -553,13 +553,41 @@ pub struct PluginInstallRecord {
     pub version: String,
     pub manifest_path: String,
     pub digest: String,
+    #[serde(default)]
+    pub entrypoint_digest: String,
+    #[serde(default)]
+    pub publisher_id: Option<String>,
     pub signature_status: String,
     pub requested_permissions: Vec<String>,
     pub denied_permissions: Vec<String>,
+    #[serde(default)]
+    pub granted_permissions: Vec<String>,
     pub enabled: bool,
     pub executable: bool,
     pub installed_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPublisherRoot {
+    pub id: String,
+    pub name: String,
+    pub public_key: String,
+    pub fingerprint: String,
+    pub enabled: bool,
+    pub installed_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginRunResult {
+    pub plugin_id: String,
+    pub version: String,
+    pub status_code: i32,
+    pub fuel_consumed: u64,
+    pub duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

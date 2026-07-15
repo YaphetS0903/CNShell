@@ -421,13 +421,34 @@ export interface PluginInstallRecord {
   version: string;
   manifestPath: string;
   digest: string;
+  entrypointDigest: string;
+  publisherId: string | null;
   signatureStatus: string;
   requestedPermissions: string[];
   deniedPermissions: string[];
+  grantedPermissions: string[];
   enabled: boolean;
   executable: boolean;
   installedAt: string;
   updatedAt: string;
+}
+
+export interface PluginPublisherRoot {
+  id: string;
+  name: string;
+  publicKey: string;
+  fingerprint: string;
+  enabled: boolean;
+  installedAt: string;
+  updatedAt: string;
+}
+
+export interface PluginRunResult {
+  pluginId: string;
+  version: string;
+  statusCode: number;
+  fuelConsumed: number;
+  durationMs: number;
 }
 
 export interface PluginAuditEvent {
