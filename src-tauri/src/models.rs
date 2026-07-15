@@ -559,6 +559,8 @@ pub struct PluginInstallRecord {
     pub publisher_id: Option<String>,
     pub signature_status: String,
     pub requested_permissions: Vec<String>,
+    #[serde(default)]
+    pub network_domains: Vec<String>,
     pub denied_permissions: Vec<String>,
     #[serde(default)]
     pub granted_permissions: Vec<String>,
@@ -566,6 +568,13 @@ pub struct PluginInstallRecord {
     pub executable: bool,
     pub installed_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PluginEnableInput {
+    pub id: String,
+    pub permissions: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -590,6 +599,7 @@ pub struct PluginRunResult {
     pub duration_ms: u64,
     pub logs: Vec<String>,
     pub credential_proxy_request: Option<PluginCredentialProxyRequest>,
+    pub terminal_input_request: Option<PluginTerminalInputRequest>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -598,6 +608,10 @@ pub struct PluginRunInput {
     pub id: String,
     pub connection_id: Option<String>,
     pub selected_text: Option<String>,
+    pub network_url: Option<String>,
+    pub directory_path: Option<String>,
+    pub directory_relative_path: Option<String>,
+    pub terminal_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -609,6 +623,17 @@ pub struct PluginCredentialProxyRequest {
     pub connection_id: String,
     pub connection_name: String,
     pub operation: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginTerminalInputRequest {
+    pub request_id: String,
+    pub plugin_id: String,
+    pub plugin_name: String,
+    pub session_id: String,
+    pub data: String,
     pub expires_at: String,
 }
 

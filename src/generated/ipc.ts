@@ -425,12 +425,18 @@ export interface PluginInstallRecord {
   publisherId: string | null;
   signatureStatus: string;
   requestedPermissions: string[];
+  networkDomains: string[];
   deniedPermissions: string[];
   grantedPermissions: string[];
   enabled: boolean;
   executable: boolean;
   installedAt: string;
   updatedAt: string;
+}
+
+export interface PluginEnableInput {
+  id: string;
+  permissions: string[];
 }
 
 export interface PluginPublisherRoot {
@@ -451,12 +457,17 @@ export interface PluginRunResult {
   durationMs: number;
   logs: string[];
   credentialProxyRequest: PluginCredentialProxyRequest | null;
+  terminalInputRequest: PluginTerminalInputRequest | null;
 }
 
 export interface PluginRunInput {
   id: string;
   connectionId?: string | null;
   selectedText?: string | null;
+  networkUrl?: string | null;
+  directoryPath?: string | null;
+  directoryRelativePath?: string | null;
+  terminalSessionId?: string | null;
 }
 
 export interface PluginCredentialProxyRequest {
@@ -466,6 +477,15 @@ export interface PluginCredentialProxyRequest {
   connectionId: string;
   connectionName: string;
   operation: string;
+  expiresAt: string;
+}
+
+export interface PluginTerminalInputRequest {
+  requestId: string;
+  pluginId: string;
+  pluginName: string;
+  sessionId: string;
+  data: string;
   expiresAt: string;
 }
 

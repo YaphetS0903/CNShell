@@ -83,11 +83,22 @@ cnshell_main: () -> i32
 | `connection_metadata_read` | `(ptr: i32, capacity: i32) -> i32` | `connectionMetadata` | 最多 16 KB；不含备注、启动命令、环境变量、代理、密钥/证书路径或凭据 |
 | `terminal_selection_len` | `() -> i32` | `terminalRead` | 只读取用户本次明确选中的终端文本 |
 | `terminal_selection_read` | `(ptr: i32, capacity: i32) -> i32` | `terminalRead` | 最多 64 KB；不提供滚动缓冲区或实时键盘流 |
+| `network_status` | `() -> i32` | `network` | 返回用户本次指定 URL 的 HTTP 状态码；请求必须先由 CNshell 预加载 |
+| `network_metadata_len` / `network_metadata_read` | `() -> i32` / `(ptr: i32, capacity: i32) -> i32` | `network` | 最多 16 KB 的 URL、状态、Content-Type 和长度元数据 |
+| `network_response_len` / `network_response_read` | `() -> i32` / `(ptr: i32, capacity: i32) -> i32` | `network` | 用户本次指定 HTTPS GET 的最多 64 KB 响应 |
+| `directory_listing_len` / `directory_listing_read` | `() -> i32` / `(ptr: i32, capacity: i32) -> i32` | `directory` | 用户本次选择目录的最多 256 个顶层条目、64 KB JSON 清单 |
+| `directory_file_len` / `directory_file_read` | `() -> i32` / `(ptr: i32, capacity: i32) -> i32` | `directory` | 目录内用户指定的单个普通文件，最多 64 KB |
+| `terminal_input_request` | `(ptr: i32, len: i32) -> i32` | `terminalInput` | 最多 4 KB、单次请求；返回结果后必须由用户核对完整内容并再次确认 |
 | `credential_proxy_connection_test` | `() -> i32` | `credentialProxy` | 只创建一次 `connectionTest` 确认请求，不向 WASM 返回凭据或诊断结果 |
 
 连接元数据 JSON 当前只含 `id`、`name`、`protocol`、`host`、`port`、`username`、`tags`、
 `encoding` 与 `hasCredential`。声明 `connectionMetadata` 或 `credentialProxy` 的插件运行前必须
 由用户选择连接；声明 `terminalRead` 时必须先在当前终端选中文本。
+
+网络 URL 必须命中 manifest 中的精确域名，使用 HTTPS 443、禁止内嵌凭据、代理、重定向和
+解析到本机/私网/链路本地地址；响应最多 64 KB。网络请求是用户在本次运行界面指定并由
+CNshell 预加载的资源，WASM 不能自行打开任意 socket。目录授权使用 macOS 安全 Bookmark，
+只读且每次运行重新选择；符号链接、路径越界、超过 256 个条目或超过 64 KB 的文件都会被拒绝。
 
 凭据代理请求两分钟过期且只能使用一次。用户在 CNshell 中确认后，后端才使用当前 Keychain
 凭据执行现有 SSH 连接诊断。插件拿不到密码、私钥、可复用令牌或诊断正文；禁用插件、摘要
@@ -101,7 +112,6 @@ cnshell_main: () -> i32
 - 递归深度 64、WASM 栈高度 64 KiB。
 - 不复用实例，不在后台常驻，不提供原生 sidecar 回退。
 
-当前可进入启用流程的权限是 `ui`、`connectionMetadata`、`terminalRead` 与
-`credentialProxy`；用户仍需在启用时整体确认，并在每次运行时明确提供数据范围。`network`、
-`directory` 和 `terminalInput` 继续阻止启用，直到分别完成域名、用户选择目录和受控输入的
-独立能力设计，不能通过通用系统调用绕过。
+签名和摘要有效的插件都可以进入启用流程，但只有用户在启用界面逐项确认的权限才写入
+`grantedPermissions`；新声明的权限默认不授予。用户在每次运行时仍必须明确提供数据范围，
+任何未列出的导入继续阻止执行，不能通过通用系统调用绕过。

@@ -4,21 +4,24 @@ use crate::{
     models::{
         PluginAuditEvent, PluginCredentialProxyRequest, PluginInstallRecord, PluginManifest,
         PluginPermissionReport, PluginPublisherRoot, PluginRunInput, PluginRunResult,
+        PluginTerminalInputRequest,
     },
 };
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use parking_lot::Mutex;
+use reqwest::{Client, Url, redirect::Policy};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     io::Write,
+    net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
+    time::{Duration, Instant},
 };
 use wasmi::{
     Caller, Config, Engine, Extern, Linker, Module, Store, StoreLimits, StoreLimitsBuilder,
@@ -38,6 +41,13 @@ const MAX_PLUGIN_LOG_TOTAL_BYTES: usize = 32 * 1024;
 const MAX_CONNECTION_METADATA_BYTES: usize = 16 * 1024;
 const MAX_TERMINAL_SELECTION_BYTES: usize = 64 * 1024;
 const MAX_PENDING_PROXY_REQUESTS: usize = 32;
+const MAX_NETWORK_URL_BYTES: usize = 2048;
+const MAX_NETWORK_RESPONSE_BYTES: usize = 64 * 1024;
+const MAX_DIRECTORY_LISTING_BYTES: usize = 64 * 1024;
+const MAX_DIRECTORY_FILE_BYTES: usize = 64 * 1024;
+const MAX_DIRECTORY_ENTRIES: usize = 256;
+const MAX_TERMINAL_INPUT_BYTES: usize = 4 * 1024;
+const MAX_PENDING_TERMINAL_REQUESTS: usize = 32;
 const KNOWN_PERMISSIONS: &[&str] = &[
     "ui",
     "network",
@@ -80,9 +90,15 @@ struct SandboxState {
     permissions: HashSet<String>,
     connection_metadata: Vec<u8>,
     terminal_selection: Vec<u8>,
+    network_metadata: Vec<u8>,
+    network_response: Vec<u8>,
+    network_status: i32,
+    directory_listing: Vec<u8>,
+    directory_file: Vec<u8>,
     logs: Vec<String>,
     log_bytes: usize,
     credential_proxy_requested: bool,
+    terminal_input_requested: Option<String>,
 }
 
 #[derive(Clone)]
@@ -94,9 +110,19 @@ pub(crate) struct PendingPluginProxyRequest {
     pub expires_at: chrono::DateTime<Utc>,
 }
 
+#[derive(Clone)]
+pub(crate) struct PendingPluginTerminalInputRequest {
+    pub plugin_id: String,
+    pub plugin_digest: String,
+    pub session_id: String,
+    pub data: String,
+    pub expires_at: chrono::DateTime<Utc>,
+}
+
 #[derive(Clone, Default)]
 pub struct PluginManager {
     pending_proxy_requests: Arc<Mutex<HashMap<String, PendingPluginProxyRequest>>>,
+    pending_terminal_requests: Arc<Mutex<HashMap<String, PendingPluginTerminalInputRequest>>>,
 }
 
 impl PluginManager {
@@ -156,6 +182,62 @@ impl PluginManager {
 
     pub fn reject_proxy_request(&self, request_id: &str) -> AppResult<PendingPluginProxyRequest> {
         self.take_proxy_request(request_id)
+    }
+
+    fn create_terminal_input_request(
+        &self,
+        record: &PluginInstallRecord,
+        session_id: &str,
+        data: String,
+    ) -> AppResult<PluginTerminalInputRequest> {
+        let now = Utc::now();
+        let expires_at = now + ChronoDuration::minutes(2);
+        let mut pending = self.pending_terminal_requests.lock();
+        pending.retain(|_, request| request.expires_at > now);
+        if pending.len() >= MAX_PENDING_TERMINAL_REQUESTS {
+            return Err(AppError::Unavailable(
+                "待确认的插件终端输入请求过多，请先处理已有请求".into(),
+            ));
+        }
+        let request_id = uuid::Uuid::new_v4().to_string();
+        pending.insert(
+            request_id.clone(),
+            PendingPluginTerminalInputRequest {
+                plugin_id: record.id.clone(),
+                plugin_digest: record.digest.clone(),
+                session_id: session_id.into(),
+                data: data.clone(),
+                expires_at,
+            },
+        );
+        Ok(PluginTerminalInputRequest {
+            request_id,
+            plugin_id: record.id.clone(),
+            plugin_name: record.name.clone(),
+            session_id: session_id.into(),
+            data,
+            expires_at: expires_at.to_rfc3339(),
+        })
+    }
+
+    pub fn take_terminal_input_request(
+        &self,
+        request_id: &str,
+    ) -> AppResult<PendingPluginTerminalInputRequest> {
+        if request_id.len() > 128 {
+            return Err(AppError::Validation("插件终端输入请求 ID 无效".into()));
+        }
+        let request = self
+            .pending_terminal_requests
+            .lock()
+            .remove(request_id)
+            .ok_or_else(|| AppError::NotFound("插件终端输入请求已过期或已使用".into()))?;
+        if request.expires_at <= Utc::now() {
+            return Err(AppError::Unavailable(
+                "插件终端输入请求已过期，请重新运行插件".into(),
+            ));
+        }
+        Ok(request)
     }
 }
 
@@ -238,7 +320,8 @@ pub fn validate(manifest: &PluginManifest) -> AppResult<PluginPermissionReport> 
         .iter()
         .any(|permission| permission == "terminalInput")
     {
-        warnings.push("terminalInput 默认拒绝，插件不能直接获得终端输入控制权".into());
+        warnings
+            .push("terminalInput 不会直接写入终端；每次请求都必须展示完整内容并由用户确认".into());
     }
     let signature_status = match manifest.signature.as_deref() {
         None => {
@@ -257,12 +340,7 @@ pub fn validate(manifest: &PluginManifest) -> AppResult<PluginPermissionReport> 
     let default_granted_permissions = manifest
         .permissions
         .iter()
-        .filter(|permission| {
-            matches!(
-                permission.as_str(),
-                "ui" | "terminalRead" | "connectionMetadata" | "credentialProxy"
-            )
-        })
+        .filter(|permission| matches!(permission.as_str(), "ui"))
         .cloned()
         .collect::<Vec<_>>();
     let denied_permissions = manifest
@@ -683,15 +761,17 @@ pub async fn register(db: &Database, path: &str) -> AppResult<PluginInstallRecor
         publisher_id: report.manifest.publisher.clone(),
         signature_status: report.signature_status.clone(),
         requested_permissions: report.requested_permissions.clone(),
+        network_domains: report.manifest.network_domains.clone(),
         denied_permissions: report.denied_permissions.clone(),
         granted_permissions: Vec::new(),
         enabled: false,
-        executable: report.signature_status == "verified" && report.denied_permissions.is_empty(),
+        executable: report.signature_status == "verified",
         installed_at,
         updated_at: now.clone(),
     };
     let permissions_changed = previous.as_ref().is_some_and(|item| {
         item.requested_permissions != record.requested_permissions
+            || item.network_domains != record.network_domains
             || item.denied_permissions != record.denied_permissions
     });
     let action = if permissions_changed {
@@ -807,6 +887,7 @@ async fn verified_record_package(
         || package.manifest_digest != record.digest
         || package.entrypoint_digest != record.entrypoint_digest
         || package.report.requested_permissions != record.requested_permissions
+        || package.report.manifest.network_domains != record.network_domains
     {
         return Err(AppError::Validation(
             "插件登记后的 manifest、WASM、版本或权限已经变化".into(),
@@ -842,7 +923,11 @@ async fn invalidate_record(db: &Database, id: &str, detail: String) -> AppResult
     .await
 }
 
-pub async fn enable(db: &Database, id: &str) -> AppResult<PluginInstallRecord> {
+pub async fn enable(
+    db: &Database,
+    input: crate::models::PluginEnableInput,
+) -> AppResult<PluginInstallRecord> {
+    let id = input.id.as_str();
     if !valid_id(id) {
         return Err(AppError::Validation("插件 ID 无效".into()));
     }
@@ -859,11 +944,22 @@ pub async fn enable(db: &Database, id: &str) -> AppResult<PluginInstallRecord> {
             return Err(error);
         }
     };
-    if !package.report.denied_permissions.is_empty() {
-        return Err(AppError::Unavailable(format!(
-            "当前 WASM SDK 尚未开放这些权限：{}",
-            package.report.denied_permissions.join(", ")
-        )));
+    if input.permissions.len() > MAX_PERMISSIONS {
+        return Err(AppError::Validation("插件授予权限数量超限".into()));
+    }
+    let requested = package
+        .report
+        .requested_permissions
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut granted = HashSet::new();
+    for permission in &input.permissions {
+        if !requested.contains(&permission.as_str()) || !granted.insert(permission.as_str()) {
+            return Err(AppError::Validation(format!(
+                "插件不能授予未声明或重复权限：{permission}"
+            )));
+        }
     }
     let mut records = list_installed(db).await?;
     let record = records
@@ -873,7 +969,13 @@ pub async fn enable(db: &Database, id: &str) -> AppResult<PluginInstallRecord> {
     record.signature_status = "verified".into();
     record.executable = true;
     record.enabled = true;
-    record.granted_permissions = package.report.requested_permissions;
+    record.granted_permissions = input.permissions;
+    record.denied_permissions = record
+        .requested_permissions
+        .iter()
+        .filter(|permission| !record.granted_permissions.contains(permission))
+        .cloned()
+        .collect();
     record.updated_at = Utc::now().to_rfc3339();
     let result = record.clone();
     save_registry_and_audit(
@@ -892,9 +994,238 @@ pub async fn enable(db: &Database, id: &str) -> AppResult<PluginInstallRecord> {
     Ok(result)
 }
 
+#[derive(Default)]
+struct NetworkResource {
+    metadata: Vec<u8>,
+    response: Vec<u8>,
+    status: i32,
+}
+
+#[derive(Default)]
+struct DirectoryResource {
+    listing: Vec<u8>,
+    file: Vec<u8>,
+}
+
+fn is_public_plugin_address(address: IpAddr) -> bool {
+    match address {
+        IpAddr::V4(address) => {
+            let [first, second, ..] = address.octets();
+            !address.is_private()
+                && !address.is_loopback()
+                && !address.is_link_local()
+                && !address.is_unspecified()
+                && !address.is_multicast()
+                && !address.is_broadcast()
+                && !(first == 100 && (64..=127).contains(&second))
+                && !(first == 198 && matches!(second, 18 | 19))
+        }
+        IpAddr::V6(address) => {
+            !address.is_loopback()
+                && !address.is_unspecified()
+                && !address.is_multicast()
+                && !address.is_unique_local()
+                && !address.is_unicast_link_local()
+        }
+    }
+}
+
+fn validate_network_url(value: &str, domains: &[String]) -> AppResult<Url> {
+    if value.is_empty() || value.len() > MAX_NETWORK_URL_BYTES {
+        return Err(AppError::Validation(
+            "插件网络 URL 不能为空且不能超过 2 KB".into(),
+        ));
+    }
+    let url =
+        Url::parse(value).map_err(|_| AppError::Validation("插件网络 URL 格式无效".into()))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| AppError::Validation("插件网络 URL 缺少主机名".into()))?;
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.fragment().is_some()
+        || url.port_or_known_default() != Some(443)
+    {
+        return Err(AppError::Validation(
+            "插件网络请求必须是无内嵌凭据、无片段且使用 443 端口的 HTTPS URL".into(),
+        ));
+    }
+    if !domains.iter().any(|domain| domain == host) {
+        return Err(AppError::Validation(format!(
+            "插件未在 manifest 中声明网络域名 {host}"
+        )));
+    }
+    Ok(url)
+}
+
+async fn fetch_network_resource(value: &str, domains: &[String]) -> AppResult<NetworkResource> {
+    use futures_util::StreamExt;
+
+    let url = validate_network_url(value, domains)?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| AppError::Validation("插件网络 URL 缺少主机名".into()))?
+        .to_string();
+    let mut addresses = tokio::net::lookup_host((host.as_str(), 443))
+        .await
+        .map_err(|error| AppError::Unavailable(format!("插件网络域名解析失败：{error}")))?
+        .collect::<Vec<SocketAddr>>();
+    addresses.sort_unstable();
+    addresses.dedup();
+    if addresses.is_empty()
+        || addresses
+            .iter()
+            .any(|address| !is_public_plugin_address(address.ip()))
+    {
+        return Err(AppError::Validation(
+            "插件网络域名解析到了本机、私网、链路本地或其他非公网地址".into(),
+        ));
+    }
+    let client = Client::builder()
+        .redirect(Policy::none())
+        .no_proxy()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(15))
+        .resolve_to_addrs(&host, &addresses)
+        .build()
+        .map_err(|error| AppError::Unavailable(format!("插件网络客户端初始化失败：{error}")))?;
+    let response = client
+        .get(url.clone())
+        .header("accept", "application/json, text/plain;q=0.9, */*;q=0.1")
+        .send()
+        .await
+        .map_err(|error| AppError::Unavailable(format!("插件 HTTPS GET 失败：{error}")))?;
+    if response.content_length().unwrap_or(0) > MAX_NETWORK_RESPONSE_BYTES as u64 {
+        return Err(AppError::Validation("插件网络响应超过 64 KB".into()));
+    }
+    let status = i32::from(response.status().as_u16());
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .chars()
+        .take(256)
+        .collect::<String>();
+    let final_url = response.url().to_string();
+    let mut body = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|error| AppError::Unavailable(format!("读取插件网络响应失败：{error}")))?;
+        if body.len().saturating_add(chunk.len()) > MAX_NETWORK_RESPONSE_BYTES {
+            return Err(AppError::Validation("插件网络响应超过 64 KB".into()));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    let metadata = serde_json::to_vec(&serde_json::json!({
+        "url": final_url,
+        "status": status,
+        "contentType": content_type,
+        "length": body.len(),
+    }))
+    .map_err(|error| AppError::Internal(format!("生成插件网络元数据失败：{error}")))?;
+    Ok(NetworkResource {
+        metadata,
+        response: body,
+        status,
+    })
+}
+
+fn valid_relative_plugin_path(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 4096
+        && !Path::new(value).is_absolute()
+        && Path::new(value)
+            .components()
+            .all(|part| matches!(part, std::path::Component::Normal(_)))
+}
+
+fn load_directory_resource(
+    path: &str,
+    relative_path: Option<&str>,
+) -> AppResult<DirectoryResource> {
+    let access = crate::bookmark::access_selected_directory(Path::new(path))?;
+    let root = access.path().canonicalize()?;
+    let mut entries = Vec::new();
+    for item in std::fs::read_dir(&root)?.take(MAX_DIRECTORY_ENTRIES + 1) {
+        if entries.len() >= MAX_DIRECTORY_ENTRIES {
+            return Err(AppError::Validation(
+                "插件授权目录超过 256 个顶层条目，请选择更具体的目录".into(),
+            ));
+        }
+        let item = item?;
+        let name = item
+            .file_name()
+            .into_string()
+            .map_err(|_| AppError::Validation("插件授权目录包含非 UTF-8 文件名".into()))?;
+        if name.len() > 512 {
+            return Err(AppError::Validation(
+                "插件授权目录文件名超过 512 字节".into(),
+            ));
+        }
+        let metadata = std::fs::symlink_metadata(item.path())?;
+        let kind = if metadata.file_type().is_symlink() {
+            "symlink"
+        } else if metadata.is_dir() {
+            "directory"
+        } else if metadata.is_file() {
+            "file"
+        } else {
+            "other"
+        };
+        entries.push(serde_json::json!({
+            "name": name,
+            "kind": kind,
+            "size": if metadata.is_file() { metadata.len() } else { 0 },
+        }));
+    }
+    entries.sort_by(|left, right| {
+        left.get("name")
+            .and_then(Value::as_str)
+            .cmp(&right.get("name").and_then(Value::as_str))
+    });
+    let listing = serde_json::to_vec(&serde_json::json!({
+        "entries": entries,
+        "selectedRelativePath": relative_path,
+    }))
+    .map_err(|error| AppError::Internal(format!("生成插件目录清单失败：{error}")))?;
+    if listing.len() > MAX_DIRECTORY_LISTING_BYTES {
+        return Err(AppError::Validation("插件目录清单超过 64 KB".into()));
+    }
+    let file = match relative_path {
+        None | Some("") => Vec::new(),
+        Some(relative_path) => {
+            if !valid_relative_plugin_path(relative_path) {
+                return Err(AppError::Validation(
+                    "插件目录文件必须是目录内的普通相对路径".into(),
+                ));
+            }
+            let target = root.join(relative_path);
+            let metadata = std::fs::symlink_metadata(&target)?;
+            if metadata.file_type().is_symlink()
+                || !metadata.is_file()
+                || metadata.len() > MAX_DIRECTORY_FILE_BYTES as u64
+            {
+                return Err(AppError::Validation(
+                    "插件只能读取授权目录内 64 KB 以内的非符号链接普通文件".into(),
+                ));
+            }
+            let canonical = target.canonicalize()?;
+            if !canonical.starts_with(&root) {
+                return Err(AppError::Validation("插件目录文件越过授权根目录".into()));
+            }
+            std::fs::read(canonical)?
+        }
+    };
+    Ok(DirectoryResource { listing, file })
+}
+
 struct WasmRunOutput {
     result: PluginRunResult,
     credential_proxy_requested: bool,
+    terminal_input_requested: Option<String>,
 }
 
 fn required_permission_for_import(name: &str) -> Option<&'static str> {
@@ -902,6 +1233,16 @@ fn required_permission_for_import(name: &str) -> Option<&'static str> {
         "log" => Some("ui"),
         "connection_metadata_len" | "connection_metadata_read" => Some("connectionMetadata"),
         "terminal_selection_len" | "terminal_selection_read" => Some("terminalRead"),
+        "network_status"
+        | "network_metadata_len"
+        | "network_metadata_read"
+        | "network_response_len"
+        | "network_response_read" => Some("network"),
+        "directory_listing_len"
+        | "directory_listing_read"
+        | "directory_file_len"
+        | "directory_file_read" => Some("directory"),
+        "terminal_input_request" => Some("terminalInput"),
         "credential_proxy_connection_test" => Some("credentialProxy"),
         _ => None,
     }
@@ -960,6 +1301,8 @@ fn run_wasm(
     permissions: HashSet<String>,
     connection_metadata: Vec<u8>,
     terminal_selection: Vec<u8>,
+    network: NetworkResource,
+    directory: DirectoryResource,
 ) -> AppResult<WasmRunOutput> {
     if bytes.is_empty() || bytes.len() as u64 > MAX_WASM_BYTES {
         return Err(AppError::Validation("插件 WASM 大小无效".into()));
@@ -1010,9 +1353,15 @@ fn run_wasm(
             permissions,
             connection_metadata,
             terminal_selection,
+            network_metadata: network.metadata,
+            network_response: network.response,
+            network_status: network.status,
+            directory_listing: directory.listing,
+            directory_file: directory.file,
             logs: Vec::new(),
             log_bytes: 0,
             credential_proxy_requested: false,
+            terminal_input_requested: None,
         },
     );
     store.limiter(|state| &mut state.limits);
@@ -1100,6 +1449,145 @@ fn run_wasm(
     linker
         .func_wrap(
             "cnshell_v1",
+            "network_status",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("network") {
+                    return -2;
+                }
+                caller.data().network_status
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册网络状态 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "network_metadata_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("network") {
+                    return -2;
+                }
+                i32::try_from(caller.data().network_metadata.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册网络元数据 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "network_metadata_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("network") {
+                    return -2;
+                }
+                let bytes = caller.data().network_metadata.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册网络元数据读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "network_response_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("network") {
+                    return -2;
+                }
+                i32::try_from(caller.data().network_response.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册网络响应 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "network_response_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("network") {
+                    return -2;
+                }
+                let bytes = caller.data().network_response.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册网络响应读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "directory_listing_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("directory") {
+                    return -2;
+                }
+                i32::try_from(caller.data().directory_listing.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册目录清单 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "directory_listing_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("directory") {
+                    return -2;
+                }
+                let bytes = caller.data().directory_listing.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册目录清单读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "directory_file_len",
+            |caller: Caller<'_, SandboxState>| -> i32 {
+                if !caller.data().permissions.contains("directory") {
+                    return -2;
+                }
+                i32::try_from(caller.data().directory_file.len()).unwrap_or(-3)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册目录文件 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "directory_file_read",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, capacity: i32| -> i32 {
+                if !caller.data().permissions.contains("directory") {
+                    return -2;
+                }
+                let bytes = caller.data().directory_file.clone();
+                write_guest_bytes(&mut caller, pointer, capacity, &bytes)
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册目录文件读取 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
+            "terminal_input_request",
+            |mut caller: Caller<'_, SandboxState>, pointer: i32, length: i32| -> i32 {
+                if !caller.data().permissions.contains("terminalInput") {
+                    return -2;
+                }
+                let Some(bytes) =
+                    read_guest_bytes(&caller, pointer, length, MAX_TERMINAL_INPUT_BYTES)
+                else {
+                    return -1;
+                };
+                let Ok(data) = String::from_utf8(bytes) else {
+                    return -1;
+                };
+                if data.is_empty() || data.contains('\0') {
+                    return -1;
+                }
+                if caller.data().terminal_input_requested.is_some() {
+                    return -3;
+                }
+                caller.data_mut().terminal_input_requested = Some(data);
+                0
+            },
+        )
+        .map_err(|error| AppError::Internal(format!("注册终端输入请求 ABI 失败：{error}")))?;
+    linker
+        .func_wrap(
+            "cnshell_v1",
             "credential_proxy_connection_test",
             |mut caller: Caller<'_, SandboxState>| -> i32 {
                 if !caller.data().permissions.contains("credentialProxy") {
@@ -1132,8 +1620,10 @@ fn run_wasm(
             duration_ms: started.elapsed().as_millis().try_into().unwrap_or(u64::MAX),
             logs: state.logs.clone(),
             credential_proxy_request: None,
+            terminal_input_request: None,
         },
         credential_proxy_requested: state.credential_proxy_requested,
+        terminal_input_requested: state.terminal_input_requested.clone(),
     })
 }
 
@@ -1227,6 +1717,37 @@ pub async fn run(
     } else {
         Vec::new()
     };
+    let network = if permissions.contains("network") {
+        let url = input.network_url.as_deref().ok_or_else(|| {
+            AppError::Validation("该插件需要用户为本次运行明确填写 HTTPS URL".into())
+        })?;
+        fetch_network_resource(url, &package.report.manifest.network_domains).await?
+    } else {
+        NetworkResource::default()
+    };
+    let directory = if permissions.contains("directory") {
+        let directory_path = input.directory_path.ok_or_else(|| {
+            AppError::Validation("该插件需要用户为本次运行明确选择一个本地目录".into())
+        })?;
+        let relative_path = input.directory_relative_path.clone();
+        tokio::task::spawn_blocking(move || {
+            load_directory_resource(&directory_path, relative_path.as_deref())
+        })
+        .await
+        .map_err(|error| AppError::Internal(format!("插件目录读取任务失败：{error}")))??
+    } else {
+        DirectoryResource::default()
+    };
+    let terminal_session_id = if permissions.contains("terminalInput") {
+        Some(
+            input
+                .terminal_session_id
+                .filter(|value| !value.is_empty() && value.len() <= 128)
+                .ok_or_else(|| AppError::Validation("该插件需要用户明确选择当前终端会话".into()))?,
+        )
+    } else {
+        None
+    };
     let plugin_id = record.id.clone();
     let version = record.version.clone();
     let result = tokio::task::spawn_blocking(move || {
@@ -1237,6 +1758,8 @@ pub async fn run(
             permissions,
             connection_metadata,
             terminal_selection,
+            network,
+            directory,
         )
     })
     .await
@@ -1275,12 +1798,30 @@ pub async fn run(
                 plugin_id: id.into(),
                 action: "credential-proxy-requested".into(),
                 detail: "插件申请一次性 connectionTest；尚未使用凭据，等待用户确认".into(),
-                digest: record.digest,
+                digest: record.digest.clone(),
                 created_at: Utc::now().to_rfc3339(),
             },
         )
         .await?;
         output.result.credential_proxy_request = Some(request);
+    }
+    if let Some(data) = output.terminal_input_requested {
+        let session_id = terminal_session_id
+            .ok_or_else(|| AppError::Validation("插件请求终端输入时必须选择当前终端会话".into()))?;
+        let request = manager.create_terminal_input_request(&record, &session_id, data)?;
+        append_audit(
+            db,
+            PluginAuditEvent {
+                id: uuid::Uuid::new_v4().to_string(),
+                plugin_id: id.into(),
+                action: "terminal-input-requested".into(),
+                detail: "插件提出一次性终端输入请求；尚未发送，等待用户确认".into(),
+                digest: record.digest,
+                created_at: Utc::now().to_rfc3339(),
+            },
+        )
+        .await?;
+        output.result.terminal_input_request = Some(request);
     }
     Ok(output.result)
 }
@@ -1336,6 +1877,60 @@ pub async fn audit_proxy_decision(
                 "用户批准一次性 connectionTest；凭据仅由 CNshell 后端使用".into()
             } else {
                 "用户拒绝一次性 connectionTest；未读取或使用凭据".into()
+            },
+            digest: request.plugin_digest.clone(),
+            created_at: Utc::now().to_rfc3339(),
+        },
+    )
+    .await
+}
+
+pub async fn validate_terminal_input_approval(
+    db: &Database,
+    request: &PendingPluginTerminalInputRequest,
+) -> AppResult<()> {
+    let record = list_installed(db)
+        .await?
+        .into_iter()
+        .find(|record| record.id == request.plugin_id)
+        .ok_or_else(|| AppError::NotFound(format!("插件 {}", request.plugin_id)))?;
+    if !record.enabled
+        || !record.executable
+        || record.digest != request.plugin_digest
+        || !record.granted_permissions.contains(&"terminalInput".into())
+    {
+        return Err(AppError::Unavailable(
+            "插件已禁用、变更或终端输入权限已失效".into(),
+        ));
+    }
+    if request.data.is_empty()
+        || request.data.len() > MAX_TERMINAL_INPUT_BYTES
+        || request.data.contains('\0')
+    {
+        return Err(AppError::Validation("插件终端输入请求内容无效".into()));
+    }
+    Ok(())
+}
+
+pub async fn audit_terminal_input_decision(
+    db: &Database,
+    request: &PendingPluginTerminalInputRequest,
+    approved: bool,
+) -> AppResult<()> {
+    append_audit(
+        db,
+        PluginAuditEvent {
+            id: uuid::Uuid::new_v4().to_string(),
+            plugin_id: request.plugin_id.clone(),
+            action: if approved {
+                "terminal-input-approved".into()
+            } else {
+                "terminal-input-rejected".into()
+            },
+            detail: if approved {
+                "用户核对完整内容后批准一次性终端输入；审计不记录正文".into()
+            } else {
+                "用户拒绝一次性终端输入；未向会话发送任何数据".into()
             },
             digest: request.plugin_digest.clone(),
             created_at: Utc::now().to_rfc3339(),
@@ -1443,11 +2038,8 @@ mod tests {
     #[test]
     fn grants_only_low_risk_permissions_by_default() {
         let report = validate(&manifest()).unwrap();
-        assert_eq!(
-            report.default_granted_permissions,
-            vec!["ui", "terminalRead"]
-        );
-        assert_eq!(report.denied_permissions, vec!["network"]);
+        assert_eq!(report.default_granted_permissions, vec!["ui"]);
+        assert_eq!(report.denied_permissions, vec!["terminalRead", "network"]);
         assert_eq!(report.signature_status, "unsigned");
     }
 
@@ -1531,6 +2123,102 @@ mod tests {
         assert!(!exported.contains(manifest_path.to_str().unwrap()));
     }
 
+    #[tokio::test]
+    async fn signed_plugin_with_sensitive_permissions_can_be_enabled_selectively() {
+        let directory = tempdir().unwrap();
+        let database = Database::open(&directory.path().join("cnshell.sqlite"))
+            .await
+            .unwrap();
+        let wasm = wat::parse_str(
+            r#"(module
+                (import "cnshell_v1" "network_status" (func (result i32)))
+                (func (export "cnshell_main") (result i32) i32.const 0))"#,
+        )
+        .unwrap();
+        let signing_key = SigningKey::from_bytes(&[9_u8; 32]);
+        let public_key = format!(
+            "ed25519:{}",
+            URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes())
+        );
+        let publisher_path = directory.path().join("publisher.json");
+        std::fs::write(
+            &publisher_path,
+            serde_json::to_vec(&serde_json::json!({
+                "schemaVersion": 1,
+                "publisherId": "com.example",
+                "name": "Example Publisher",
+                "publicKey": public_key,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        import_publisher(&database, publisher_path.to_str().unwrap())
+            .await
+            .unwrap();
+        let wasm_path = directory.path().join("plugin.wasm");
+        std::fs::write(&wasm_path, &wasm).unwrap();
+        let mut plugin_manifest = PluginManifest {
+            id: "com.example.network".into(),
+            name: "Network".into(),
+            version: "1.0.0".into(),
+            api_version: 1,
+            entrypoint: "plugin.wasm".into(),
+            permissions: vec!["network".into()],
+            network_domains: vec!["api.example.com".into()],
+            publisher: Some("com.example".into()),
+            signature: None,
+        };
+        let digest = file_digest(&wasm_path).unwrap();
+        plugin_manifest.signature = Some(format!(
+            "ed25519:{}",
+            URL_SAFE_NO_PAD.encode(
+                signing_key
+                    .sign(&signature_payload(&plugin_manifest, &digest).unwrap())
+                    .to_bytes()
+            )
+        ));
+        let manifest_path = directory.path().join("manifest.json");
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec(&plugin_manifest).unwrap(),
+        )
+        .unwrap();
+        let record = register(&database, manifest_path.to_str().unwrap())
+            .await
+            .unwrap();
+        assert!(record.executable);
+        assert!(!record.enabled);
+        let enabled = enable(
+            &database,
+            crate::models::PluginEnableInput {
+                id: record.id.clone(),
+                permissions: Vec::new(),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(enabled.enabled);
+        assert!(enabled.granted_permissions.is_empty());
+        assert_eq!(enabled.denied_permissions, vec!["network"]);
+        assert!(
+            run(
+                &PluginManager::default(),
+                &database,
+                PluginRunInput {
+                    id: record.id,
+                    connection_id: None,
+                    selected_text: None,
+                    network_url: None,
+                    directory_path: None,
+                    directory_relative_path: None,
+                    terminal_session_id: None,
+                },
+            )
+            .await
+            .is_err()
+        );
+    }
+
     async fn trusted_package(
         database: &Database,
         directory: &Path,
@@ -1585,6 +2273,10 @@ mod tests {
             id: id.into(),
             connection_id: None,
             selected_text: None,
+            network_url: None,
+            directory_path: None,
+            directory_relative_path: None,
+            terminal_session_id: None,
         }
     }
 
@@ -1608,7 +2300,15 @@ mod tests {
             .unwrap();
         assert!(registered.executable);
         assert!(!registered.enabled);
-        let enabled = enable(&database, &registered.id).await.unwrap();
+        let enabled = enable(
+            &database,
+            crate::models::PluginEnableInput {
+                id: registered.id.clone(),
+                permissions: vec!["ui".into()],
+            },
+        )
+        .await
+        .unwrap();
         assert!(enabled.enabled);
         assert_eq!(enabled.granted_permissions, vec!["ui"]);
         let manager = PluginManager::default();
@@ -1665,7 +2365,15 @@ mod tests {
         let record = register(&database, manifest_path.to_str().unwrap())
             .await
             .unwrap();
-        enable(&database, &record.id).await.unwrap();
+        enable(
+            &database,
+            crate::models::PluginEnableInput {
+                id: record.id.clone(),
+                permissions: vec!["ui".into()],
+            },
+        )
+        .await
+        .unwrap();
         std::fs::write(
             directory.path().join("plugin.wasm"),
             wat::parse_str("(module (func (export \"cnshell_main\") (result i32) i32.const 1))")
@@ -1698,6 +2406,8 @@ mod tests {
                 HashSet::new(),
                 Vec::new(),
                 Vec::new(),
+                NetworkResource::default(),
+                DirectoryResource::default(),
             )
             .is_err()
         );
@@ -1712,6 +2422,8 @@ mod tests {
             HashSet::new(),
             Vec::new(),
             Vec::new(),
+            NetworkResource::default(),
+            DirectoryResource::default(),
         )
         .err()
         .unwrap();
@@ -1754,6 +2466,8 @@ mod tests {
             permissions,
             br#"{"name":"server"}"#.to_vec(),
             b"selected output".to_vec(),
+            NetworkResource::default(),
+            DirectoryResource::default(),
         )
         .unwrap();
         assert_eq!(output.result.logs, vec!["hello"]);
@@ -1771,8 +2485,23 @@ mod tests {
                 missing_permission,
                 Vec::new(),
                 Vec::new(),
+                NetworkResource::default(),
+                DirectoryResource::default(),
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn network_and_directory_boundaries_reject_unsafe_inputs() {
+        let domains = vec!["api.example.com".to_string()];
+        assert!(validate_network_url("http://api.example.com/status", &domains).is_err());
+        assert!(validate_network_url("https://api.example.com:444/status", &domains).is_err());
+        assert!(validate_network_url("https://other.example.com/status", &domains).is_err());
+        assert!(validate_network_url("https://api.example.com/status#secret", &domains).is_err());
+        assert!(valid_relative_plugin_path("status.json"));
+        assert!(!valid_relative_plugin_path("../status.json"));
+        assert!(valid_relative_plugin_path("nested/status.json"));
+        assert!(!valid_relative_plugin_path("/tmp/status.json"));
     }
 }

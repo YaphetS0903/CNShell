@@ -18,6 +18,7 @@ const record: PluginInstallRecord = {
   publisherId: "com.example",
   signatureStatus: "verified",
   requestedPermissions: ["ui"],
+  networkDomains: [],
   deniedPermissions: [],
   grantedPermissions: [],
   enabled: false,
@@ -97,7 +98,7 @@ describe("PluginSettings", () => {
     render(<PluginSettings connections={[]} onError={vi.fn()}/>);
 
     await user.click(await screen.findByRole("button", { name: "启用" }));
-    await waitFor(() => expect(enable).toHaveBeenCalledWith(record.id));
+    await waitFor(() => expect(enable).toHaveBeenCalledWith(record.id, ["ui"]));
     expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("无 WASI"));
   });
 
@@ -112,6 +113,7 @@ describe("PluginSettings", () => {
       fuelConsumed: 12,
       durationMs: 1,
       logs: [],
+      terminalInputRequest: null,
       credentialProxyRequest: {
         requestId: "request-1",
         pluginId: enabled.id,
@@ -127,7 +129,7 @@ describe("PluginSettings", () => {
 
     await user.selectOptions(await screen.findByRole("combobox", { name: /本次运行使用的连接/ }), connection.id);
     await user.click(screen.getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(run).toHaveBeenCalledWith({ id: enabled.id, connectionId: connection.id, selectedText: null }));
+    await waitFor(() => expect(run).toHaveBeenCalledWith({ id: enabled.id, connectionId: connection.id, selectedText: null, networkUrl: null, directoryPath: null, directoryRelativePath: null, terminalSessionId: null }));
     expect(await screen.findByText(/请求一次性 connectionTest/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "拒绝" }));
     await waitFor(() => expect(reject).toHaveBeenCalledWith("request-1"));

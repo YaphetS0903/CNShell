@@ -199,6 +199,27 @@ pub fn access_rdp_drive(connection_id: &str, fallback: &Path) -> AppResult<Priva
     access_value(load_rdp_drive(connection_id)?, fallback, "RDP 映射目录")
 }
 
+pub fn access_selected_directory(path: &Path) -> AppResult<PrivateKeyAccess> {
+    if !path.is_absolute() || path.to_string_lossy().len() > 16 * 1024 {
+        return Err(AppError::Validation(
+            "插件授权目录必须是长度受限的本地绝对路径".into(),
+        ));
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(AppError::Validation(
+            "插件授权目录必须是存在的非符号链接文件夹".into(),
+        ));
+    }
+    let access = resolve(&create(path, "插件授权目录", true)?, "插件授权目录")?;
+    if !access.path().is_dir() {
+        return Err(AppError::Unavailable(
+            "插件授权目录已不存在，请重新选择".into(),
+        ));
+    }
+    Ok(access)
+}
+
 fn access_value(
     encoded: Option<String>,
     fallback: &Path,

@@ -905,9 +905,9 @@ pub async fn plugin_disable(state: State<'_, AppState>, id: String) -> AppResult
 #[tauri::command]
 pub async fn plugin_enable(
     state: State<'_, AppState>,
-    id: String,
+    input: PluginEnableInput,
 ) -> AppResult<PluginInstallRecord> {
-    crate::plugin::enable(&state.db, &id).await
+    crate::plugin::enable(&state.db, input).await
 }
 
 #[tauri::command]
@@ -949,6 +949,29 @@ pub async fn plugin_credential_proxy_reject(
 ) -> AppResult<()> {
     let request = state.plugins.reject_proxy_request(&request_id)?;
     crate::plugin::audit_proxy_decision(&state.db, &request, false).await
+}
+
+#[tauri::command]
+pub async fn plugin_terminal_input_approve(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<()> {
+    let request = state.plugins.take_terminal_input_request(&request_id)?;
+    if let Err(error) = crate::plugin::validate_terminal_input_approval(&state.db, &request).await {
+        let _ = crate::plugin::audit_terminal_input_decision(&state.db, &request, false).await;
+        return Err(error);
+    }
+    route_terminal_input(&state, request.session_id.clone(), request.data.clone()).await?;
+    crate::plugin::audit_terminal_input_decision(&state.db, &request, true).await
+}
+
+#[tauri::command]
+pub async fn plugin_terminal_input_reject(
+    state: State<'_, AppState>,
+    request_id: String,
+) -> AppResult<()> {
+    let request = state.plugins.take_terminal_input_request(&request_id)?;
+    crate::plugin::audit_terminal_input_decision(&state.db, &request, false).await
 }
 
 #[tauri::command]
@@ -1398,6 +1421,10 @@ pub async fn terminal_input(
     session_id: String,
     data: String,
 ) -> AppResult<()> {
+    route_terminal_input(&state, session_id, data).await
+}
+
+async fn route_terminal_input(state: &AppState, session_id: String, data: String) -> AppResult<()> {
     if state.local_shell.contains(&session_id) {
         return state.local_shell.input(&session_id, &data);
     }

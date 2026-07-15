@@ -288,6 +288,8 @@ pub fn run() {
             commands::plugin_run,
             commands::plugin_credential_proxy_approve,
             commands::plugin_credential_proxy_reject,
+            commands::plugin_terminal_input_approve,
+            commands::plugin_terminal_input_reject,
             commands::plugin_remove,
             commands::plugin_audit_export,
             commands::team_workspace_list,
