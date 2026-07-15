@@ -1,8 +1,8 @@
 use crate::{
     error::{AppError, AppResult},
     models::{
-        ConnectionProfile, SerialConnectionOptions, SerialDeviceInfo, TerminalOutput,
-        TerminalSession, TerminalStatus,
+        ConnectionProfile, SerialConnectionOptions, SerialDeviceInfo, SerialTransferEvent,
+        TerminalOutput, TerminalSession, TerminalStatus,
     },
     session_log::SessionLogManager,
 };
@@ -13,6 +13,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     io::{Read, Write},
     sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 use tauri::{AppHandle, Emitter};
@@ -38,10 +39,23 @@ struct ManagedSerial {
     port: Option<Box<dyn SerialPort>>,
 }
 
+struct SerialSession {
+    io: Mutex<ManagedSerial>,
+    transfer_active: AtomicBool,
+    reader_paused: AtomicBool,
+}
+
+struct ActiveTransfer {
+    session_id: String,
+    cancelled: Arc<AtomicBool>,
+    event: Arc<Mutex<SerialTransferEvent>>,
+}
+
 #[derive(Clone, Default)]
 pub struct SerialManager {
-    sessions: Arc<Mutex<HashMap<String, Arc<Mutex<ManagedSerial>>>>>,
+    sessions: Arc<Mutex<HashMap<String, Arc<SerialSession>>>>,
     closing: Arc<Mutex<std::collections::HashSet<String>>>,
+    transfers: Arc<Mutex<HashMap<String, ActiveTransfer>>>,
 }
 
 impl SerialManager {
@@ -59,7 +73,11 @@ impl SerialManager {
         validate_options(&options)?;
         let (port, reader) = open_port(&profile, &options)?;
         let id = Uuid::new_v4().to_string();
-        let managed = Arc::new(Mutex::new(ManagedSerial { port: Some(port) }));
+        let managed = Arc::new(SerialSession {
+            io: Mutex::new(ManagedSerial { port: Some(port) }),
+            transfer_active: AtomicBool::new(false),
+            reader_paused: AtomicBool::new(false),
+        });
         self.sessions.lock().insert(id.clone(), managed.clone());
         spawn_reader(
             app,
@@ -92,7 +110,12 @@ impl SerialManager {
             .get(id)
             .cloned()
             .ok_or_else(|| AppError::NotFound(format!("Serial 会话 {id}")))?;
-        let mut session = session.lock();
+        if session.transfer_active.load(Ordering::Acquire) {
+            return Err(AppError::Unavailable(
+                "X/Ymodem 传输期间已暂停普通终端输入".into(),
+            ));
+        }
+        let mut session = session.io.lock();
         let port = session
             .port
             .as_mut()
@@ -120,7 +143,12 @@ impl SerialManager {
             .remove(id)
             .ok_or_else(|| AppError::NotFound(format!("Serial 会话 {id}")))?;
         self.closing.lock().insert(id.into());
-        session.lock().port.take();
+        for transfer in self.transfers.lock().values() {
+            if transfer.session_id == id {
+                transfer.cancelled.store(true, Ordering::Release);
+            }
+        }
+        session.io.lock().port.take();
         Ok(())
     }
 
@@ -128,6 +156,285 @@ impl SerialManager {
         for id in self.sessions.lock().keys().cloned().collect::<Vec<_>>() {
             let _ = self.close(&id);
         }
+    }
+
+    pub fn transfer_start(
+        &self,
+        app: AppHandle,
+        session_id: &str,
+        protocol: &str,
+        direction: &str,
+        paths: Vec<String>,
+    ) -> AppResult<SerialTransferEvent> {
+        validate_transfer_request(protocol, direction, &paths)?;
+        let session = self
+            .sessions
+            .lock()
+            .get(session_id)
+            .cloned()
+            .ok_or_else(|| AppError::NotFound(format!("Serial 会话 {session_id}")))?;
+        session
+            .transfer_active
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| AppError::Validation("该 Serial 会话已有传输正在进行".into()))?;
+        let pause_deadline = std::time::Instant::now() + Duration::from_secs(2);
+        while !session.reader_paused.load(Ordering::Acquire) {
+            if std::time::Instant::now() >= pause_deadline {
+                session.transfer_active.store(false, Ordering::Release);
+                return Err(AppError::Unavailable("暂停串口读取线程超时，请重试".into()));
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let transfer_port = match session
+            .io
+            .lock()
+            .port
+            .as_ref()
+            .ok_or_else(|| AppError::Unavailable("串口设备当前不可用".into()))
+            .and_then(|port| {
+                port.try_clone().map_err(|error| {
+                    AppError::Unavailable(format!("创建串口传输句柄失败：{error}"))
+                })
+            }) {
+            Ok(port) => port,
+            Err(error) => {
+                session.transfer_active.store(false, Ordering::Release);
+                return Err(error);
+            }
+        };
+        let id = Uuid::new_v4().to_string();
+        let event = SerialTransferEvent {
+            id: id.clone(),
+            session_id: session_id.into(),
+            protocol: protocol.into(),
+            direction: direction.into(),
+            status: "running".into(),
+            file_name: None,
+            total_bytes: None,
+            transferred_bytes: 0,
+            error: None,
+        };
+        let event_state = Arc::new(Mutex::new(event.clone()));
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.transfers.lock().insert(
+            id.clone(),
+            ActiveTransfer {
+                session_id: session_id.into(),
+                cancelled: cancelled.clone(),
+                event: event_state.clone(),
+            },
+        );
+        let manager = self.clone();
+        let session_id = session_id.to_string();
+        let protocol = protocol.to_string();
+        let direction = direction.to_string();
+        let transfer_session = session.clone();
+        let _ = app.emit("serial-transfer", event.clone());
+        std::thread::Builder::new()
+            .name(format!("cnshell-modem-{}", &id[..8]))
+            .spawn(move || {
+                run_transfer(
+                    &app,
+                    transfer_port,
+                    cancelled.clone(),
+                    event_state.clone(),
+                    &protocol,
+                    &direction,
+                    paths,
+                );
+                transfer_session
+                    .transfer_active
+                    .store(false, Ordering::Release);
+                manager.transfers.lock().remove(&id);
+                if manager.closing.lock().contains(&session_id) {
+                    cancelled.store(true, Ordering::Release);
+                }
+            })
+            .map_err(|error| {
+                session.transfer_active.store(false, Ordering::Release);
+                self.transfers.lock().remove(&event.id);
+                AppError::Internal(format!("启动 X/Ymodem 传输线程失败：{error}"))
+            })?;
+        Ok(event)
+    }
+
+    pub fn transfer_cancel(&self, app: &AppHandle, id: &str) -> AppResult<SerialTransferEvent> {
+        let transfers = self.transfers.lock();
+        let transfer = transfers
+            .get(id)
+            .ok_or_else(|| AppError::NotFound(format!("Serial 传输 {id}")))?;
+        transfer.cancelled.store(true, Ordering::Release);
+        let mut event = transfer.event.lock();
+        event.status = "cancelled".into();
+        event.error = None;
+        let result = event.clone();
+        drop(event);
+        drop(transfers);
+        let _ = app.emit("serial-transfer", result.clone());
+        Ok(result)
+    }
+}
+
+fn validate_transfer_request(protocol: &str, direction: &str, paths: &[String]) -> AppResult<()> {
+    if !["xmodem", "xmodem1k", "xmodemChecksum", "ymodem"].contains(&protocol)
+        || !["upload", "download"].contains(&direction)
+        || paths.is_empty()
+        || paths.len() > 256
+        || paths.iter().any(|path| {
+            path.is_empty() || path.len() > 16 * 1024 || !std::path::Path::new(path).is_absolute()
+        })
+    {
+        return Err(AppError::Validation("X/Ymodem 传输参数无效".into()));
+    }
+    if protocol != "ymodem" && paths.len() != 1 {
+        return Err(AppError::Validation("Xmodem 每次只能传输一个文件".into()));
+    }
+    if direction == "download" && paths.len() != 1 {
+        return Err(AppError::Validation("下载目标只能选择一个位置".into()));
+    }
+    Ok(())
+}
+
+fn run_transfer(
+    app: &AppHandle,
+    mut port: Box<dyn SerialPort>,
+    cancelled: Arc<AtomicBool>,
+    event: Arc<Mutex<SerialTransferEvent>>,
+    protocol: &str,
+    direction: &str,
+    paths: Vec<String>,
+) {
+    let _ = port.set_timeout(Duration::from_secs(1));
+    let mut device = CancellablePort {
+        port,
+        cancelled: cancelled.clone(),
+    };
+    let path_bufs = paths
+        .iter()
+        .map(std::path::PathBuf::from)
+        .collect::<Vec<_>>();
+    let last_emit = Arc::new(Mutex::new((std::time::Instant::now(), 0_u64)));
+    let progress_app = app.clone();
+    let progress_event = event.clone();
+    let progress_state = last_emit.clone();
+    let progress = move |progress: crate::xymodem::ModemProgress| {
+        let mut throttle = progress_state.lock();
+        if progress.transferred_bytes < throttle.1.saturating_add(64 * 1024)
+            && throttle.0.elapsed() < Duration::from_millis(100)
+            && progress.total_bytes != Some(progress.transferred_bytes)
+        {
+            return;
+        }
+        throttle.0 = std::time::Instant::now();
+        throttle.1 = progress.transferred_bytes;
+        let mut current = progress_event.lock();
+        current.file_name = Some(progress.file_name);
+        current.total_bytes = progress.total_bytes;
+        current.transferred_bytes = progress.transferred_bytes;
+        let emitted = current.clone();
+        drop(current);
+        let _ = progress_app.emit("serial-transfer", emitted);
+    };
+    let result = match (protocol, direction) {
+        ("xmodem", "upload") => {
+            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
+        }
+        ("xmodem1k", "upload") => {
+            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], true, progress)
+        }
+        ("xmodemChecksum", "upload") => {
+            crate::xymodem::xmodem_send(&mut device, &path_bufs[0], false, progress)
+        }
+        ("xmodem", "download") | ("xmodem1k", "download") => crate::xymodem::xmodem_receive(
+            &mut device,
+            &path_bufs[0],
+            crate::xymodem::XmodemChecksum::Crc16,
+            progress,
+        ),
+        ("xmodemChecksum", "download") => crate::xymodem::xmodem_receive(
+            &mut device,
+            &path_bufs[0],
+            crate::xymodem::XmodemChecksum::Checksum,
+            progress,
+        ),
+        ("ymodem", "upload") => crate::xymodem::ymodem_send(&mut device, &path_bufs, progress),
+        ("ymodem", "download") => {
+            crate::xymodem::ymodem_receive(&mut device, &path_bufs[0], progress)
+        }
+        _ => Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "unsupported transfer mode",
+        )),
+    };
+    if result.is_err() {
+        device.cancel_peer();
+    }
+    let mut current = event.lock();
+    if cancelled.load(Ordering::Acquire) {
+        current.status = "cancelled".into();
+        current.error = None;
+    } else if let Err(error) = result {
+        current.status = "failed".into();
+        current.error = Some(transfer_error(&error));
+    } else {
+        current.status = "completed".into();
+        current.error = None;
+    }
+    let emitted = current.clone();
+    drop(current);
+    let _ = app.emit("serial-transfer", emitted);
+}
+
+struct CancellablePort {
+    port: Box<dyn SerialPort>,
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CancellablePort {
+    fn check(&self) -> std::io::Result<()> {
+        if self.cancelled.load(Ordering::Acquire) {
+            Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "transfer cancelled",
+            ))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn cancel_peer(&mut self) {
+        crate::xymodem::cancel_peer(&mut self.port);
+    }
+}
+
+impl Read for CancellablePort {
+    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        self.check()?;
+        self.port.read(buffer)
+    }
+}
+
+impl Write for CancellablePort {
+    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+        self.check()?;
+        self.port.write(buffer)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.check()?;
+        self.port.flush()
+    }
+}
+
+fn transfer_error(error: &std::io::Error) -> String {
+    match error.kind() {
+        std::io::ErrorKind::TimedOut => "等待设备响应超时，请确认两端协议模式一致".into(),
+        std::io::ErrorKind::ConnectionAborted => "远端设备已取消传输".into(),
+        std::io::ErrorKind::InvalidData => format!("收到无效的协议数据：{error}"),
+        std::io::ErrorKind::WriteZero | std::io::ErrorKind::StorageFull => {
+            format!("写入目标文件失败：{error}")
+        }
+        _ => format!("X/Ymodem 传输失败：{error}"),
     }
 }
 
@@ -357,7 +664,7 @@ fn spawn_reader(
     id: String,
     profile: ConnectionProfile,
     options: SerialConnectionOptions,
-    session: Arc<Mutex<ManagedSerial>>,
+    session: Arc<SerialSession>,
     mut reader: Box<dyn SerialPort>,
 ) {
     std::thread::Builder::new()
@@ -368,6 +675,16 @@ fn spawn_reader(
             loop {
                 if manager.closing.lock().contains(&id) {
                     break;
+                }
+                if session.transfer_active.load(Ordering::Acquire) {
+                    session.reader_paused.store(true, Ordering::Release);
+                    while session.transfer_active.load(Ordering::Acquire)
+                        && !manager.closing.lock().contains(&id)
+                    {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                    session.reader_paused.store(false, Ordering::Release);
+                    continue;
                 }
                 match reader.read(&mut buffer) {
                     Ok(0) => continue,
@@ -383,7 +700,7 @@ fn spawn_reader(
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::TimedOut => continue,
                     Err(error) => {
-                        session.lock().port.take();
+                        session.io.lock().port.take();
                         let initial_error = error.to_string();
                         match reconnect(&app, &manager, &id, &profile, &options, &session) {
                             Some(new_reader) => {
@@ -427,7 +744,7 @@ fn reconnect(
     id: &str,
     profile: &ConnectionProfile,
     options: &SerialConnectionOptions,
-    session: &Arc<Mutex<ManagedSerial>>,
+    session: &Arc<SerialSession>,
 ) -> Option<Box<dyn SerialPort>> {
     for (index, delay) in RECONNECT_DELAYS.into_iter().enumerate() {
         let attempt = (index + 1) as u8;
@@ -448,7 +765,7 @@ fn reconnect(
         }
         match open_port(profile, options) {
             Ok((port, reader)) => {
-                session.lock().port = Some(port);
+                session.io.lock().port = Some(port);
                 let _ = app.emit(
                     "terminal-status",
                     TerminalStatus {
@@ -528,6 +845,21 @@ mod tests {
     fn reconnect_schedule_is_bounded() {
         assert_eq!(RECONNECT_DELAYS, [1, 2, 5, 10, 30]);
         assert_eq!(RECONNECT_DELAYS.iter().sum::<u64>(), 48);
+    }
+
+    #[test]
+    fn modem_transfer_requests_are_path_and_mode_bounded() {
+        assert!(
+            validate_transfer_request("ymodem", "upload", &["/tmp/a".into(), "/tmp/b".into()])
+                .is_ok()
+        );
+        assert!(validate_transfer_request("xmodem1k", "download", &["/tmp/a".into()]).is_ok());
+        assert!(
+            validate_transfer_request("xmodem", "upload", &["/tmp/a".into(), "/tmp/b".into()])
+                .is_err()
+        );
+        assert!(validate_transfer_request("ymodem", "download", &["relative".into()]).is_err());
+        assert!(validate_transfer_request("unknown", "upload", &["/tmp/a".into()]).is_err());
     }
 
     #[test]

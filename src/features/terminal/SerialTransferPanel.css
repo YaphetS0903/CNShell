@@ -1,0 +1,84 @@
+.serial-transfer-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(720px, 100%);
+  padding: 18px 20px;
+}
+
+.serial-transfer-panel > header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 12px;
+}
+
+.serial-transfer-panel > header > div,
+.serial-transfer-panel label,
+.serial-transfer-status {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.serial-transfer-panel > header span,
+.serial-transfer-panel label span,
+.serial-transfer-status small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.serial-transfer-panel select {
+  min-width: 220px;
+}
+
+.serial-transfer-actions,
+.serial-transfer-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.serial-transfer-state span {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.serial-transfer-status.failed,
+.serial-transfer-status.cancelled {
+  color: var(--danger);
+}
+
+.serial-transfer-status.completed {
+  color: var(--accent);
+}
+
+.serial-transfer-progress {
+  overflow: hidden;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+}
+
+.serial-transfer-progress i {
+  display: block;
+  height: 100%;
+  background: var(--blue);
+  transition: width 120ms linear;
+}
+
+@media (max-width: 640px) {
+  .serial-transfer-panel > header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .serial-transfer-panel select {
+    width: 100%;
+    min-width: 0;
+  }
+}

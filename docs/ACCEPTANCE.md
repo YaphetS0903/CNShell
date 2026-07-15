@@ -28,6 +28,7 @@
 | 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分 | `src/styles.css`、`src/components/Modal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与最终 DMG 辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、真实方向键切换与独立菜单入口，SFTP 虚拟表格行列/排序/总数，以及监控数值替代；完整 VoiceOver 朗读顺序仍需用户主动开启系统 VoiceOver 后人工巡检 |
 | SQLite 历史迁移与失败前备份 | 通过 | `src-tauri/src/db.rs`、`src-tauri/migrations/` | v1–v4 无损升级、任务恢复、数据库 `.backup` 测试通过 |
 | 本地 Shell / Telnet / Serial 基线 | 部分（代码与回环/枚举测试） | `src-tauri/src/local_shell.rs`、`src-tauri/src/telnet.rs`、`src-tauri/src/serial.rs`、连接编辑器 | 本地 PTY 和 Telnet 生命周期已通过；Serial 已完成设备枚举、参数校验、独占打开、DTR/RTS、输入、状态事件和同路径拔出重连代码与测试。当前没有实体串口设备，未声明真实网络设备、USB 转串口拔出/重插和硬件流控验收通过。 |
+| Serial X/Ymodem | 部分（协议核心与双端回环通过） | `src-tauri/src/xymodem.rs`、`src-tauri/src/serial.rs`、`src/features/terminal/SerialTransferPanel.tsx` | Xmodem 128/1K、Checksum/CRC、Ymodem Batch、双 EOT、重复块、CRC 拒绝、双 CAN、进度、单会话互斥、原子下载、失败清理、50 GB/256 文件边界和远端路径隔离已由 Rust/前端测试覆盖。本机没有 `sx/rx/sb/rb` 和实体串口设备，未声明外部实现或硬件互操作通过。 |
 
 ## 2. 自动化证据
 

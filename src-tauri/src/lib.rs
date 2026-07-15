@@ -28,6 +28,7 @@ mod touch_id;
 mod tunnel;
 mod webdav;
 mod x11;
+mod xymodem;
 mod zmodem;
 
 use ai::AiManager;
@@ -234,6 +235,8 @@ pub fn run() {
             commands::serial_device_list,
             commands::serial_options_get,
             commands::serial_options_save,
+            commands::serial_transfer_start,
+            commands::serial_transfer_cancel,
             commands::automation_validate,
             commands::automation_start,
             commands::automation_schedule_list,

@@ -483,6 +483,18 @@ export interface ZmodemEvent {
   error: string | null;
 }
 
+export interface SerialTransferEvent {
+  id: string;
+  sessionId: string;
+  protocol: string;
+  direction: string;
+  status: string;
+  fileName: string | null;
+  totalBytes: number | null;
+  transferredBytes: number;
+  error: string | null;
+}
+
 export interface ProcessInfo {
   pid: number;
   startedAt: string;

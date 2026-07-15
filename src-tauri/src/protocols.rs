@@ -17,6 +17,7 @@ pub fn capabilities() -> Vec<ProtocolCapability> {
     let x11 = crate::x11::availability();
     vec![
         ProtocolCapability { id:"zmodem".into(), label:"Zmodem rz/sz".into(), available:rz.is_some()&&sz.is_some(), executable:rz.or(sz), message:"需要本机与远端同时安装 lrzsz；CNshell 仅在检测到完整依赖后启用文件选择和控制序列接管。".into(), security_warning:Some("Zmodem 传输由交互终端发起，文件仍必须通过 macOS 原生选择器授权。".into()) },
+        ProtocolCapability { id:"xymodem".into(), label:"Serial X/Ymodem".into(), available:true, executable:None, message:"CNshell 内置 Xmodem 128/1K、Checksum/CRC 与 Ymodem Batch，可在 Serial 文件面板中启动。".into(), security_warning:Some("Xmodem 不传递文件名和真实长度，下载会保留协议块填充；Ymodem 远端文件名只能落在用户选择的目录内。".into()) },
         ProtocolCapability { id:"scp".into(), label:"SCP 降级".into(), available:true, executable:scp, message:"SFTP 子系统不可用时自动通过现有 SSH 会话降级为 SCP，复用 CNshell 认证、代理和主机指纹校验。".into(), security_warning:Some("上传降级只允许明确的覆盖策略；CNshell 不会使用 sshpass，也不会关闭主机指纹校验。".into()) },
         ProtocolCapability { id:"mosh".into(), label:"Mosh 漫游连接".into(), available:mosh.is_some(), executable:mosh, message:"CNshell 内置受管 mosh-client；启用后通过已验证 SSH 启动远端 mosh-server，再使用 UDP 建立可漫游终端。".into(), security_warning:Some("SSH 代理只负责启动远端服务；Mosh UDP 数据必须能从本机直接到达目标服务器。".into()) },
         ProtocolCapability { id:"x11".into(), label:"X11 转发".into(), available:x11.is_ok(), executable:x11.as_ref().ok().cloned(), message:x11.err().unwrap_or_else(||"XQuartz、DISPLAY、xauth 与本地 socket 均可用；可按可信连接启用真实 X11 channel 转发。".into()), security_warning:Some("远端图形程序可访问本地 X Server；CNshell 使用一次性 cookie 隔离，但仍只应对可信主机开放。".into()) },
@@ -61,7 +62,7 @@ mod tests {
     #[test]
     fn capability_report_is_explicit_and_unique() {
         let report = capabilities();
-        assert_eq!(report.len(), 5);
+        assert_eq!(report.len(), 6);
         let ids = report
             .iter()
             .map(|item| item.id.as_str())

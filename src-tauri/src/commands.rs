@@ -532,6 +532,29 @@ pub async fn serial_options_save(
     Ok(options)
 }
 
+#[tauri::command]
+pub fn serial_transfer_start(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    protocol: String,
+    direction: String,
+    paths: Vec<String>,
+) -> AppResult<SerialTransferEvent> {
+    state
+        .serial
+        .transfer_start(app, &session_id, &protocol, &direction, paths)
+}
+
+#[tauri::command]
+pub fn serial_transfer_cancel(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<SerialTransferEvent> {
+    state.serial.transfer_cancel(&app, &id)
+}
+
 async fn serial_options_for_profile(
     db: &crate::db::Database,
     profile: &ConnectionProfile,
