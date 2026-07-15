@@ -57,6 +57,15 @@ pub fn rdp_preflight_json() -> String {
     serde_json::to_string(&rdp::preflight()).expect("RDP preflight is serializable")
 }
 
+pub fn rdp_displays_json() -> String {
+    match rdp::displays() {
+        Ok(displays) => serde_json::json!({"available": true, "displays": displays}).to_string(),
+        Err(error) => {
+            serde_json::json!({"available": false, "message": error.to_string()}).to_string()
+        }
+    }
+}
+
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("CNshell".into()),
@@ -257,8 +266,13 @@ pub fn run() {
             commands::monitor_system_info,
             commands::monitor_export_system_info,
             commands::rdp_preflight,
+            commands::rdp_displays,
+            commands::rdp_options_get,
+            commands::rdp_options_save,
             commands::rdp_open,
             commands::rdp_close,
+            commands::rdp_focus,
+            commands::rdp_hide,
             commands::settings_get,
             commands::settings_save,
             commands::diagnostics_export,

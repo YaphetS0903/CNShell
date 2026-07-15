@@ -130,10 +130,17 @@ impl Database {
     }
 
     pub async fn remove_inserted_connection(&self, id: &str) -> AppResult<()> {
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?)")
+            .bind(format!("cnshell.protocol.{id}"))
+            .bind(format!("cnshell.rdp.{id}"))
+            .execute(&mut *transaction)
+            .await?;
         sqlx::query("DELETE FROM connections WHERE id=?")
             .bind(id)
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await?;
+        transaction.commit().await?;
         Ok(())
     }
 
@@ -194,6 +201,11 @@ impl Database {
             .await?;
         sqlx::query("DELETE FROM command_history WHERE connection_id=?")
             .bind(id)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("DELETE FROM workspace_state WHERE key IN (?,?)")
+            .bind(format!("cnshell.protocol.{id}"))
+            .bind(format!("cnshell.rdp.{id}"))
             .execute(&mut *transaction)
             .await?;
         let affected = sqlx::query("DELETE FROM connections WHERE id=? AND deleted_at IS NOT NULL")
@@ -1473,6 +1485,12 @@ mod tests {
         };
         db.save_connection(&input, None).await.unwrap();
         db.add_history("trash", "uname -a").await.unwrap();
+        db.save_named_state(
+            "cnshell.rdp.trash",
+            &serde_json::json!({"drivePath":"/private"}),
+        )
+        .await
+        .unwrap();
         db.delete_connection("trash").await.unwrap();
         assert!(db.list_connections().await.unwrap().is_empty());
         assert_eq!(db.deleted_connections().await.unwrap().len(), 1);
@@ -1481,6 +1499,12 @@ mod tests {
         db.delete_connection("trash").await.unwrap();
         db.purge_connection("trash").await.unwrap();
         assert!(db.deleted_connections().await.unwrap().is_empty());
+        assert!(
+            db.load_named_state::<serde_json::Value>("cnshell.rdp.trash")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
     #[tokio::test]
     async fn folder_hierarchy_rejects_cycles_and_deletes_subtrees_safely() {

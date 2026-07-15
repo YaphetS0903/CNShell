@@ -1,0 +1,9 @@
+diff --git a/client/SDL/SDL3/sdl_context.cpp b/client/SDL/SDL3/sdl_context.cpp
+--- a/client/SDL/SDL3/sdl_context.cpp
++++ b/client/SDL/SDL3/sdl_context.cpp
+@@ -313,6 +313,7 @@ BOOL SdlContext::postConnect(freerdp* instance)
+ 		return FALSE;
+ 	sdl->setConnected(true);
++	WLog_Print(sdl->getWLog(), WLOG_INFO, "CNSHELL_RDP_STATE=online");
+ 	return TRUE;
+ }

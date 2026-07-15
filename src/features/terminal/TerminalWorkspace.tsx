@@ -152,9 +152,10 @@ export default function TerminalWorkspace({
         workspaceRuntime.terminalActivity.delete(id);
         setActivityVersion((value) => value + 1);
       }
+      if(session?.sessionType==="rdp"&&(session.status==="online"||session.status==="reconnecting"))void api.rdpFocus(id).catch((reason)=>setError(errorMessage(reason)));
       setActiveSession(id);
     },
-    [setActiveSession],
+    [setActiveSession,setError],
   );
   const split = async (session: TerminalSession, direction: SplitDirection) => {
     if (session.sessionType === "rdp") return;
@@ -550,6 +551,8 @@ export default function TerminalWorkspace({
         {active.sessionType === "rdp" ? (
           <RdpWorkspace
             session={active}
+            onFocus={() => void api.rdpFocus(active.id).catch((reason)=>setError(errorMessage(reason)))}
+            onHide={() => void api.rdpHide(active.id).catch((reason)=>setError(errorMessage(reason)))}
             onReconnect={() => void reconnect(active)}
             onClose={() => void close(active.id)}
           />

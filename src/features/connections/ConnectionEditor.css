@@ -81,3 +81,19 @@
 .fido2-identities .warning {
   color: var(--warning);
 }
+
+.rdp-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+}
+
+.rdp-permissions > label:not(.check-row) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rdp-permissions select {
+  width: 100%;
+}

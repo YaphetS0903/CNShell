@@ -253,11 +253,59 @@ pub async fn connection_duplicate(
         let _ = state.db.remove_inserted_connection(&new_id).await;
         return Err(error);
     }
+    let source_rdp_options = if input.protocol == "rdp" {
+        match state
+            .db
+            .load_named_state::<RdpConnectionOptions>(&format!("cnshell.rdp.{id}"))
+            .await
+        {
+            Ok(options) => options,
+            Err(error) => {
+                let _ = crate::bookmark::delete(&new_id);
+                let _ = crate::bookmark::delete_certificate(&new_id);
+                let _ = state.db.remove_inserted_connection(&new_id).await;
+                return Err(error);
+            }
+        }
+    } else {
+        None
+    };
+    if let Some(mut options) = source_rdp_options {
+        options.connection_id = new_id.clone();
+        if let Err(error) = crate::bookmark::copy_rdp_drive(&id, &new_id) {
+            let _ = crate::bookmark::delete(&new_id);
+            let _ = crate::bookmark::delete_certificate(&new_id);
+            let _ = state.db.remove_inserted_connection(&new_id).await;
+            return Err(error);
+        }
+        let serialized = match serde_json::to_value(&options) {
+            Ok(value) => value,
+            Err(error) => {
+                let _ = crate::bookmark::delete(&new_id);
+                let _ = crate::bookmark::delete_certificate(&new_id);
+                let _ = crate::bookmark::delete_rdp_drive(&new_id);
+                let _ = state.db.remove_inserted_connection(&new_id).await;
+                return Err(AppError::Internal(error.to_string()));
+            }
+        };
+        if let Err(error) = state
+            .db
+            .save_named_state(&format!("cnshell.rdp.{new_id}"), &serialized)
+            .await
+        {
+            let _ = crate::bookmark::delete(&new_id);
+            let _ = crate::bookmark::delete_certificate(&new_id);
+            let _ = crate::bookmark::delete_rdp_drive(&new_id);
+            let _ = state.db.remove_inserted_connection(&new_id).await;
+            return Err(error);
+        }
+    }
     let secret = match crate::ssh::load_credential(&id) {
         Ok(secret) => secret,
         Err(error) => {
             let _ = crate::bookmark::delete(&new_id);
             let _ = crate::bookmark::delete_certificate(&new_id);
+            let _ = crate::bookmark::delete_rdp_drive(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             return Err(error);
         }
@@ -270,6 +318,7 @@ pub async fn connection_duplicate(
         Err(error) => {
             let _ = crate::bookmark::delete(&new_id);
             let _ = crate::bookmark::delete_certificate(&new_id);
+            let _ = crate::bookmark::delete_rdp_drive(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             return Err(error);
         }
@@ -284,6 +333,7 @@ pub async fn connection_duplicate(
             let _ = crate::ssh::delete_credential(&new_id);
             let _ = crate::bookmark::delete(&new_id);
             let _ = crate::bookmark::delete_certificate(&new_id);
+            let _ = crate::bookmark::delete_rdp_drive(&new_id);
             let _ = state.db.remove_inserted_connection(&new_id).await;
             Err(error)
         }
@@ -305,6 +355,7 @@ pub async fn connection_purge(state: State<'_, AppState>, id: String) -> AppResu
     let previous = crate::ssh::load_credential(&id)?;
     let previous_bookmark = crate::bookmark::load(&id)?;
     let previous_certificate_bookmark = crate::bookmark::load_certificate(&id)?;
+    let previous_rdp_drive_bookmark = crate::bookmark::load_rdp_drive(&id)?;
     crate::ssh::delete_credential(&id)?;
     if let Err(error) = crate::bookmark::delete(&id) {
         restore_credential(&id, previous.as_deref());
@@ -315,12 +366,20 @@ pub async fn connection_purge(state: State<'_, AppState>, id: String) -> AppResu
         crate::bookmark::restore(&id, previous_bookmark.as_deref());
         return Err(error);
     }
+    if let Err(error) = crate::bookmark::delete_rdp_drive(&id) {
+        restore_credential(&id, previous.as_deref());
+        crate::bookmark::restore(&id, previous_bookmark.as_deref());
+        crate::bookmark::restore_certificate(&id, previous_certificate_bookmark.as_deref());
+        crate::bookmark::restore_rdp_drive(&id, previous_rdp_drive_bookmark.as_deref());
+        return Err(error);
+    }
     match state.db.purge_connection(&id).await {
         Ok(()) => Ok(()),
         Err(error) => {
             restore_credential(&id, previous.as_deref());
             crate::bookmark::restore(&id, previous_bookmark.as_deref());
             crate::bookmark::restore_certificate(&id, previous_certificate_bookmark.as_deref());
+            crate::bookmark::restore_rdp_drive(&id, previous_rdp_drive_bookmark.as_deref());
             Err(error)
         }
     }
@@ -1284,6 +1343,74 @@ pub fn rdp_preflight() -> RdpPreflight {
 }
 
 #[tauri::command]
+pub async fn rdp_displays() -> AppResult<Vec<RdpDisplay>> {
+    tokio::task::spawn_blocking(crate::rdp::displays)
+        .await
+        .map_err(|error| AppError::Internal(format!("RDP 显示器检测任务失败：{error}")))?
+}
+
+#[tauri::command]
+pub async fn rdp_options_get(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<RdpConnectionOptions> {
+    let profile = state.db.get_connection(&connection_id).await?;
+    if profile.protocol != "rdp" {
+        return Err(AppError::Validation("该连接不是 RDP 类型".into()));
+    }
+    Ok(state
+        .db
+        .load_named_state::<RdpConnectionOptions>(&format!("cnshell.rdp.{connection_id}"))
+        .await?
+        .unwrap_or_else(|| crate::rdp::default_options(connection_id)))
+}
+
+#[tauri::command]
+pub async fn rdp_options_save(
+    state: State<'_, AppState>,
+    options: RdpConnectionOptions,
+) -> AppResult<RdpConnectionOptions> {
+    crate::rdp::validate_options(&options)?;
+    let profile = state.db.get_connection(&options.connection_id).await?;
+    if profile.protocol != "rdp" {
+        return Err(AppError::Validation("该连接不是 RDP 类型".into()));
+    }
+    let previous_bookmark = crate::bookmark::load_rdp_drive(&options.connection_id)?;
+    let existing_options = state
+        .db
+        .load_named_state::<RdpConnectionOptions>(&format!("cnshell.rdp.{}", options.connection_id))
+        .await?;
+    let bookmark_unchanged = previous_bookmark.is_some()
+        && existing_options
+            .as_ref()
+            .is_some_and(|existing| existing.drive_path == options.drive_path);
+    let bookmark_result = if bookmark_unchanged {
+        Ok(())
+    } else if let Some(path) = options.drive_path.as_deref() {
+        crate::bookmark::save_rdp_drive(&options.connection_id, std::path::Path::new(path))
+    } else {
+        crate::bookmark::delete_rdp_drive(&options.connection_id)
+    };
+    if let Err(error) = bookmark_result {
+        crate::bookmark::restore_rdp_drive(&options.connection_id, previous_bookmark.as_deref());
+        return Err(error);
+    }
+    if let Err(error) = state
+        .db
+        .save_named_state(
+            &format!("cnshell.rdp.{}", options.connection_id),
+            &serde_json::to_value(&options)
+                .map_err(|error| AppError::Internal(error.to_string()))?,
+        )
+        .await
+    {
+        crate::bookmark::restore_rdp_drive(&options.connection_id, previous_bookmark.as_deref());
+        return Err(error);
+    }
+    Ok(options)
+}
+
+#[tauri::command]
 pub async fn rdp_open(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1293,7 +1420,12 @@ pub async fn rdp_open(
     if profile.protocol != "rdp" {
         return Err(AppError::Validation("该连接不是 RDP 类型".into()));
     }
-    let session = state.rdp.open(app, profile)?;
+    let options = state
+        .db
+        .load_named_state::<RdpConnectionOptions>(&format!("cnshell.rdp.{connection_id}"))
+        .await?
+        .unwrap_or_else(|| crate::rdp::default_options(connection_id.clone()));
+    let session = state.rdp.open(app, profile, options)?;
     let _ = state.db.mark_connected(&connection_id).await;
     Ok(session)
 }
@@ -1301,6 +1433,16 @@ pub async fn rdp_open(
 #[tauri::command]
 pub fn rdp_close(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
     state.rdp.close(&session_id)
+}
+
+#[tauri::command]
+pub fn rdp_focus(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    state.rdp.focus(&session_id)
+}
+
+#[tauri::command]
+pub fn rdp_hide(state: State<'_, AppState>, session_id: String) -> AppResult<()> {
+    state.rdp.hide(&session_id)
 }
 
 #[tauri::command]

@@ -544,6 +544,30 @@ pub struct RdpPreflight {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RdpConnectionOptions {
+    pub connection_id: String,
+    pub display_mode: String,
+    pub display_id: Option<u32>,
+    pub scale_mode: String,
+    pub quality: String,
+    pub clipboard: bool,
+    pub audio_mode: String,
+    pub microphone: bool,
+    pub drive_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct RdpDisplay {
+    pub id: u32,
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub primary: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalPreferences {

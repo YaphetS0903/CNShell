@@ -12,6 +12,10 @@ pub fn certificate_bookmark_ref(connection_id: &str) -> String {
     format!("ssh-certificate-bookmark:{connection_id}")
 }
 
+pub fn rdp_drive_bookmark_ref(connection_id: &str) -> String {
+    format!("rdp-drive-bookmark:{connection_id}")
+}
+
 pub fn save(connection_id: &str, path: &Path) -> AppResult<()> {
     save_value(&bookmark_ref(connection_id), path, "私钥")
 }
@@ -30,11 +34,25 @@ fn save_value(reference: &str, path: &Path, label: &str) -> AppResult<()> {
             "{label}必须是存在的本地绝对文件路径"
         )));
     }
-    let encoded = STANDARD.encode(create(path, label)?);
+    let encoded = STANDARD.encode(create(path, label, true)?);
     keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&encoded)
         .map_err(|error| AppError::Storage(format!("{label} Bookmark 保存失败：{error}")))
+}
+
+pub fn save_rdp_drive(connection_id: &str, path: &Path) -> AppResult<()> {
+    if !path.is_absolute() || !path.is_dir() {
+        return Err(AppError::Validation(
+            "RDP 映射目录必须是存在的本地绝对文件夹".into(),
+        ));
+    }
+    let reference = rdp_drive_bookmark_ref(connection_id);
+    let encoded = STANDARD.encode(create(path, "RDP 映射目录", false)?);
+    keyring::Entry::new(KEYCHAIN_SERVICE, &reference)
+        .map_err(|error| AppError::Storage(error.to_string()))?
+        .set_password(&encoded)
+        .map_err(|error| AppError::Storage(format!("RDP 映射目录 Bookmark 保存失败：{error}")))
 }
 
 pub fn load(connection_id: &str) -> AppResult<Option<String>> {
@@ -43,6 +61,10 @@ pub fn load(connection_id: &str) -> AppResult<Option<String>> {
 
 pub fn load_certificate(connection_id: &str) -> AppResult<Option<String>> {
     load_value(&certificate_bookmark_ref(connection_id), "SSH Certificate")
+}
+
+pub fn load_rdp_drive(connection_id: &str) -> AppResult<Option<String>> {
+    load_value(&rdp_drive_bookmark_ref(connection_id), "RDP 映射目录")
 }
 
 fn load_value(reference: &str, label: &str) -> AppResult<Option<String>> {
@@ -63,6 +85,10 @@ pub fn restore(connection_id: &str, previous: Option<&str>) {
 
 pub fn restore_certificate(connection_id: &str, previous: Option<&str>) {
     restore_value(&certificate_bookmark_ref(connection_id), previous);
+}
+
+pub fn restore_rdp_drive(connection_id: &str, previous: Option<&str>) {
+    restore_value(&rdp_drive_bookmark_ref(connection_id), previous);
 }
 
 fn restore_value(reference: &str, previous: Option<&str>) {
@@ -92,6 +118,14 @@ pub fn copy_certificate(source_id: &str, destination_id: &str) -> AppResult<()> 
     )
 }
 
+pub fn copy_rdp_drive(source_id: &str, destination_id: &str) -> AppResult<()> {
+    copy_value(
+        &rdp_drive_bookmark_ref(source_id),
+        &rdp_drive_bookmark_ref(destination_id),
+        "RDP 映射目录",
+    )
+}
+
 fn copy_value(source: &str, destination: &str, label: &str) -> AppResult<()> {
     let Some(value) = load_value(source, label)? else {
         return Ok(());
@@ -108,6 +142,10 @@ pub fn delete(connection_id: &str) -> AppResult<()> {
 
 pub fn delete_certificate(connection_id: &str) -> AppResult<()> {
     delete_value(&certificate_bookmark_ref(connection_id), "SSH Certificate")
+}
+
+pub fn delete_rdp_drive(connection_id: &str) -> AppResult<()> {
+    delete_value(&rdp_drive_bookmark_ref(connection_id), "RDP 映射目录")
 }
 
 fn delete_value(reference: &str, label: &str) -> AppResult<()> {
@@ -157,6 +195,10 @@ pub fn access_certificate(connection_id: &str, fallback: &Path) -> AppResult<Pri
     )
 }
 
+pub fn access_rdp_drive(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
+    access_value(load_rdp_drive(connection_id)?, fallback, "RDP 映射目录")
+}
+
 fn access_value(
     encoded: Option<String>,
     fallback: &Path,
@@ -177,12 +219,14 @@ fn access_value(
 }
 
 #[cfg(target_os = "macos")]
-fn create(path: &Path, label: &str) -> AppResult<Vec<u8>> {
+fn create(path: &Path, label: &str, read_only: bool) -> AppResult<Vec<u8>> {
     use objc2_foundation::{NSString, NSURL, NSURLBookmarkCreationOptions};
     let path = NSString::from_str(&path.to_string_lossy());
     let url = NSURL::fileURLWithPath(&path);
-    let options = NSURLBookmarkCreationOptions::WithSecurityScope
-        | NSURLBookmarkCreationOptions::SecurityScopeAllowOnlyReadAccess;
+    let mut options = NSURLBookmarkCreationOptions::WithSecurityScope;
+    if read_only {
+        options |= NSURLBookmarkCreationOptions::SecurityScopeAllowOnlyReadAccess;
+    }
     url.bookmarkDataWithOptions_includingResourceValuesForKeys_relativeToURL_error(
         options, None, None,
     )
@@ -191,7 +235,7 @@ fn create(path: &Path, label: &str) -> AppResult<Vec<u8>> {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn create(path: &Path, _label: &str) -> AppResult<Vec<u8>> {
+fn create(path: &Path, _label: &str, _read_only: bool) -> AppResult<Vec<u8>> {
     Ok(path.to_string_lossy().as_bytes().to_vec())
 }
 
@@ -256,7 +300,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let key = directory.path().join("id_ed25519");
         std::fs::write(&key, b"private-key-fixture").unwrap();
-        let bookmark = create(&key, "私钥").unwrap();
+        let bookmark = create(&key, "私钥", true).unwrap();
         let access = resolve(&bookmark, "私钥").unwrap();
         assert_eq!(
             access.path().canonicalize().unwrap(),
@@ -266,6 +310,17 @@ mod tests {
             std::fs::read(access.path()).unwrap(),
             b"private-key-fixture"
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn rdp_drive_bookmark_keeps_the_selected_directory_writable() {
+        let directory = tempfile::tempdir().unwrap();
+        let bookmark = create(directory.path(), "RDP 映射目录", false).unwrap();
+        let access = resolve(&bookmark, "RDP 映射目录").unwrap();
+        let fixture = access.path().join("cnshell-rdp-bookmark.txt");
+        std::fs::write(&fixture, b"mapped-drive").unwrap();
+        assert_eq!(std::fs::read(&fixture).unwrap(), b"mapped-drive");
     }
 
     #[cfg(target_os = "macos")]

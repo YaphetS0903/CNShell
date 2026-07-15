@@ -29,6 +29,8 @@ import type {
   SyncResult,
   ProxyProfile as GeneratedProxyProfile,
   RdpPreflight,
+  RdpConnectionOptions as GeneratedRdpConnectionOptions,
+  RdpDisplay,
   SshCertificateInfo,
   Fido2Identity,
   TouchIdSyncStatus,
@@ -81,6 +83,12 @@ export type PortForward = Omit<GeneratedPortForward, "type" | "status"> & {
 };
 export type CommandSnippet = GeneratedCommandSnippet & { builtIn?: boolean };
 export type { Fido2Identity, TouchIdSyncStatus };
+export type RdpConnectionOptions = Omit<GeneratedRdpConnectionOptions,"displayMode"|"scaleMode"|"quality"|"audioMode"> & {
+  displayMode:"window"|"fullscreen";
+  scaleMode:"dynamic"|"fit"|"native";
+  quality:"auto"|"lowBandwidth"|"balanced"|"highQuality";
+  audioMode:"off"|"local"|"remote";
+};
 
 export type ConnectionDiagnostic = Omit<GeneratedConnectionDiagnostic, "stage"> & {
   stage: "dns" | "tcp" | "proxy" | "hostKey" | "authentication" | "shell" | "complete";
@@ -118,7 +126,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
+export type { AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, ProcessInfo, ProtocolCapability, RdpDisplay, RdpPreflight, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TerminalOutput };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

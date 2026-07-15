@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { CheckCircle2, Eye, EyeOff, FolderOpen, KeyRound, LoaderCircle, RefreshCw, ShieldCheck, TerminalSquare } from "lucide-react";
+import { CheckCircle2, Eye, EyeOff, FolderOpen, HardDrive, KeyRound, LoaderCircle, Monitor, RefreshCw, ShieldCheck, TerminalSquare, Volume2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
-import type { AuthType, Fido2Identity, Folder, ProxyProfile, SaveConnectionInput, SshCertificateInfo } from "../../types";
+import type { AuthType, Fido2Identity, Folder, ProxyProfile, RdpConnectionOptions, RdpDisplay, SaveConnectionInput, SshCertificateInfo } from "../../types";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import "./ConnectionEditor.css";
@@ -22,6 +22,8 @@ export function ConnectionEditor() {
   const [certificateInfo, setCertificateInfo] = useState<SshCertificateInfo | null>(null);
   const [fido2Identities, setFido2Identities] = useState<Fido2Identity[] | null>(null);
   const [fido2Busy, setFido2Busy] = useState(false);
+  const [rdpOptions,setRdpOptions]=useState<RdpConnectionOptions>(()=>defaultRdpOptions(initial.id));
+  const [rdpDisplays,setRdpDisplays]=useState<RdpDisplay[]>([]);
   const [overrideEnabled,setOverrideEnabled]=useState(false);
   const [terminalOverride,setTerminalOverride]=useState(settings.terminal);
   useEffect(() => { void Promise.all([api.listProxies().then(setProxies),api.listFolders().then(setFolders)]); }, []);
@@ -31,15 +33,21 @@ export function ConnectionEditor() {
     setShowSecret(false);
     setCertificateInfo(null);
     setFido2Identities(null);
+    setRdpOptions(defaultRdpOptions(initial.id));
+    setRdpDisplays([]);
+    if(editingConnection?.protocol==="rdp"){
+      void api.getRdpOptions(initial.id).then(setRdpOptions).catch((error)=>setError(errorMessage(error)));
+      void api.rdpDisplays().then(setRdpDisplays).catch((error)=>setError(errorMessage(error)));
+    }
     const override=settings.terminalOverrides[initial.id];
     setOverrideEnabled(Boolean(override));
     setTerminalOverride(override??settings.terminal);
-  }, [connectionEditorOpen, initial, settings]);
+  }, [connectionEditorOpen, editingConnection?.protocol, initial, setError, settings]);
   if (!connectionEditorOpen) return null;
   const change = <K extends keyof SaveConnectionInput>(key: K, value: SaveConnectionInput[K]) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async (event: React.FormEvent) => {
     event.preventDefault(); setSaving(true);
-    try { await api.saveConnection(form);const terminalOverrides={...settings.terminalOverrides};if(form.protocol==="ssh"&&overrideEnabled)terminalOverrides[form.id]=terminalOverride;else delete terminalOverrides[form.id];await saveSettings({...settings,terminalOverrides});await refreshConnections(); closeConnectionEditor(); }
+    try { await api.saveConnection(form);if(form.protocol==="rdp")await api.saveRdpOptions({...rdpOptions,connectionId:form.id});const terminalOverrides={...settings.terminalOverrides};if(form.protocol==="ssh"&&overrideEnabled)terminalOverrides[form.id]=terminalOverride;else delete terminalOverrides[form.id];await saveSettings({...settings,terminalOverrides});await refreshConnections(); closeConnectionEditor(); }
     catch (error) { setError(errorMessage(error)); } finally { setSaving(false); }
   };
   const choosePrivateKey = async () => {
@@ -80,11 +88,18 @@ export function ConnectionEditor() {
       setFido2Busy(false);
     }
   };
+  const chooseRdpDrive = async () => {
+    if(!confirm("映射后，远端 Windows 会获得所选本地文件夹的读写权限。仅选择当前主机确实需要的目录。"))return;
+    try {
+      const selected=await open({multiple:false,directory:true,title:"选择允许远程桌面读写的文件夹"});
+      if(selected)setRdpOptions((current)=>({...current,drivePath:selected}));
+    } catch(error){setError(errorMessage(error));}
+  };
   return <Modal title={editingConnection ? "编辑连接" : "新建连接"} onClose={closeConnectionEditor} wide>
     <form onSubmit={submit} className="connection-form">
       <div className="form-section-title"><span><ShieldCheck size={17}/>常规</span><small>连接资料仅保存在这台 Mac</small></div>
       <div className="form-grid">
-        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as "ssh"|"rdp";setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:{...current,protocol,port:22});setCertificateInfo(null); }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option></select></label>
+        <label><span>协议</span><select value={form.protocol} onChange={(event) => { const protocol = event.target.value as "ssh"|"rdp";setForm((current)=>protocol==="rdp"?{...current,protocol,port:3389,authType:"password",credential:"",privateKeyPath:null,certificatePath:null,proxyId:null,startupCommand:null,environment:{}}:{...current,protocol,port:22});setCertificateInfo(null);if(protocol==="rdp"){setRdpOptions(defaultRdpOptions(form.id));void api.rdpDisplays().then(setRdpDisplays).catch(()=>setRdpDisplays([]));} }}><option value="ssh">SSH / Linux</option><option value="rdp">远程桌面 / Windows</option></select></label>
         <label><span>名称</span><input required autoFocus value={form.name} onChange={(event) => change("name", event.target.value)} placeholder="生产服务器" /></label>
         <div className="span-2 field-group"><label htmlFor="connection-host">主机</label><div className="joined-fields"><input id="connection-host" required value={form.host} onChange={(event) => change("host", event.target.value)} placeholder="server.example.com"/><input className="port-input" required type="number" min="1" max="65535" value={form.port} onChange={(event) => change("port", Number(event.target.value))} aria-label="端口"/></div></div>
         <label><span>用户名</span><input required value={form.username} onChange={(event) => change("username", event.target.value)} autoComplete="username" /></label>
@@ -109,6 +124,20 @@ export function ConnectionEditor() {
       {form.protocol === "rdp" && <>
         <div className="form-section-title"><span><KeyRound size={17}/>远程桌面认证</span><small>密码通过 stdin 安全传递给 FreeRDP</small></div>
         <div className="form-grid"><label className="span-2"><span>Windows 密码</span><div className="password-field"><input required={!editingConnection?.hasCredential} type={showSecret?"text":"password"} value={form.credential??""} onChange={(event)=>change("credential",event.target.value)} placeholder={editingConnection?.hasCredential?"留空以保留已保存凭据":""} autoComplete="new-password"/><button type="button" onClick={()=>setShowSecret(!showSecret)} aria-label={showSecret?"隐藏密码":"显示密码"}>{showSecret?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></label></div>
+        <div className="form-section-title"><span><Monitor size={17}/>显示与性能</span><small>由内置 FreeRDP 原生窗口渲染</small></div>
+        <div className="form-grid">
+          <label><span>窗口模式</span><select value={rdpOptions.displayMode} onChange={(event)=>setRdpOptions({...rdpOptions,displayMode:event.target.value as RdpConnectionOptions["displayMode"]})}><option value="window">独立窗口</option><option value="fullscreen">全屏</option></select></label>
+          <label><span>本机显示器</span><select value={rdpOptions.displayId??""} disabled={rdpOptions.displayMode!=="fullscreen"} onChange={(event)=>setRdpOptions({...rdpOptions,displayId:event.target.value?Number(event.target.value):null})}><option value="">系统主显示器</option>{rdpDisplays.map((display)=><option key={display.id} value={display.id}>{display.name} · {display.width}×{display.height}{display.primary?" · 主屏":""}</option>)}</select></label>
+          <label><span>缩放</span><select value={rdpOptions.scaleMode} onChange={(event)=>setRdpOptions({...rdpOptions,scaleMode:event.target.value as RdpConnectionOptions["scaleMode"]})}><option value="dynamic">动态分辨率</option><option value="fit">缩放适应窗口</option><option value="native">远端原始尺寸</option></select></label>
+          <label><span>画质 / 带宽</span><select value={rdpOptions.quality} onChange={(event)=>setRdpOptions({...rdpOptions,quality:event.target.value as RdpConnectionOptions["quality"]})}><option value="auto">自动检测</option><option value="lowBandwidth">低带宽</option><option value="balanced">均衡</option><option value="highQuality">高画质 / 局域网</option></select></label>
+        </div>
+        <div className="form-section-title"><span><Volume2 size={17}/>重定向权限</span><small>默认只开启文本剪贴板</small></div>
+        <div className="rdp-permissions">
+          <label className="check-row"><input type="checkbox" checked={rdpOptions.clipboard} onChange={(event)=>setRdpOptions({...rdpOptions,clipboard:event.target.checked})}/><span>允许双向剪贴板</span></label>
+          <label><span>远端声音</span><select value={rdpOptions.audioMode} onChange={(event)=>setRdpOptions({...rdpOptions,audioMode:event.target.value as RdpConnectionOptions["audioMode"]})}><option value="off">关闭</option><option value="local">在这台 Mac 播放</option><option value="remote">留在远端播放</option></select></label>
+          <label className="check-row"><input type="checkbox" checked={rdpOptions.microphone} onChange={(event)=>{if(event.target.checked&&!confirm("允许远端 Windows 使用这台 Mac 的麦克风？"))return;setRdpOptions({...rdpOptions,microphone:event.target.checked});}}/><span>允许麦克风重定向</span></label>
+          <div className="span-2 field-group"><label>本地目录映射</label><div className="private-key-field"><input readOnly value={rdpOptions.drivePath??""} placeholder="默认关闭" aria-label="RDP 映射目录"/><button type="button" className="button secondary" onClick={()=>void chooseRdpDrive()}><HardDrive size={14}/>选择目录</button>{rdpOptions.drivePath&&<button type="button" className="icon-button" aria-label="移除 RDP 映射目录" onClick={()=>setRdpOptions({...rdpOptions,drivePath:null})}><X size={14}/></button>}</div><small>映射目录会向远端提供读写权限；CNshell 只授权你选择的这一个文件夹。</small></div>
+        </div>
       </>}
       {form.protocol === "ssh" && <><div className="form-section-title"><span><TerminalSquare size={17}/>终端偏好</span><small>默认跟随全局设置</small></div><label className="check-row"><input type="checkbox" checked={overrideEnabled} onChange={(event)=>setOverrideEnabled(event.target.checked)}/><span>为此连接覆盖全局终端偏好</span></label>{overrideEnabled&&<TerminalPreferencesFields idPrefix={`connection-terminal-${form.id}`} value={terminalOverride} onChange={setTerminalOverride}/>}</>}
       <div className="form-section-title"><span><CheckCircle2 size={17}/>备注</span></div>
@@ -119,4 +148,5 @@ export function ConnectionEditor() {
 }
 
 function parseEnvironment(value:string):Record<string,string>{const result:Record<string,string>={};for(const pair of value.split(";")){const[key,...rest]=pair.trim().split("=");if(key&&/^[A-Za-z_][A-Za-z0-9_]*$/.test(key))result[key]=rest.join("=");}return result;}
+function defaultRdpOptions(connectionId:string):RdpConnectionOptions{return{connectionId,displayMode:"window",displayId:null,scaleMode:"dynamic",quality:"auto",clipboard:true,audioMode:"off",microphone:false,drivePath:null};}
 function folderOptions(folders:Folder[]){const byId=new Map(folders.map((folder)=>[folder.id,folder]));const label=(folder:Folder,seen=new Set<string>()):string=>{if(seen.has(folder.id))return folder.name;seen.add(folder.id);const parent=folder.parentId?byId.get(folder.parentId):undefined;return parent?`${label(parent,seen)} / ${folder.name}`:folder.name;};return folders.map((folder)=>({...folder,label:label(folder)})).sort((left,right)=>left.label.localeCompare(right.label,"zh-CN"));}

@@ -34,7 +34,7 @@ CNshell 每 2 秒通过独立 SSH Exec Channel 读取 `/proc`、`df`、`ip` 和 
 
 ## RDP
 
-直接创建 RDP 连接即可。CNshell 应用包已内置 universal `sdl-freerdp`，使用动态分辨率、剪贴板和自动重连参数启动独立受管窗口，不需要 Homebrew 或 XQuartz。密码保存在 macOS Keychain，仅通过 sidecar stdin 传递，不进入命令行参数或环境变量。CNshell 标签会显示 sidecar 状态，关闭标签会终止对应远程桌面进程。
+直接创建 RDP 连接即可。CNshell 应用包已内置 universal `sdl-freerdp`，使用原生 SDL/Metal 窗口、动态分辨率、文本剪贴板和自动重连，不需要 Homebrew 或 XQuartz。连接编辑页可选择窗口/全屏、显示器、缩放、画质/带宽和远端声音；麦克风与本地目录映射默认关闭，启用前会确认权限。密码和目录 Bookmark 保存在 macOS Keychain，参数和密码仅通过 sidecar stdin 传递，不进入命令行参数或环境变量。CNshell 标签会显示 connecting/online/reconnecting/closed/failed 状态，可切到或隐藏受管远程窗口；关闭标签会终止对应远程桌面进程。
 
 ## 备份与诊断
 

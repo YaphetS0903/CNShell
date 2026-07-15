@@ -85,6 +85,17 @@
 | 本机安装 | arm64 App 完成严格 ad-hoc 深度签名并覆盖安装至 `/Applications/CNshell.app`；安装前后现有 SQLite 哈希一致，6 条连接仍在，应用进程正常启动。本机 `bioutil` 确认 Touch ID 解锁策略有效，但未自动弹出会打断用户的生物识别提示 |
 | 保留验收边界 | 当前没有实体 FIDO2 设备，不声明真实触摸、PIN、取消或拔出通过；Touch ID 系统弹窗的保存、解锁与取消仍需用户在已安装应用中完成一次人工交互后才能标记真机通过 |
 
+### 2026-07-15 RDP 深度集成增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 路线决策 | 共享帧/IOSurface、原生 NSView 子视图和独立 SDL 窗口三路线已记录比较；采用独立窗口深度联动以保留 SDL 原生 IME/Metal 与 sidecar 崩溃隔离，详见 `docs/RDP_TECHNICAL_EVALUATION.md` |
+| sidecar | FreeRDP 3.28.0 universal（arm64 + x86_64）按固定源码哈希、OpenSSL/SDL 固定版本构建；修订版 4 包含用户关窗正常退出和 `CNSHELL_RDP_STATE=online` 状态标记，签名/架构/系统库检查通过 |
+| 连接状态与窗口 | 返回 connecting，FreeRDP `postConnect` 标记在线；自动重连日志映射 reconnecting；退出映射 closed/failed，退出 131 作为 SDL 手动关窗；窗口位置跟随 CNshell，macOS `NSRunningApplication` 支持聚焦与隐藏 |
+| 配置与权限 | UI 与 Rust 参数测试覆盖显示器、全屏、三种缩放、四档画质、文本剪贴板（文件剪贴板关闭）、声音、麦克风确认和单目录读写 Bookmark；密码和参数不进入 argv |
+| 本机证据 | 安装包严格 ad-hoc 签名验证；`--rdp-preflight` 返回内置 helper；`--rdp-displays` 解析本机 FreeRDP 显示器列表；Rust `133/133`、前端 `107/107`、lint/build 通过 |
+| 保留验收边界 | 当前没有 Windows 10/11 或 Server 主机，不能声明真实首帧、中文 IME、键鼠、剪贴板方向、声音/麦克风、动态分辨率、多显示器和真实断网重连通过 |
+
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
 | `npm run lint` | 通过，0 warning |
@@ -154,4 +165,4 @@ GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 P
 | 所有长任务立即返回任务 ID | 通过 | 文件传输使用持久化传输队列；连接诊断、远端压缩/解压和默认应用预览使用统一 `TaskManager`，command 立即返回任务 ID，通过 `background-task` 事件报告结果，并支持快照查询和取消。短小 SFTP 元数据及 10 MB 内文本操作保留普通 command，不属于长任务 |
 | 共享类型生成或 JSON Schema | 通过 | Rust `models.rs` 为 IPC 字段、可空性和嵌套结构的单一来源；`scripts/generate-ipc-types.mjs` 离线生成 `src/generated/ipc.ts`，`lint` 与 production build 均拒绝过期结果；前端仅用联合类型收窄业务枚举。本次生成迁移发现并修复了 `ProxyProfile.type` 曾被序列化为 `proxyType` 的真实漂移 |
 | 私钥安全作用域 Bookmark | 通过 | macOS 使用 NSURL 创建只读 security-scoped Bookmark，Base64 存入连接专属 Keychain 条目；认证时解析真实路径并以 RAII 启停访问，复制/永久删除/保存失败均同步处理，旧记录无 Bookmark 时兼容路径回退。真实 OpenSSH 测试将 profile 路径故意设为不存在文件后仍通过 Bookmark 完成认证。当前候选包尚未启用 App Sandbox，这是独立发布权限决策，不再是 Bookmark 实现缺口 |
-| RDP v1.5 完整 sidecar | 部分 | FreeRDP 3.28.0、OpenSSL、SDL、SDL_ttf 与 FreeType 已从固定哈希的官方源码静态构建为最低 macOS 13 的 arm64 + x86_64 sidecar，内置 NTLM 所需 MD4/MD5/RC4，并随应用资源和完整许可分发；连接参数与 Keychain 密码仅经 stdin 传递，支持动态分辨率、剪贴板、自动重连、受管会话标签、关闭、有限诊断捕获与错误翻译。仍需可正常响应 RDP 协商的 Windows 主机验证画面、键鼠、剪贴板、缩放与多分辨率 |
+| RDP v1.5 深度联动 | 部分（代码完成/真机待验） | FreeRDP 3.28.0、OpenSSL、SDL、SDL_ttf 与 FreeType 已从固定哈希的官方源码静态构建为最低 macOS 13 的 arm64 + x86_64 sidecar，内置 NTLM 所需 MD4/MD5/RC4；参数与 Keychain 密码仅经 stdin，支持 connecting/online/reconnecting/closed/failed、窗口定位/聚焦/隐藏、全屏/显示器、动态分辨率/缩放、画质、文本剪贴板、音频、麦克风确认和单目录映射。仍需可正常响应 RDP 协商的 Windows 主机验证首帧、键鼠/中文 IME、剪贴板、声音、缩放、多分辨率和断网重连 |

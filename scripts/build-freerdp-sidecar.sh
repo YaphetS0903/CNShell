@@ -16,7 +16,7 @@ OPENSSL_VERSION="3.6.3"
 SDL_VERSION="3.4.12"
 SDL_TTF_VERSION="3.2.2"
 FREETYPE_VERSION="VER-2-13-2-SDL"
-FREERDP_BUILD_REVISION="3"
+FREERDP_BUILD_REVISION="4"
 
 mkdir -p "$DOWNLOADS" "$SOURCES" "$OUTPUT/licenses"
 touch "$WORK/.metadata_never_index"
@@ -72,6 +72,10 @@ extract "$DOWNLOADS/freetype-$FREETYPE_VERSION.tar.gz" "$SOURCES/sdl-ttf/externa
 FREERDP_USER_CLOSE_PATCH="$ROOT/scripts/patches/freerdp-sdl-user-close.patch"
 if ! grep -q "_userCloseRequested" "$SOURCES/freerdp/client/SDL/SDL3/sdl_context.hpp"; then
   patch -d "$SOURCES/freerdp" -p1 < "$FREERDP_USER_CLOSE_PATCH"
+fi
+FREERDP_STATE_PATCH="$ROOT/scripts/patches/freerdp-sdl-state-marker.patch"
+if ! grep -q "CNSHELL_RDP_STATE=online" "$SOURCES/freerdp/client/SDL/SDL3/sdl_context.cpp"; then
+  patch -d "$SOURCES/freerdp" -p1 < "$FREERDP_STATE_PATCH"
 fi
 
 CMAKE="$SOURCES/cmake/CMake.app/Contents/bin/cmake"

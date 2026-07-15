@@ -424,6 +424,26 @@ export interface RdpPreflight {
   message: string;
 }
 
+export interface RdpConnectionOptions {
+  connectionId: string;
+  displayMode: string;
+  displayId: number | null;
+  scaleMode: string;
+  quality: string;
+  clipboard: boolean;
+  audioMode: string;
+  microphone: boolean;
+  drivePath: string | null;
+}
+
+export interface RdpDisplay {
+  id: number;
+  name: string;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
 export interface TerminalPreferences {
   fontFamily: string;
   fontSize: number;

@@ -64,7 +64,7 @@ DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要
 ## 已知限制
 
 - 当前 Beta 未完成 Developer ID 签名、公证和正式自动更新通道。
-- RDP 使用独立 FreeRDP 窗口，尚未内嵌到 CNshell 主窗口。
+- RDP 采用独立 FreeRDP 窗口深度联动（状态、定位、聚焦/隐藏、全屏、显示器、缩放、画质、剪贴板、音频和目录映射）；由于嵌入画面会破坏 SDL 原生输入与 sidecar 崩溃隔离，暂不把像素强行搬进 WebView。
 - Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver 真机矩阵仍待扩大。
 - Zmodem 已完成 `lrzsz` 双向互操作，Mosh 已完成真实公网 UDP 短测，X11 已完成真实 SSH request；Mosh 漫游/Intel 与 XQuartz GUI 仍待对应环境验收。
 - FIDO2 硬件密钥和 Touch ID 本地同步口令保护已完成代码接入；实体安全密钥与系统生物识别弹窗仍需对应真机人工验收。

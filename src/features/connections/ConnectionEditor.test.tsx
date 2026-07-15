@@ -30,6 +30,24 @@ describe("ConnectionEditor", () => {
     expect(screen.getByPlaceholderText("例如：tmux attach || tmux")).toHaveValue("");
   });
 
+  it("configures RDP display and least-privilege redirection options", async () => {
+    const user=userEvent.setup();
+    vi.spyOn(api,"rdpDisplays").mockResolvedValue([{id:1,name:"Built-in Retina Display",width:1352,height:878,primary:true}]);
+    vi.spyOn(window,"confirm").mockReturnValue(true);
+    dialog.open.mockResolvedValue("/Users/test/RDP Share");
+    render(<ConnectionEditor/>);
+
+    await user.selectOptions(screen.getByRole("combobox",{name:"协议"}),"rdp");
+    expect(screen.getByRole("checkbox",{name:"允许双向剪贴板"})).toBeChecked();
+    expect(screen.getByRole("checkbox",{name:"允许麦克风重定向"})).not.toBeChecked();
+    expect(screen.getByLabelText("RDP 映射目录")).toHaveValue("");
+    await user.selectOptions(screen.getByRole("combobox",{name:"窗口模式"}),"fullscreen");
+    expect(await screen.findByRole("option",{name:/Built-in Retina Display/})).toBeInTheDocument();
+    await user.click(screen.getByRole("button",{name:"选择目录"}));
+    expect(screen.getByLabelText("RDP 映射目录")).toHaveValue("/Users/test/RDP Share");
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("读写权限"));
+  });
+
   it("fills a persisted connection without exposing its credential", async () => {
     const connection: ConnectionProfile = {
       id: "persisted", folderId: "child", protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
@@ -103,6 +121,8 @@ describe("ConnectionEditor", () => {
     expect(screen.queryByLabelText("私钥口令")).not.toBeInTheDocument();
     expect(api.listFido2Identities).toHaveBeenCalledTimes(1);
   });
+
+  it("persists RDP options only after the connection is saved",async()=>{const user=userEvent.setup();vi.spyOn(api,"rdpDisplays").mockResolvedValue([]);vi.spyOn(api,"saveConnection").mockImplementation(async(input)=>({...input,hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null} as ConnectionProfile));const saveOptions=vi.spyOn(api,"saveRdpOptions").mockImplementation(async(options)=>options);vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([]);render(<ConnectionEditor/>);await user.selectOptions(screen.getByRole("combobox",{name:"协议"}),"rdp");await user.type(screen.getByRole("textbox",{name:"名称"}),"Windows");await user.type(screen.getByRole("textbox",{name:"主机"}),"windows.example.test");await user.type(screen.getByLabelText("Windows 密码"),"secret-password");await user.selectOptions(screen.getByRole("combobox",{name:"画质 / 带宽"}),"balanced");await user.selectOptions(screen.getByRole("combobox",{name:"远端声音"}),"local");await user.click(screen.getByRole("button",{name:"保存连接"}));expect(saveOptions).toHaveBeenCalledWith(expect.objectContaining({quality:"balanced",audioMode:"local",clipboard:true,microphone:false}));expect(api.saveConnection).toHaveBeenCalledBefore(saveOptions);});
 
   it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null, certificatePath: null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
 });

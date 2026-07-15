@@ -18,6 +18,8 @@ import type {
   ProtocolCapability,
   ConnectionProtocolOptions,
   RdpPreflight,
+  RdpConnectionOptions,
+  RdpDisplay,
   RemoteFile,
   SessionLogStatus,
   SaveConnectionInput,
@@ -249,10 +251,15 @@ export const api = {
   async rdpPreflight(): Promise<RdpPreflight> {
     return isTauri() ? invoke("rdp_preflight") : { available: false, executable: null, message: "桌面版可检测 FreeRDP。" };
   },
+  async rdpDisplays():Promise<RdpDisplay[]>{return isTauri()?invoke("rdp_displays"):[];},
+  async getRdpOptions(connectionId:string):Promise<RdpConnectionOptions>{return invoke("rdp_options_get",{connectionId});},
+  async saveRdpOptions(options:RdpConnectionOptions):Promise<RdpConnectionOptions>{return invoke("rdp_options_save",{options});},
   async rdpOpen(connectionId: string): Promise<TerminalSession> {
     return invoke("rdp_open", { connectionId });
   },
   async rdpClose(sessionId:string):Promise<void>{if(isTauri())await invoke("rdp_close",{sessionId});},
+  async rdpFocus(sessionId:string):Promise<void>{if(isTauri())await invoke("rdp_focus",{sessionId});},
+  async rdpHide(sessionId:string):Promise<void>{if(isTauri())await invoke("rdp_hide",{sessionId});},
   async getSettings(): Promise<AppSettings> {
     if (!isTauri()) return normalizeAppSettings(JSON.parse(localStorage.getItem("cnshell-settings") ?? "null"));
     return invoke("settings_get");
