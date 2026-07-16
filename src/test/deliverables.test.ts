@@ -58,4 +58,13 @@ describe("PLAN deliverables", () => {
     expect(release).toContain("G-Kermit helper 不是 arm64 + x86_64 universal binary");
     expect(release).toContain("G-Kermit 对应源码缺失");
   });
+
+  it("keeps Mosh resize automation and external acceptance boundaries consistent", () => {
+    const acceptance = readFileSync(resolve("docs/ACCEPTANCE.md"), "utf8");
+    const plan = readFileSync(resolve("docs/NEXT_DEVELOPMENT_PLAN.md"), "utf8");
+
+    expect(acceptance).toContain("ResizeObserver");
+    expect(acceptance).not.toContain("自动化屏幕 resize 捕获仍待");
+    expect(plan).toContain("前端回归测试已覆盖 `ResizeObserver`");
+  });
 });

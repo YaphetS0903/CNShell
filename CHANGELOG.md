@@ -6,7 +6,7 @@
 
 ### 新增
 
-- 补充 Mosh 终端尺寸回归验证：窗口 ResizeObserver 会在 fit 后把新列/行发送给同一 Mosh 会话，并在终端卸载时释放 observer。
+- 补充 Mosh 终端尺寸回归验证：窗口 ResizeObserver 会在 fit 后把新列/行发送给同一 Mosh 会话，并在终端卸载时释放 observer；交付物测试会阻止验收文档把该项错误回退为待验。
 - 新增只读外部验收预检：统一检查 Developer ID/公证/updater、系统架构、XQuartz、FIDO2、实体串口及 RDP/Mosh/WebDAV/Relay 环境是否就绪；报告不输出敏感值，可原子保存为权限 `0600` 的 Markdown，并明确区分前置条件与人工真机通过。
 - 设置中的“反馈与诊断”可打开预填运行环境的错误报告、功能建议和当前 Release。
 - 错误报告只预填 CNshell 版本、macOS 版本和运行架构，不读取或附带连接资料。
