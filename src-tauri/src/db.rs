@@ -28,7 +28,11 @@ impl Database {
             .max_connections(5)
             .connect_with(options)
             .await?;
-        sqlx::migrate!("./migrations")
+        // Public releases keep migrations additive so an older app can reopen a database
+        // after an updater rollback while still validating every migration it knows.
+        let mut migrations = sqlx::migrate!("./migrations");
+        migrations.set_ignore_missing(true);
+        migrations
             .run(&pool)
             .await
             .map_err(|error| AppError::Storage(error.to_string()))?;
@@ -1764,5 +1768,73 @@ mod tests {
             assert!(path.with_extension("sqlite.backup").exists());
             upgraded.pool.close().await;
         }
+    }
+
+    #[tokio::test]
+    async fn additive_future_schema_remains_readable_after_release_rollback() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("future.sqlite");
+        let db = Database::open(&path).await.unwrap();
+        let input = SaveConnectionInput {
+            id: "rollback-connection".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "Rollback".into(),
+            host: "rollback.example".into(),
+            port: 22,
+            username: "root".into(),
+            auth_type: "sshAgent".into(),
+            private_key_path: None,
+            certificate_path: None,
+            host_key_policy: "strict".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        db.save_connection(&input, None).await.unwrap();
+        sqlx::query("ALTER TABLE connections ADD COLUMN future_additive_value TEXT")
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        let future_version: i64 =
+            sqlx::query_scalar("SELECT COALESCE(MAX(version), 0) + 1 FROM _sqlx_migrations")
+                .fetch_one(&db.pool)
+                .await
+                .unwrap();
+        sqlx::query("INSERT INTO _sqlx_migrations(version,description,success,checksum,execution_time) VALUES(?, 'future additive migration', TRUE, ?, 0)")
+            .bind(future_version)
+            .bind(vec![0_u8; 32])
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        db.pool.close().await;
+
+        let rolled_back = Database::open(&path).await.unwrap();
+        let restored = rolled_back
+            .get_connection("rollback-connection")
+            .await
+            .unwrap();
+        assert_eq!(restored.host, "rollback.example");
+        assert!(path.with_extension("sqlite.backup").exists());
+    }
+
+    #[tokio::test]
+    async fn rollback_compatibility_still_rejects_a_modified_known_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("modified.sqlite");
+        let db = Database::open(&path).await.unwrap();
+        sqlx::query("UPDATE _sqlx_migrations SET checksum=? WHERE version=(SELECT MIN(version) FROM _sqlx_migrations)")
+            .bind(vec![0_u8; 32])
+            .execute(&db.pool)
+            .await
+            .unwrap();
+        db.pool.close().await;
+
+        let error = Database::open(&path).await.err().unwrap();
+        assert!(error.to_string().contains("modified"));
     }
 }

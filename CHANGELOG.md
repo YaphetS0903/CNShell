@@ -71,6 +71,8 @@
 ### 安全与可靠性
 
 - 正式发布工作流新增 Developer ID `.p12` 临时 Keychain 导入、精确身份校验和失败后清理；FreeRDP、Mosh 与 G-Kermit 统一从固定源码重建并使用 Hardened Runtime/时间戳签名，App 包新增按需 RDP 麦克风用途说明；签名 universal 归档可生成同时覆盖 Apple Silicon/Intel 的 HTTPS updater `latest.json`。
+- 正式 updater 门禁不再只检查 `.sig` 文件存在：刚构建的 CNshell 会使用与客户端相同的 Base64/minisign 规则验证归档、签名和 release 公钥匹配，并拒绝篡改归档、错误公钥与不安全 endpoint。
+- 数据库迁移保持增量兼容，旧版本可在更新回滚后忽略未知的更高 migration 并继续读取原有数据；所有已知 migration checksum 仍严格校验，迁移前备份继续保留。
 - 凭据与私钥 security-scoped Bookmark 保存于 macOS Keychain。
 - 下载与远端保存使用临时文件和原子替换，避免半成品覆盖正式目标。
 - RDP 密码仅通过 Helper stdin 传递，不进入参数或环境变量。

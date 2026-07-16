@@ -19,7 +19,9 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="..."
 ./scripts/release.sh
 ```
 
-脚本执行 lint、前端/Rust/E2E 测试、依赖审计、universal 构建，并通过 Tauri 使用 Apple API 凭据完成签名/公证。构建后还会从 `Info.plist` 读取真实可执行文件名，校验 Developer ID 身份、严格签名、Gatekeeper、arm64 + x86_64、最低 macOS 13、DMG 完整性、App/DMG 公证票据，以及非空 updater 归档和签名。
+脚本执行 lint、前端/Rust/E2E 测试、依赖审计、universal 构建，并通过 Tauri 使用 Apple API 凭据完成签名/公证。构建后还会从 `Info.plist` 读取真实可执行文件名，校验 Developer ID 身份、严格签名、Gatekeeper、arm64 + x86_64、最低 macOS 13、DMG 完整性和 App/DMG 公证票据。updater 不只检查归档和 `.sig` 非空：刚构建的 CNshell 可执行文件会使用与 Tauri updater 相同的 Base64/minisign 验证规则，确认归档、签名和 `tauri.release.json` 公钥真实匹配；无效公钥、篡改归档、签名错配、未启用 updater 产物或不安全 endpoint 都会阻断发布。
+
+正式版本的 SQLite migration 必须保持向后兼容，只能增量新增表、索引或带兼容默认值/可空的列，禁止删除、重命名或改变旧字段语义。CNshell 允许旧版本忽略它不认识的更高 migration 版本，以便更新后回滚仍能打开原数据库；旧版本认识的 migration 仍逐个校验 checksum，任何历史 migration 被修改都会拒绝启动。每次迁移前仍会生成本地数据库备份。
 
 真实 SSH/SFTP 协议测试须在发布前独立执行并记录到 `docs/ACCEPTANCE.md`。耐久测试沿用已经验收的约 2 小时 50 分钟结果，不在发布脚本中重复执行。正式发布前还必须在没有开发环境的 Ventura、Sonoma 和 Sequoia Mac 上验证安装、更新与卸载。
 

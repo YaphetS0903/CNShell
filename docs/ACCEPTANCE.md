@@ -222,7 +222,7 @@
 | `npm run test:pty-fixture` | 通过；本机 Paramiko 密码认证夹具提供真实 PTY Shell，验证中文/Emoji 双向 UTF-8、ANSI 清屏/光标控制和 True Color 输出 |
 | `CNSHELL_PROTOCOL_FILTER=live_ssh_directory_transfer_round_trip_and_cleanup npm run test:protocol` | 通过；本轮真实 OpenSSH 小目录覆盖嵌套中文文件、上传/下载、覆盖交换及本地/远端临时清理。此前 10 万文件、1 GB、代理、隧道等全量协议证据继续保留，本轮未重复消耗资源 |
 | `npm audit --audit-level=moderate` | 本轮两次请求均在连接 npm registry 前发生 TLS 中断，未取得审计结论；不把网络失败记作 0 漏洞。提交前其余本地门禁不受影响，待 registry 恢复后重跑 |
-| `zsh -n scripts/release.sh` 与发布门禁单测 | 通过；发布脚本从 Info.plist 读取实际小写可执行文件名，并检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据及 updater 签名产物 |
+| `zsh -n scripts/release.sh`、发布门禁单测、updater 验签与数据库回滚定向测试 | 通过；17 个发布/Tauri 配置用例、4 个 Rust updater 验签用例和 2 个数据库回滚用例通过。发布脚本检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据，并使用 release 公钥实际验证 updater 归档和 `.sig`；篡改归档、错误公钥与 HTTP endpoint 被拒绝。未来增量 schema 可由旧版读取并保留迁移前备份，已知 migration checksum 被修改仍会拒绝启动 |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
 | `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；在仅保留 macOS 系统 PATH 的环境中，打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper；DMG SHA-256：`1837594f3bacaae218dd3a99138cf510ebb734b6ddf3e8ba09fbae061af2f3d3`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
@@ -242,7 +242,7 @@
 | Ventura、Sonoma、Sequoia 与 Intel 真机 | 外部阻塞 | 最低版本和 universal 构建可静态验证；仍需对应设备运行 |
 | 连续 SSH + 监控、空闲内存 < 150 MB | 用户验收通过 | 用户于约 2 小时 50 分钟时主动结束长测并认可结果；期间 4 条 SSH TCP 连接持续建立，RSS 从约 36 MB 降至并稳定在约 21 MB。未宣称实际运行满 8 小时 |
 | 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 本机已完成可回滚生命周期回归：覆盖安装、临时移除 App、恢复启动后，6 条连接记录稳定哈希与 6 个关联 Keychain 条目均保持不变；文档已提供。仍需另一台无开发环境的干净 Mac 验收首次安装与 Gatekeeper 流程 |
-| Developer ID 签名、公证、正式 updater | 外部阻塞 | 应用内已实现手动检查、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。GitHub release workflow 已能把 `.p12` 导入临时 Keychain 并在结束时清理；FreeRDP、Mosh、G-Kermit 从固定哈希源码重建，候选与正式构建均启用 Hardened Runtime，正式构建使用同一 Developer ID 与时间戳，CI/发布门禁逐个校验 runtime/架构/对应源码，正式门禁额外校验 Authority。签名 universal 归档会生成包含 Apple Silicon/Intel 两个目标的 HTTPS `latest.json`。Tauri 提供 RDP 麦克风用途说明；App Sandbox 因 PTY/X11/Serial/sidecar 架构明确不启用。仍需要 Apple 证书、notary 凭据、正式 endpoint 与 public key 才能完成真实更新验收；发布脚本会拒绝占位配置 |
+| Developer ID 签名、公证、正式 updater | 外部阻塞 | 应用内已实现手动检查、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。GitHub release workflow 已能把 `.p12` 导入临时 Keychain 并在结束时清理；FreeRDP、Mosh、G-Kermit 从固定哈希源码重建，候选与正式构建均启用 Hardened Runtime，正式构建使用同一 Developer ID 与时间戳，CI/发布门禁逐个校验 runtime/架构/对应源码，正式门禁额外校验 Authority。签名 universal 归档会在内置同算法验签确认归档、`.sig` 与 release 公钥匹配后，生成包含 Apple Silicon/Intel 两个目标的 HTTPS `latest.json`。增量 migration 可供旧版回退读取且已知 checksum 仍严格校验。Tauri 提供 RDP 麦克风用途说明；App Sandbox 因 PTY/X11/Serial/sidecar 架构明确不启用。仍需要 Apple 证书、notary 凭据、正式 endpoint 与 public key 才能完成真实更新验收；发布脚本会拒绝占位、签名错配和不安全 endpoint 配置，数据库代码证据不替代正式更新/回滚实测 |
 
 本机候选包另已完成以下桌面证据：DMG 只读挂载后，包内应用通过 `codesign --verify --deep --strict` 并连续运行；辅助功能树可识别原生菜单、主工具栏、连接表单字段和安全密码输入框，模态打开后焦点进入关闭按钮，Escape 可关闭。该 ad-hoc 签名只用于本机结构验收，不等同 Developer ID 签名或 Apple 公证。
 

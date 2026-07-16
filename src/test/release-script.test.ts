@@ -44,7 +44,12 @@ describe("release script gates", () => {
     expect(script).toContain('xcrun stapler validate "$APP_PATH"');
     expect(script).toContain('xcrun stapler validate "$DMG_PATH"');
     expect(script).toContain("*.app.tar.gz.sig");
+    expect(script).toContain('"$EXECUTABLE_PATH" --verify-updater-signature');
+    expect(script).toContain("src-tauri/tauri.release.json");
     expect(script).toContain("generate-updater-manifest.mjs");
+    expect(script.indexOf("generate-updater-manifest.mjs")).toBeGreaterThan(
+      script.indexOf('"$EXECUTABLE_PATH" --verify-updater-signature'),
+    );
     expect(script).toContain('"$BUNDLE_ROOT/latest.json"');
     expect(script).toContain('lipo -archs "$MOSH_CLIENT"');
     expect(script).toContain("Mosh-GPL-3.0-or-later.txt");

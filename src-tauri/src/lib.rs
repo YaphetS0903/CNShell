@@ -32,6 +32,7 @@ mod team_share;
 mod telnet;
 mod touch_id;
 mod tunnel;
+mod updater_verify;
 mod webdav;
 mod x11;
 mod xymodem;
@@ -104,6 +105,8 @@ pub fn serial_devices_json() -> String {
         }
     }
 }
+
+pub use updater_verify::verify_updater_signature;
 
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {

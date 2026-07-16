@@ -154,6 +154,10 @@ UPDATER_SIGNATURES=("$BUNDLE_ROOT"/**/*.app.tar.gz.sig(N))
   echo "发布失败：Tauri updater 归档或签名为空。" >&2
   exit 1
 }
+"$EXECUTABLE_PATH" --verify-updater-signature \
+  "${UPDATER_ARCHIVES[1]}" \
+  "${UPDATER_SIGNATURES[1]}" \
+  src-tauri/tauri.release.json
 
 PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
 UPDATER_DOWNLOAD_URL="${UPDATER_DOWNLOAD_BASE_URL%/}/v$PACKAGE_VERSION/${UPDATER_ARCHIVES[1]:t}"
