@@ -4,6 +4,11 @@ import { describe, expect, it } from "vitest";
 
 describe("release script gates", () => {
   const script = readFileSync(resolve("scripts/release.sh"), "utf8");
+  const moshBuildScript = readFileSync(
+    resolve("scripts/build-mosh-sidecar.sh"),
+    "utf8",
+  );
+  const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
 
   it("uses the executable declared by the app bundle instead of assuming its case", () => {
     expect(script).toContain("Print :CFBundleExecutable");
@@ -22,6 +27,18 @@ describe("release script gates", () => {
     expect(script).toContain("*.app.tar.gz.sig");
     expect(script).toContain('lipo -archs "$MOSH_CLIENT"');
     expect(script).toContain("Mosh-GPL-3.0-or-later.txt");
+  });
+
+  it("validates Mosh with an explicit terminal in non-interactive environments", () => {
+    expect(moshBuildScript).toContain(
+      'env TERM=xterm-256color "$OUTPUT/mosh-client" -c >/dev/null',
+    );
+    expect(script).toContain(
+      'env TERM=xterm-256color "$MOSH_CLIENT" -c >/dev/null',
+    );
+    expect(workflow).toContain(
+      'env TERM=xterm-256color "$mosh" -c >/dev/null',
+    );
   });
 });
 

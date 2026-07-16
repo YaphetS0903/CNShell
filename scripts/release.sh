@@ -86,7 +86,7 @@ MOSH_ARCHITECTURES="$(lipo -archs "$MOSH_CLIENT")"
   echo "发布失败：Mosh GPLv3 许可证缺失。" >&2
   exit 1
 }
-"$MOSH_CLIENT" -c >/dev/null
+env TERM=xterm-256color "$MOSH_CLIENT" -c >/dev/null
 codesign --verify --strict --verbose=2 "$MOSH_CLIENT"
 
 KERMIT_HELPER="$APP_PATH/Contents/Resources/kermit/gkermit"

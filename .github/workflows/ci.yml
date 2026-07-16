@@ -108,5 +108,5 @@ jobs:
           mosh_architectures="$(lipo -archs "$mosh")"
           [[ " $mosh_architectures " == *" arm64 "* && " $mosh_architectures " == *" x86_64 "* ]]
           test -s "$app/Contents/Resources/mosh/licenses/Mosh-GPL-3.0-or-later.txt"
-          "$mosh" -c >/dev/null
+          env TERM=xterm-256color "$mosh" -c >/dev/null
           codesign --verify --deep --strict --verbose=2 "$app"

@@ -126,7 +126,7 @@ MINIMUM="$(otool -arch arm64 -l "$OUTPUT/mosh-client" | awk '/LC_BUILD_VERSION/{
   echo "Mosh 最低系统版本不匹配：$MINIMUM" >&2
   exit 1
 }
-"$OUTPUT/mosh-client" -c >/dev/null
+env TERM=xterm-256color "$OUTPUT/mosh-client" -c >/dev/null
 
 cp "$SOURCES/mosh/COPYING" "$OUTPUT/licenses/Mosh-GPL-3.0-or-later.txt"
 cp "$SOURCES/protobuf/LICENSE" "$OUTPUT/licenses/Protobuf-BSD-3-Clause.txt"
