@@ -63,8 +63,11 @@ jobs:
       - run: npm ci
       - run: npx playwright install webkit
       - run: npm run test:e2e
-      - run: python3 -m pip install --user paramiko
-      - run: npm run test:pty-fixture
+      - name: Run PTY fixture in an isolated Python environment
+        run: |
+          python3 -m venv "$RUNNER_TEMP/cnshell-pty-venv"
+          "$RUNNER_TEMP/cnshell-pty-venv/bin/python3" -m pip install --disable-pip-version-check -r scripts/requirements-pty-fixture.txt
+          PATH="$RUNNER_TEMP/cnshell-pty-venv/bin:$PATH" npm run test:pty-fixture
 
   universal-build:
     name: Universal App smoke build

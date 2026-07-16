@@ -101,6 +101,9 @@ describe("relay container smoke", () => {
     expect(workflow).toContain("npx playwright install webkit");
     expect(releaseWorkflow).toContain("npx playwright install webkit");
     expect(playwrightConfig).toContain('browserName: "webkit"');
+    expect(workflow).toContain("python3 -m venv");
+    expect(workflow).toContain("scripts/requirements-pty-fixture.txt");
+    expect(workflow).not.toContain("pip install --user");
     expect(script).toContain("docker compose");
     expect(script).toContain("up --detach --build");
     expect(script).toContain("/health");
