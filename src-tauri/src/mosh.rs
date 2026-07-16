@@ -25,6 +25,14 @@ const DEFAULT_PORT_START: u16 = 60000;
 const DEFAULT_PORT_END: u16 = 60010;
 const RECONNECT_TAIL_BYTES: usize = 512;
 const RECONNECT_RECOVERY_DELAY: Duration = Duration::from_secs(2);
+const UNAVAILABLE_MESSAGES: [&[u8]; 6] = [
+    b"Nothing received from server on UDP port",
+    b"Timed out waiting for server",
+    b"without contact",
+    b"Last contact",
+    b"Last reply",
+    b"did not make a successful connection",
+];
 const UDP_WAITING_MESSAGE: &str =
     "Mosh 正在等待 UDP 响应；请确认本机 VPN/代理允许 UDP，并检查云安全组和服务器 UDP 端口";
 const UDP_FAILED_MESSAGE: &str = "Mosh UDP 连接失败；请暂时关闭 VPN/代理或将该服务器设为直连，并确认云安全组放行所配置的 UDP 端口范围";
@@ -56,16 +64,18 @@ struct ReconnectDetector {
 
 impl ReconnectDetector {
     fn observe(&mut self, bytes: &[u8], now: Instant) -> ReconnectObservation {
+        let previous_tail_len = self.tail.len();
         let mut combined = Vec::with_capacity(self.tail.len() + bytes.len());
         combined.extend_from_slice(&self.tail);
         combined.extend_from_slice(bytes);
-        let text = String::from_utf8_lossy(&combined);
-        let unavailable = text.contains("Nothing received from server on UDP port")
-            || text.contains("Timed out waiting for server")
-            || text.contains("without contact")
-            || text.contains("Last contact")
-            || text.contains("Last reply")
-            || text.contains("did not make a successful connection");
+        let unavailable = UNAVAILABLE_MESSAGES.iter().any(|message| {
+            combined
+                .windows(message.len())
+                .enumerate()
+                .any(|(start, window)| {
+                    window == *message && start.saturating_add(message.len()) > previous_tail_len
+                })
+        });
         let keep = combined.len().min(RECONNECT_TAIL_BYTES);
         self.tail = combined[combined.len() - keep..].to_vec();
         if unavailable {
@@ -74,7 +84,6 @@ impl ReconnectDetector {
         } else if self
             .last_unavailable
             .is_some_and(|last| now.saturating_duration_since(last) >= RECONNECT_RECOVERY_DELAY)
-            && bytes.len() > RECONNECT_TAIL_BYTES
         {
             self.last_unavailable = None;
             ReconnectObservation::Recovered
@@ -608,7 +617,7 @@ mod tests {
     }
 
     #[test]
-    fn reconnect_detection_handles_split_overlay_and_delays_recovery() {
+    fn reconnect_detection_handles_split_overlay_and_small_recovery_redraw() {
         let started = Instant::now();
         let mut detector = ReconnectDetector::default();
         assert_eq!(
@@ -621,12 +630,10 @@ mod tests {
         );
         assert_eq!(
             detector.observe(b"screen redraw", started + Duration::from_secs(1)),
-            ReconnectObservation::Unavailable
+            ReconnectObservation::Unchanged
         );
-        detector.tail.clear();
-        let redraw = vec![b'x'; RECONNECT_TAIL_BYTES + 1];
         assert_eq!(
-            detector.observe(&redraw, started + Duration::from_secs(3)),
+            detector.observe(b"root@server:~# ", started + Duration::from_secs(3)),
             ReconnectObservation::Recovered
         );
     }

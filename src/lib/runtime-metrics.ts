@@ -1,4 +1,4 @@
-import type { TransferTask } from "../types";
+import type { TerminalSession, TransferTask } from "../types";
 
 export interface TransferMetric { bytes: number; time: number; speed: number; etaSeconds: number|null }
 
@@ -13,3 +13,6 @@ export const appendMonitorSample=(history:number[],value:number,intervalMs:numbe
 
 export interface MonitorHistorySample { timestamp:number; cpu:number; received:number; sent:number; latency:number|null }
 export const appendMonitorHistory=(history:MonitorHistorySample[],sample:MonitorHistorySample,intervalMs:number)=>[...history.slice(-(Math.max(1,Math.floor(300_000/intervalMs))-1)),sample];
+
+const MONITOR_FAILURE_REPORT_THRESHOLD=3;
+export const shouldReportMonitorPollError=(session:Pick<TerminalSession,"sessionType"|"status">|undefined,consecutiveFailures:number)=>consecutiveFailures>=MONITOR_FAILURE_REPORT_THRESHOLD&&!(session?.sessionType==="mosh"&&session.status==="reconnecting");
