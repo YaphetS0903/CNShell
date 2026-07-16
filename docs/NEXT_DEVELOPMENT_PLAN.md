@@ -49,7 +49,7 @@
 ### 当前进度（2026-07-17）
 
 - 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份；构建、签名、公证与验证结束后会先清理证书、API 私钥、release 配置和 Keychain，清理成功后才调用 Artifact 上传 Action。
-- CI 与 release workflow 的外部 Actions 已固定到审计过的 40 位 commit SHA，Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；执行 `cargo clippy` 的 workflow 显式安装 minimal profile 默认不包含的 Clippy 组件。Dependabot 每月提出 GitHub Actions 更新供审查，测试会拒绝浮动 tag、缺失 Clippy 或凭据清理顺序回退。
+- CI 与 release workflow 的外部 Actions 已固定到审计过的 40 位 commit SHA；Dependabot 首次运行后已把 `checkout`、`setup-node` 和 `upload-artifact` 合并升级到当前稳定的 7.0.0/7.0.0/7.0.1。Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；执行 `cargo clippy` 的 workflow 显式安装 minimal profile 默认不包含的 Clippy 组件。Dependabot 每月提出 GitHub Actions 更新供审查，测试会拒绝浮动 tag、过期精确引用、缺失 Clippy 或凭据清理顺序回退。
 - FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用带 Hardened Runtime 的 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，CI/发布门禁逐个验证 runtime flag、universal 架构、最低系统版本，正式门禁额外验证 Authority。
 - GitHub Actions run `29467617374` 已在干净的 macOS 15 arm64 托管 runner 上完成 universal App 候选构建，并验证主程序、FreeRDP、Mosh、G-Kermit 的 arm64/x86_64 架构、Hardened Runtime、最低 macOS 13、许可与固定哈希源码。该证据不包含 Developer ID、公证或 Intel 真机运行。
 - 已明确采用 Developer ID 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。

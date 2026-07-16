@@ -97,7 +97,7 @@ describe("release script gates", () => {
     );
     expect(releaseWorkflow.slice(cleanup, upload)).not.toContain("|| true");
     expect(releaseWorkflow.slice(upload)).toMatch(
-      /actions\/upload-artifact@[0-9a-f]{40} # v4\.6\.2\n\s+if: success\(\)/,
+      /actions\/upload-artifact@[0-9a-f]{40} # v7\.0\.1\n\s+if: success\(\)/,
     );
   });
 
@@ -228,15 +228,15 @@ describe("relay container smoke", () => {
 
   it("pins external actions and build toolchains exactly", () => {
     const checkout =
-      "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1";
+      "actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0";
     const setupNode =
-      "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0";
+      "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0";
     const rustToolchain =
       "dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4";
     const rustCache =
       "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1";
     const uploadArtifact =
-      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2";
+      "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1";
 
     for (const contents of [workflow, releaseWorkflow]) {
       const actionLines = contents
