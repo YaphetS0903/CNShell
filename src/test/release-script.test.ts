@@ -109,6 +109,15 @@ describe("release script gates", () => {
     expect(script).toContain("grep -Eq");
     expect(kermitBuildScript).not.toContain("grep -Fq");
     expect(script).not.toContain("| grep -Fq");
+    for (const packagingGate of [
+      freeRdpBuildScript,
+      kermitBuildScript,
+      script,
+      workflow,
+      releaseWorkflow,
+    ]) {
+      expect(packagingGate).not.toMatch(/\|\s*grep\s+-[EF]*q\b/);
+    }
   });
 });
 

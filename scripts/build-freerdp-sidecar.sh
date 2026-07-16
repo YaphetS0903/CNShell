@@ -188,7 +188,7 @@ if otool -L "$OUTPUT/sdl-freerdp" | awk '/^\t/ && $1 !~ /^\/usr\/lib\// && $1 !~
   exit 1
 fi
 for arch in arm64 x86_64; do
-  xcrun vtool -show-build -arch "$arch" "$OUTPUT/sdl-freerdp" | grep -Eq "minos[[:space:]]+$DEPLOYMENT_TARGET$" || {
+  xcrun vtool -show-build -arch "$arch" "$OUTPUT/sdl-freerdp" | grep -E "minos[[:space:]]+$DEPLOYMENT_TARGET$" >/dev/null || {
     echo "FreeRDP 构建失败：$arch helper 最低 macOS 版本不是 $DEPLOYMENT_TARGET" >&2
     exit 1
   }

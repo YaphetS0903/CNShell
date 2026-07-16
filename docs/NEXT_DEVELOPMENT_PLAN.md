@@ -50,6 +50,7 @@
 
 - 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份，并在结束时清理证书、API 私钥、release 配置和 Keychain。
 - FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用带 Hardened Runtime 的 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，CI/发布门禁逐个验证 runtime flag、universal 架构、最低系统版本，正式门禁额外验证 Authority。
+- GitHub Actions run `29467617374` 已在干净的 macOS 15 arm64 托管 runner 上完成 universal App 候选构建，并验证主程序、FreeRDP、Mosh、G-Kermit 的 arm64/x86_64 架构、Hardened Runtime、最低 macOS 13、许可与固定哈希源码。该证据不包含 Developer ID、公证或 Intel 真机运行。
 - 已明确采用 Developer ID 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。
 - 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和候选版空 endpoint 已完成。发布脚本会从签名 universal 归档生成同时覆盖 Apple Silicon/Intel 的 HTTPS `latest.json`，版本只取当前 package/Changelog；真实 Developer ID、公证、正式 endpoint 部署、更新与回滚、干净 Mac 和跨版本/Intel 验收仍需外部凭据或设备，不声明通过。
 
@@ -368,7 +369,7 @@
 | 协议 | 计划定位 | 安全与实现要求 |
 | --- | --- | --- |
 | 本地 Shell | 可优先于其他遗留协议 | 已完成本机 PTY 会话、输入、尺寸调整、关闭、输出事件和独立日志；与 SSH 标签明确区分 |
-| Serial | 网络设备和嵌入式设备 | 串口枚举、波特率/校验位/流控、独占访问和拔出恢复 |
+| Serial | 网络设备和嵌入式设备 | 已完成串口枚举、波特率/数据位/校验位/停止位/流控、DTR/RTS、独占访问、输入输出生命周期和同路径拔出重连；实体串口设备互操作待补 |
 | Telnet | 明确警告的兼容模式 | 已完成 TCP 会话、IAC 协商过滤、关闭/断线状态和未加密警告；不保存密码，避免公网误用 |
 | X/Ymodem | 串口传输补充 | 已完成 Xmodem 128/1K、Checksum/CRC、Ymodem Batch、进度、取消、原子落盘和双端回环；真实设备与外部实现互操作待补 |
 | Kermit | 最低优先级 | 已内置受管 G-Kermit 2.01 universal sidecar，完成管道互操作、取消与安全落盘；实体串口及第三方设备互操作待补 |

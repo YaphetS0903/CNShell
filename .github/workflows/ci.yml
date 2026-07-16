@@ -99,29 +99,29 @@ jobs:
           test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app/Contents/Info.plist")"
           architectures="$(lipo -archs "$app/Contents/MacOS/$executable")"
           [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]]
-          codesign -dv --verbose=4 "$app" 2>&1 | grep -Eq 'flags=.*runtime'
+          codesign -dv --verbose=4 "$app" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
           helper="$app/Contents/Resources/freerdp/sdl-freerdp"
           test -x "$helper"
           helper_architectures="$(lipo -archs "$helper")"
           [[ " $helper_architectures " == *" arm64 "* && " $helper_architectures " == *" x86_64 "* ]]
-          codesign -dv --verbose=4 "$helper" 2>&1 | grep -Eq 'flags=.*runtime'
+          codesign -dv --verbose=4 "$helper" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
           preflight="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$app/Contents/MacOS/$executable" --rdp-preflight)"
-          printf '%s\n' "$preflight" | grep -Fq '"available":true'
-          printf '%s\n' "$preflight" | grep -Fq 'Contents/Resources/freerdp/sdl-freerdp'
+          printf '%s\n' "$preflight" | grep -F '"available":true' >/dev/null
+          printf '%s\n' "$preflight" | grep -F 'Contents/Resources/freerdp/sdl-freerdp' >/dev/null
           mosh="$app/Contents/Resources/mosh/mosh-client"
           test -x "$mosh"
           mosh_architectures="$(lipo -archs "$mosh")"
           [[ " $mosh_architectures " == *" arm64 "* && " $mosh_architectures " == *" x86_64 "* ]]
-          codesign -dv --verbose=4 "$mosh" 2>&1 | grep -Eq 'flags=.*runtime'
+          codesign -dv --verbose=4 "$mosh" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
           test -s "$app/Contents/Resources/mosh/licenses/Mosh-GPL-3.0-or-later.txt"
           env TERM=xterm-256color "$mosh" -c >/dev/null
           kermit="$app/Contents/Resources/kermit/gkermit"
           test -x "$kermit"
           kermit_architectures="$(lipo -archs "$kermit")"
           [[ " $kermit_architectures " == *" arm64 "* && " $kermit_architectures " == *" x86_64 "* ]]
-          codesign -dv --verbose=4 "$kermit" 2>&1 | grep -Eq 'flags=.*runtime'
+          codesign -dv --verbose=4 "$kermit" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
           test -s "$app/Contents/Resources/kermit/licenses/G-Kermit-GPL-2.0.txt"
           kermit_source="$app/Contents/Resources/kermit/source/gku201.tar.gz"
           echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $kermit_source" | shasum -a 256 -c -
-          "$kermit" -h 2>&1 | grep -Fq 'G-Kermit 2.01'
+          "$kermit" -h 2>&1 | grep -F 'G-Kermit 2.01' >/dev/null
           codesign --verify --deep --strict --verbose=2 "$app"

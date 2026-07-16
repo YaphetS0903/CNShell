@@ -46,7 +46,7 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain_path"
           security list-keychains -d user -s "$keychain_path"
           security default-keychain -d user -s "$keychain_path"
-          security find-identity -v -p codesigning "$keychain_path" | grep -Fq "\"$APPLE_SIGNING_IDENTITY\""
+          security find-identity -v -p codesigning "$keychain_path" | grep -F "\"$APPLE_SIGNING_IDENTITY\"" >/dev/null
       - name: Prepare private release configuration
         env:
           TAURI_RELEASE_CONFIG: ${{ secrets.TAURI_RELEASE_CONFIG }}
