@@ -86,10 +86,14 @@ describe("relay container smoke", () => {
     expect(workflow).not.toContain("actions/checkout@v4");
     expect(workflow).toContain("actions/setup-node@v5");
     expect(workflow).not.toContain("actions/setup-node@v4");
+    expect(workflow).toContain("runs-on: macos-15");
+    expect(workflow).not.toContain("runs-on: macos-13");
     expect(releaseWorkflow).toContain("actions/checkout@v5");
     expect(releaseWorkflow).not.toContain("actions/checkout@v4");
     expect(releaseWorkflow).toContain("actions/setup-node@v5");
     expect(releaseWorkflow).not.toContain("actions/setup-node@v4");
+    expect(releaseWorkflow).toContain("runs-on: macos-15");
+    expect(releaseWorkflow).not.toContain("runs-on: macos-13");
     expect(script).toContain("docker compose");
     expect(script).toContain("up --detach --build");
     expect(script).toContain("/health");

@@ -13,7 +13,7 @@ concurrency:
 jobs:
   quality:
     name: Frontend and Rust
-    runs-on: macos-13
+    runs-on: macos-15
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
@@ -52,7 +52,7 @@ jobs:
 
   desktop-ui:
     name: Browser UI and PTY fixture
-    runs-on: macos-13
+    runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
@@ -68,7 +68,7 @@ jobs:
 
   universal-build:
     name: Universal App smoke build
-    runs-on: macos-13
+    runs-on: macos-15
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
