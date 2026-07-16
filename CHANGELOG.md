@@ -66,6 +66,7 @@
 
 ### 安全与可靠性
 
+- 正式发布工作流新增 Developer ID `.p12` 临时 Keychain 导入、精确身份校验和失败后清理；FreeRDP、Mosh 与 G-Kermit 统一从固定源码重建并使用 Hardened Runtime/时间戳签名，App 包新增按需 RDP 麦克风用途说明；签名 universal 归档可生成同时覆盖 Apple Silicon/Intel 的 HTTPS updater `latest.json`。
 - 凭据与私钥 security-scoped Bookmark 保存于 macOS Keychain。
 - 下载与远端保存使用临时文件和原子替换，避免半成品覆盖正式目标。
 - RDP 密码仅通过 Helper stdin 传递，不进入参数或环境变量。

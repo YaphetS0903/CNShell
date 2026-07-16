@@ -82,6 +82,5 @@ cat > "$OUTPUT/THIRD_PARTY_NOTICES.md" <<EOF
 - The distributed binary is built without source changes by scripts/build-kermit-sidecar.sh and links only macOS system libraries.
 EOF
 
-codesign --force --sign - "$OUTPUT/gkermit"
-codesign --verify --strict "$OUTPUT/gkermit"
+"$ROOT/scripts/sign-macos-binary.sh" "$OUTPUT/gkermit"
 echo "G-Kermit sidecar 已生成：$OUTPUT/gkermit ($ARCHITECTURES, macOS $MINIMUM+)"

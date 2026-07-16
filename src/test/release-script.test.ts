@@ -12,6 +12,21 @@ describe("release script gates", () => {
     resolve("scripts/build-freerdp-sidecar.sh"),
     "utf8",
   );
+  const kermitBuildScript = readFileSync(
+    resolve("scripts/build-kermit-sidecar.sh"),
+    "utf8",
+  );
+  const signingScript = readFileSync(
+    resolve("scripts/sign-macos-binary.sh"),
+    "utf8",
+  );
+  const releaseWorkflow = readFileSync(
+    resolve(".github/workflows/release.yml"),
+    "utf8",
+  );
+  const packageJson = JSON.parse(
+    readFileSync(resolve("package.json"), "utf8"),
+  ) as { scripts: Record<string, string> };
   const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
 
   it("uses the executable declared by the app bundle instead of assuming its case", () => {
@@ -29,6 +44,8 @@ describe("release script gates", () => {
     expect(script).toContain('xcrun stapler validate "$APP_PATH"');
     expect(script).toContain('xcrun stapler validate "$DMG_PATH"');
     expect(script).toContain("*.app.tar.gz.sig");
+    expect(script).toContain("generate-updater-manifest.mjs");
+    expect(script).toContain('"$BUNDLE_ROOT/latest.json"');
     expect(script).toContain('lipo -archs "$MOSH_CLIENT"');
     expect(script).toContain("Mosh-GPL-3.0-or-later.txt");
   });
@@ -48,6 +65,38 @@ describe("release script gates", () => {
   it("keeps optional host JSON libraries out of universal FreeRDP builds", () => {
     expect(freeRdpBuildScript).toContain('FREERDP_BUILD_REVISION="5"');
     expect(freeRdpBuildScript).toContain("-DWITH_JSON_DISABLED=ON");
+  });
+
+  it("imports a Developer ID certificate into an ephemeral CI keychain", () => {
+    expect(releaseWorkflow).toContain("APPLE_CERTIFICATE_BASE64");
+    expect(releaseWorkflow).toContain("APPLE_CERTIFICATE_PASSWORD");
+    expect(releaseWorkflow).toContain("security import");
+    expect(releaseWorkflow).toContain("security set-key-partition-list");
+    expect(releaseWorkflow).toContain("security find-identity");
+    expect(releaseWorkflow).toContain("security delete-keychain");
+    expect(releaseWorkflow).toContain("UPDATER_DOWNLOAD_BASE_URL");
+    expect(releaseWorkflow).toContain("bundle/latest.json");
+  });
+
+  it("rebuilds and Developer ID signs every bundled sidecar", () => {
+    expect(packageJson.scripts["build:desktop"]).toContain("build:kermit");
+    for (const buildScript of [
+      freeRdpBuildScript,
+      moshBuildScript,
+      kermitBuildScript,
+    ]) {
+      expect(buildScript).toContain("sign-macos-binary.sh");
+    }
+    expect(signingScript).toContain("--options runtime --timestamp");
+    expect(script).toContain(
+      'verify_developer_id_signature "$FREERDP_HELPER"',
+    );
+    expect(script).toContain(
+      'verify_developer_id_signature "$MOSH_CLIENT"',
+    );
+    expect(script).toContain(
+      'verify_developer_id_signature "$KERMIT_HELPER"',
+    );
   });
 });
 

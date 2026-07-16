@@ -3,6 +3,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 interface TauriConfig {
+  bundle?: {
+    macOS?: {
+      hardenedRuntime?: unknown;
+      infoPlist?: unknown;
+    };
+  };
   plugins?: {
     updater?: {
       endpoints?: unknown;
@@ -25,6 +31,16 @@ describe("Tauri updater configuration", () => {
     expect(capability.permissions).toContain("updater:allow-check");
     expect(capability.permissions).toContain("updater:allow-download-and-install");
     expect(capability.permissions).not.toContain("updater:default");
+  });
+
+  it("locks the Developer ID build to hardened runtime and a privacy plist", () => {
+    const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8")) as TauriConfig;
+    const privacyPlist = readFileSync(resolve("src-tauri/Info.plist"), "utf8");
+
+    expect(config.bundle?.macOS?.hardenedRuntime).toBe(true);
+    expect(config.bundle?.macOS?.infoPlist).toBe("Info.plist");
+    expect(privacyPlist).toContain("NSMicrophoneUsageDescription");
+    expect(privacyPlist).toContain("RDP");
   });
 });
 

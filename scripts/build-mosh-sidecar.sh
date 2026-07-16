@@ -138,6 +138,5 @@ cat > "$OUTPUT/licenses/THIRD_PARTY_NOTICES.md" <<EOF
 - The distributed binary is built by \`scripts/build-mosh-sidecar.sh\` from the checksummed sources above and links only macOS system libraries.
 EOF
 
-codesign --force --sign - "$OUTPUT/mosh-client"
-codesign --verify --strict "$OUTPUT/mosh-client"
+"$ROOT/scripts/sign-macos-binary.sh" "$OUTPUT/mosh-client"
 echo "Mosh sidecar 已生成：$OUTPUT/mosh-client ($ARCHITECTURES, macOS $MINIMUM+)"

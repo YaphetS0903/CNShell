@@ -193,6 +193,5 @@ for arch in arm64 x86_64; do
     exit 1
   }
 done
-codesign --force --sign - "$OUTPUT/sdl-freerdp"
-codesign --verify --strict --verbose=2 "$OUTPUT/sdl-freerdp"
+"$ROOT/scripts/sign-macos-binary.sh" "$OUTPUT/sdl-freerdp"
 echo "FreeRDP universal helper 已生成：$OUTPUT/sdl-freerdp ($architectures)"

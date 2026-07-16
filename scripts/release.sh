@@ -12,9 +12,25 @@ rg -q 'REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY|\.example' src-tauri/tauri.release.
   exit 1
 }
 
-for variable in APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH TAURI_SIGNING_PRIVATE_KEY; do
+for variable in APPLE_SIGNING_IDENTITY APPLE_API_ISSUER APPLE_API_KEY APPLE_API_KEY_PATH TAURI_SIGNING_PRIVATE_KEY UPDATER_DOWNLOAD_BASE_URL; do
   [[ -n "${(P)variable:-}" ]] || { echo "缺少发布变量：$variable" >&2; exit 1; }
 done
+
+verify_developer_id_signature() {
+  local path="$1"
+  local label="$2"
+  local details
+  codesign --verify --strict --verbose=2 "$path"
+  details="$(codesign -dv --verbose=4 "$path" 2>&1)"
+  printf '%s\n' "$details" | rg -Fq "Authority=$APPLE_SIGNING_IDENTITY" || {
+    echo "发布失败：$label 未使用指定 Developer ID 签名。" >&2
+    exit 1
+  }
+  printf '%s\n' "$details" | rg -q 'flags=.*\(runtime\)' || {
+    echo "发布失败：$label 未启用 Hardened Runtime。" >&2
+    exit 1
+  }
+}
 
 npm run check
 npm run test:e2e
@@ -48,8 +64,14 @@ awk -v actual="$MINIMUM_SYSTEM_VERSION" 'BEGIN {
 }
 
 codesign --verify --deep --strict --verbose=2 "$APP_PATH"
-codesign -dv --verbose=4 "$APP_PATH" 2>&1 | rg -Fq "Authority=$APPLE_SIGNING_IDENTITY"
+verify_developer_id_signature "$APP_PATH" "CNshell.app"
 spctl --assess --type execute --verbose "$APP_PATH"
+
+MICROPHONE_USAGE_DESCRIPTION="$(/usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$INFO_PLIST")"
+[[ -n "$MICROPHONE_USAGE_DESCRIPTION" ]] || {
+  echo "发布失败：Info.plist 缺少麦克风用途说明。" >&2
+  exit 1
+}
 
 ARCHITECTURES="$(lipo -archs "$EXECUTABLE_PATH")"
 [[ " $ARCHITECTURES " == *" arm64 "* && " $ARCHITECTURES " == *" x86_64 "* ]] || {
@@ -70,7 +92,7 @@ FREERDP_ARCHITECTURES="$(lipo -archs "$FREERDP_HELPER")"
 RDP_PREFLIGHT="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$EXECUTABLE_PATH" --rdp-preflight)"
 printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq '"available":true'
 printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq 'Contents/Resources/freerdp/sdl-freerdp'
-codesign --verify --strict --verbose=2 "$FREERDP_HELPER"
+verify_developer_id_signature "$FREERDP_HELPER" "FreeRDP helper"
 
 MOSH_CLIENT="$APP_PATH/Contents/Resources/mosh/mosh-client"
 [[ -x "$MOSH_CLIENT" ]] || {
@@ -87,7 +109,7 @@ MOSH_ARCHITECTURES="$(lipo -archs "$MOSH_CLIENT")"
   exit 1
 }
 env TERM=xterm-256color "$MOSH_CLIENT" -c >/dev/null
-codesign --verify --strict --verbose=2 "$MOSH_CLIENT"
+verify_developer_id_signature "$MOSH_CLIENT" "Mosh 客户端"
 
 KERMIT_HELPER="$APP_PATH/Contents/Resources/kermit/gkermit"
 [[ -x "$KERMIT_HELPER" ]] || {
@@ -107,7 +129,7 @@ KERMIT_SOURCE="$APP_PATH/Contents/Resources/kermit/source/gku201.tar.gz"
 [[ -s "$KERMIT_SOURCE" ]] || { echo "发布失败：G-Kermit 对应源码缺失。" >&2; exit 1; }
 echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $KERMIT_SOURCE" | shasum -a 256 -c - >/dev/null
 "$KERMIT_HELPER" -h 2>&1 | rg -Fq "G-Kermit 2.01"
-codesign --verify --strict --verbose=2 "$KERMIT_HELPER"
+verify_developer_id_signature "$KERMIT_HELPER" "G-Kermit helper"
 
 [[ -s "$APP_PATH/Contents/Resources/licenses/serialport-MPL-2.0.txt" ]] || {
   echo "发布失败：serialport-rs MPL-2.0 许可证缺失。" >&2
@@ -130,6 +152,18 @@ UPDATER_SIGNATURES=("$BUNDLE_ROOT"/**/*.app.tar.gz.sig(N))
 }
 [[ -s "${UPDATER_ARCHIVES[1]}" && -s "${UPDATER_SIGNATURES[1]}" ]] || {
   echo "发布失败：Tauri updater 归档或签名为空。" >&2
+  exit 1
+}
+
+PACKAGE_VERSION="$(node -p 'require("./package.json").version')"
+UPDATER_DOWNLOAD_URL="${UPDATER_DOWNLOAD_BASE_URL%/}/v$PACKAGE_VERSION/${UPDATER_ARCHIVES[1]:t}"
+node scripts/generate-updater-manifest.mjs \
+  "${UPDATER_ARCHIVES[1]}" \
+  "${UPDATER_SIGNATURES[1]}" \
+  "$UPDATER_DOWNLOAD_URL" \
+  "$BUNDLE_ROOT/latest.json"
+[[ -s "$BUNDLE_ROOT/latest.json" ]] || {
+  echo "发布失败：未生成 updater latest.json。" >&2
   exit 1
 }
 

@@ -2,7 +2,7 @@
   "bundle": { "createUpdaterArtifacts": true },
   "plugins": {
     "updater": {
-      "endpoints": ["https://your-update-host.example/{{target}}/{{arch}}/{{current_version}}"],
+      "endpoints": ["https://your-update-host.example/latest.json"],
       "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY"
     }
   }
