@@ -2123,17 +2123,21 @@ pub async fn terminal_close(state: State<'_, AppState>, session_id: String) -> A
         });
     }
     let collaboration_rooms = state.collaboration.close_terminal(&session_id);
+    let mosh_session = state.mosh.contains(&session_id);
     let result = if state.local_shell.contains(&session_id) {
         state.local_shell.close(&session_id)
     } else if state.telnet.contains(&session_id) {
         state.telnet.close(&session_id)
     } else if state.serial.contains(&session_id) {
         state.serial.close(&session_id)
-    } else if state.mosh.contains(&session_id) {
+    } else if mosh_session {
         state.mosh.close(&session_id)
     } else {
         crate::ssh::terminal_close(state.sessions.clone(), session_id.clone()).await
     };
+    if mosh_session && result.is_ok() {
+        state.sessions.remove_external(&session_id);
+    }
     let _ = state.logs.stop(&session_id);
     state.monitor.remove(&session_id);
     for (workspace_id, room_id) in collaboration_rooms {
