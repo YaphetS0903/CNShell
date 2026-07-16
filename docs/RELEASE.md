@@ -25,7 +25,7 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="..."
 
 真实 SSH/SFTP 协议测试须在发布前独立执行并记录到 `docs/ACCEPTANCE.md`。耐久测试沿用已经验收的约 2 小时 50 分钟结果，不在发布脚本中重复执行。正式发布前还必须在没有开发环境的 Ventura、Sonoma 和 Sequoia Mac 上验证安装、更新与卸载。
 
-GitHub Actions 的 `CI` 工作流在提交和 PR 上运行短时质量、Rust、WebKit E2E、本机 PTY 夹具与 universal App 烟雾构建，不自动运行 1 GB 协议测试或耐久测试。两个 workflow 的第三方 Actions 均固定到完整 commit SHA，Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；Dependabot 每月提出 Actions 升级，必须审查变更后合并，不能改回浮动 tag。`Signed Release Candidate` 只能手动触发，并要求受保护的 `release` environment 及以下 secrets：
+GitHub Actions 的 `CI` 工作流在提交和 PR 上运行短时质量、Rust、WebKit E2E、本机 PTY 夹具与 universal App 烟雾构建，不自动运行 1 GB 协议测试或耐久测试。两个 workflow 的第三方 Actions 均固定到完整 commit SHA，Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；由于固定工具链使用 minimal profile，执行 `cargo clippy` 的 CI 和签名工作流必须显式安装 Clippy 组件。Dependabot 每月提出 Actions 升级，必须审查变更后合并，不能改回浮动 tag。`Signed Release Candidate` 只能手动触发，并要求受保护的 `release` environment 及以下 secrets：
 
 - `APPLE_CERTIFICATE_BASE64`（Developer ID Application `.p12` 的 Base64）
 - `APPLE_CERTIFICATE_PASSWORD`

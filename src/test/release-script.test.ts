@@ -258,6 +258,8 @@ describe("relay container smoke", () => {
         expect(["20.20.2", "1.96.0"]).toContain(match[1]);
       }
     }
+    expect(workflow.match(/components: clippy/g)).toHaveLength(1);
+    expect(releaseWorkflow.match(/components: clippy/g)).toHaveLength(1);
     expect(releaseWorkflow).toContain(uploadArtifact);
     expect(dependabot).toContain("package-ecosystem: github-actions");
     expect(dependabot).toContain("interval: monthly");
