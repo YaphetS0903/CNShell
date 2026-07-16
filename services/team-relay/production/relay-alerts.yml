@@ -1,0 +1,48 @@
+groups:
+  - name: cnshell-relay
+    rules:
+      - alert: CNshellRelayTargetDown
+        expr: up{job="cnshell-team-relay"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: CNshell Relay metrics target is down
+
+      - alert: CNshellRelayDatabaseNotReady
+        expr: cnshell_relay_ready == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: CNshell Relay database is not ready
+
+      - alert: CNshellRelayReadinessFailure
+        expr: increase(cnshell_relay_readiness_failures_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: CNshell Relay readiness checks are failing
+
+      - alert: CNshellRelayServerErrors
+        expr: increase(cnshell_relay_http_requests_total{class="5xx"}[5m]) >= 5
+        labels:
+          severity: warning
+        annotations:
+          summary: CNshell Relay returned at least five server errors in five minutes
+
+      - alert: CNshellRelayRestarted
+        expr: resets(cnshell_relay_uptime_seconds[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: CNshell Relay appears to have restarted
+
+      - alert: CNshellRelayProxyTargetDown
+        expr: up{job="cnshell-relay-proxy"} == 0 or nginx_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: CNshell Relay reverse proxy metrics target is down

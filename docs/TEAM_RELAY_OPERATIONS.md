@@ -3,8 +3,9 @@
 > 适用范围：`services/team-relay` 单实例 SQLite 部署。
 > 当前证据：本机 loopback 的健康检查、指标、优雅停机、明文测试及 Sigsum 验证后的官方
 > `age v1.3.1` 加密备份/恢复功能演练已通过；GitHub Ubuntu 24.04 Docker/Compose smoke 也已
-> 通过。邮箱验证代码与客户端入口已完成；正式 DNS/TLS/WSS、真实 SMTP 投递、生产 identity、
-> 加密卷、监控平台和异地主机恢复仍需部署环境验收。
+> 通过。邮箱验证代码与客户端入口已完成；仓库已提供生产 NGINX/Prometheus/Alertmanager
+> 配置和容器 smoke。正式 DNS 证书、真实 SMTP/告警投递、生产 identity、加密卷和异地主机
+> 恢复仍需部署环境验收。
 
 ## 1. 运行边界
 
@@ -38,6 +39,33 @@ RUST_LOG=cnshell_team_relay=info,tower_http=info
 不支持明文 SMTP。密码可由运行时秘密变量或小型普通文件提供，两者不能同时设置，推荐容器秘密
 文件。`CNSHELL_RELAY_ALLOW_UNVERIFIED_ACCOUNTS=1` 会跳过邮箱验证，只用于本机/CI 容器 smoke，
 生产配置和任务环境必须确认该变量不存在或为 `0`。
+
+### 生产 Compose 模板
+
+`services/team-relay/docker-compose.production.yml` 将 Relay、TLS/WSS 代理、代理指标导出、
+Prometheus 和 Alertmanager 拆成五个非 root、只读根文件系统容器。镜像固定版本和 manifest
+digest，详见 `services/team-relay/production/THIRD_PARTY.md`。Relay 的 `8787` 不发布到宿主机；
+Prometheus/Alertmanager 只绑定 `127.0.0.1`，生产访问应再通过受控运维通道。
+
+启动前必须在仓库外准备并通过绝对路径传入：
+
+- 与 `CNSHELL_RELAY_PUBLIC_HOST` 完全一致的正式 DNS 和 full-chain TLS 证书/私钥；
+- Relay UID/GID `10001` 可读的 SMTP 密码普通文件；
+- 从 `production/alertmanager.example.yml` 复制并替换强制占位值的真实告警接收配置；
+- SMTP host、from、username，以及按目标平台设置的保留周期和宿主端口。
+
+NGINX 使用非特权 UID/GID `101`；TLS 私钥应以组只读方式授权该账户，不得为了容器读取改为
+全局可读。配置先执行 `docker compose ... config --quiet`，再分别用容器内 `nginx -t`、
+`promtool check config/rules` 和 `amtool check-config` 验证。仓库的 Linux smoke 会自动执行这些
+门禁，并验证 HTTP 固定域名跳转、未知 Host 拒绝、TLS 代理、认证限速、公共运维 endpoint
+隐藏、代理日志不含测试秘密及 Relay/NGINX 指标抓取：
+
+```bash
+npm run test:relay-production-config
+```
+
+该 smoke 使用临时自签名证书、不可投递 SMTP 地址和无外发接收器，结束后删除容器与卷；它
+只证明配置机制，不证明生产证书、邮件、告警通知或公网 WSS 已经通过。
 
 ## 2. 存活、就绪与停机
 
@@ -165,6 +193,11 @@ Relay 自带 `/metrics` 可直接提供 process up、数据库 ready、uptime、
 readiness 检查/失败和授权 WebSocket 总数/活动数。磁盘、备份、TLS、代理、邮件与宿主进程
 重启指标仍需部署平台采集；仅存在 endpoint 不等于监控告警已经上线。
 
+生产模板默认采集 Relay 与 NGINX exporter，并提供 target down、数据库 not ready、readiness
+失败、5xx、进程重启和代理 down 规则。Alertmanager 配置是必填的仓库外文件，必须接入真实
+值班渠道并人工验证 firing/resolved 两种通知。NGINX access log 包含状态码，可由集中日志平台
+统计 429；开源 `stub_status` 不提供状态码分类，因此不能把 exporter 在线误当成限速告警完成。
+
 ## 6. 事故处理
 
 | 事件 | 立即动作 | 恢复条件 |
@@ -184,8 +217,8 @@ readiness 检查/失败和授权 WebSocket 总数/活动数。磁盘、备份、
   加密卷、反向代理和持久化平台验收。
 - 官方 `age v1.3.1` 的 Sigsum release 验证和本机加密/解密功能演练已通过；尚无生产
   identity、加密卷、对象存储或异地主机恢复证据。
-- 邮箱验证协议、SMTP 适配和客户端验证/重发入口已完成；正式 DNS/TLS/WSS、真实 SMTP
-  投递/退信、代理层限速、监控告警和对象存储尚未部署。
+- 邮箱验证协议、SMTP 适配、客户端验证/重发入口及生产代理限速/监控配置已完成；正式
+  DNS/TLS/WSS、真实 SMTP 投递/退信、真实 Alertmanager 通知和对象存储尚未部署。
 - 尚未使用两台真实设备跨网络验证观看、控制移交、断网恢复与撤销传播。
 
 以上项目必须在目标部署环境单独签字验收，不能由本机 loopback 演练替代。

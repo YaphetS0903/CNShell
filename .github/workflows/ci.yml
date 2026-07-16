@@ -51,6 +51,8 @@ jobs:
           docker compose version
       - name: Build and run relay container smoke
         run: npm run test:relay-container
+      - name: Validate production proxy, rate limits, and monitoring
+        run: npm run test:relay-production-config
 
   desktop-ui:
     name: Browser UI and PTY fixture

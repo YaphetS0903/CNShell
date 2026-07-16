@@ -63,6 +63,38 @@ reach it. `/health` is process liveness, while `/ready` executes a database quer
 container/load-balancer readiness endpoint. SIGINT/SIGTERM stops new traffic and closes active
 team-terminal WebSockets before the server drains.
 
+`docker-compose.production.yml` is the hardened single-host deployment template. It adds a
+digest-pinned unprivileged NGINX TLS/WSS proxy, per-IP registration/auth/general rate limits,
+WebSocket connection limits, strict public Host matching, private relay/monitoring networks,
+Prometheus rules, an NGINX exporter and Alertmanager. The public proxy does not expose `/health`,
+`/ready` or `/metrics`; Prometheus and Alertmanager bind only to host loopback. Access logs contain
+only a generated request ID, method, status, byte count, duration and upstream status.
+
+Before using the production template, prepare an exact public DNS name, a full-chain TLS
+certificate and key, an SMTP password file readable by relay UID/GID `10001`, and an Alertmanager
+configuration with a real receiver. Copy `production/alertmanager.example.yml` outside the
+repository and replace its mandatory placeholder. TLS files must be readable by the unprivileged
+NGINX UID/GID `101` without making the private key world-readable. Then provide the absolute host
+paths through the required Compose variables and validate before starting:
+
+```bash
+docker compose -f services/team-relay/docker-compose.production.yml config --quiet
+docker compose -f services/team-relay/docker-compose.production.yml up -d --build
+```
+
+The template hard-codes `CNSHELL_RELAY_ALLOW_UNVERIFIED_ACCOUNTS=0`, never publishes port `8787`,
+and separates Relay and Alertmanager egress networks. Image versions, manifest digests, licenses
+and sources are recorded in `production/THIRD_PARTY.md`. The Linux smoke command below creates
+temporary credentials and a self-signed certificate, verifies HTTPS routing/rate limits/log
+redaction and Prometheus scraping, and deletes its containers and volumes afterward:
+
+```bash
+npm run test:relay-production-config
+```
+
+That smoke validates the deployment mechanics only. A real DNS certificate, SMTP delivery,
+production Alertmanager receiver and external network remain mandatory production evidence.
+
 ## Backup and operations
 
 `scripts/backup.sh` creates and verifies a consistent SQLite snapshot. Production backup requires

@@ -1,0 +1,13 @@
+route:
+  receiver: cnshell-operations
+  group_by:
+    - alertname
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+
+receivers:
+  - name: cnshell-operations
+    webhook_configs:
+      - url: REPLACE_WITH_HTTPS_ALERT_WEBHOOK
+        send_resolved: true
