@@ -260,6 +260,11 @@ describe("relay container smoke", () => {
     }
     expect(workflow.match(/components: clippy/g)).toHaveLength(1);
     expect(releaseWorkflow.match(/components: clippy/g)).toHaveLength(1);
+    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(4);
+    expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(1);
+    for (const contents of [workflow, releaseWorkflow]) {
+      expect(contents).toMatch(/^permissions:\n {2}contents: read$/m);
+    }
     expect(releaseWorkflow).toContain(uploadArtifact);
     expect(dependabot).toContain("package-ecosystem: github-actions");
     expect(dependabot).toContain("interval: monthly");
