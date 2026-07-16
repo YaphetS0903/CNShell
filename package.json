@@ -21,6 +21,7 @@
     "test:relay-ops": "./services/team-relay/scripts/ops-test.sh",
     "test:relay-container": "./services/team-relay/scripts/container-test.sh",
     "verify:relay-age": "./services/team-relay/scripts/verify-age-release.sh",
+    "preflight:external": "./scripts/external-acceptance-preflight.sh",
     "check:relay": "cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings && npm run test:relay && npm run test:relay-ops",
     "generate:ipc": "node scripts/generate-ipc-types.mjs",
     "check:ipc": "node scripts/generate-ipc-types.mjs --check",
