@@ -69,6 +69,10 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
+  const playwrightConfig = readFileSync(
+    resolve("playwright.config.ts"),
+    "utf8",
+  );
   const compose = readFileSync(
     resolve("services/team-relay/docker-compose.example.yml"),
     "utf8",
@@ -94,6 +98,9 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).not.toContain("actions/setup-node@v4");
     expect(releaseWorkflow).toContain("runs-on: macos-15");
     expect(releaseWorkflow).not.toContain("runs-on: macos-13");
+    expect(workflow).toContain("npx playwright install webkit");
+    expect(releaseWorkflow).toContain("npx playwright install webkit");
+    expect(playwrightConfig).toContain('browserName: "webkit"');
     expect(script).toContain("docker compose");
     expect(script).toContain("up --detach --build");
     expect(script).toContain("/health");

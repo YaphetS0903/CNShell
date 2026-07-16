@@ -213,20 +213,8 @@ test("keeps the split tree while selecting its secondary tab",async({page})=>{
   await expect(page.locator(".terminal-instance.active")).toHaveCount(2);
 });
 
-test("creates and expands nested connection folders",async({page})=>{
+test("keeps the inactive connection-folder shortcut hidden",async({page})=>{
   await page.goto("/");
-  page.once("dialog",(dialog)=>dialog.accept("生产"));
-  await page.getByRole("button",{name:"新建文件夹"}).click();
-  const tree=page.getByRole("tree",{name:"连接文件夹树"});
-  await tree.getByRole("button",{name:"生产 0",exact:true}).click();
-  page.once("dialog",(dialog)=>dialog.accept("华南"));
-  await page.getByRole("button",{name:"新建文件夹"}).click();
-  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeVisible();
-  await tree.getByRole("button",{name:"折叠 生产"}).click();
-  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeHidden();
-  await tree.getByRole("button",{name:"展开 生产"}).click();
-  await expect(tree.getByRole("button",{name:"华南 0",exact:true})).toBeVisible();
-  await page.getByRole("button",{name:/所有连接/}).click();
-  await page.getByRole("button",{name:"演示服务器操作"}).click();
-  await expect(page.getByRole("button",{name:"移动到文件夹"})).toBeVisible();
+  await expect(page.getByRole("button",{name:"新建文件夹"})).toHaveCount(0);
+  await expect(page.getByRole("tree",{name:"连接文件夹树"})).toHaveCount(1);
 });
