@@ -1,6 +1,6 @@
 # CNshell 后续功能开发总规划
 
-> 文档状态：v2.5 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，正式 updater 已增加客户端同算法验签门禁；正式发布、生产部署与外部真机验收待补）
+> 文档状态：v2.6 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，正式 updater 验签、回滚兼容和发布供应链固定已完成；正式发布、生产部署与外部真机验收待补）
 >
 > 制定日期：2026-07-14
 >
@@ -48,12 +48,14 @@
 
 ### 当前进度（2026-07-17）
 
-- 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份，并在结束时清理证书、API 私钥、release 配置和 Keychain。
+- 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份；构建、签名、公证与验证结束后会先清理证书、API 私钥、release 配置和 Keychain，清理成功后才调用 Artifact 上传 Action。
+- CI 与 release workflow 的外部 Actions 已固定到审计过的 40 位 commit SHA，Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；Dependabot 每月提出 GitHub Actions 更新供审查，测试会拒绝浮动 tag 或凭据清理顺序回退。
 - FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用带 Hardened Runtime 的 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，CI/发布门禁逐个验证 runtime flag、universal 架构、最低系统版本，正式门禁额外验证 Authority。
 - GitHub Actions run `29467617374` 已在干净的 macOS 15 arm64 托管 runner 上完成 universal App 候选构建，并验证主程序、FreeRDP、Mosh、G-Kermit 的 arm64/x86_64 架构、Hardened Runtime、最低 macOS 13、许可与固定哈希源码。该证据不包含 Developer ID、公证或 Intel 真机运行。
 - 已明确采用 Developer ID 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。
 - 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和候选版空 endpoint 已完成。发布脚本会让刚构建的 CNshell 可执行文件使用与 Tauri 客户端相同的 Base64/minisign 规则，实际验证 universal 归档、`.sig` 与 release 配置公钥匹配，验证通过后才生成同时覆盖 Apple Silicon/Intel 的 HTTPS `latest.json`；无效公钥、篡改归档、不安全 endpoint 和签名错配均会阻断。真实 Developer ID、公证、正式 endpoint 部署、更新与回滚、干净 Mac 和跨版本/Intel 验收仍需外部凭据或设备，不声明通过。
 - 数据库迁移已建立正式回滚兼容基线：后续 migration 必须保持增量和向后兼容，旧版本可忽略不认识的更高 migration 并读取原有数据，但仍严格验证所有已知 migration 的 checksum；自动化测试覆盖未来增量 schema 回退读取、迁移前备份和已知 migration 篡改拒绝。该代码证据不替代正式 updater 安装失败与人工回滚验收。
+- GitHub Actions run `29523263973`（CI #74）已通过 updater 真实验签、数据库回滚兼容及当时完整短时门禁；它早于本次 workflow 固定提交，不作为新 Action SHA 的远端执行证据。
 
 ### 范围
 

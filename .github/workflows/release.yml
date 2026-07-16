@@ -12,13 +12,15 @@ jobs:
     timeout-minutes: 90
     environment: release
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
-          node-version: 20
+          node-version: 20.20.2
           cache: npm
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.96.0
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
       - run: npm ci
@@ -68,7 +70,21 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           UPDATER_DOWNLOAD_BASE_URL: ${{ vars.UPDATER_DOWNLOAD_BASE_URL }}
         run: ./scripts/release.sh
-      - uses: actions/upload-artifact@v4
+      - name: Remove release credentials
+        if: always()
+        run: |
+          set -euo pipefail
+          keychain_path="$RUNNER_TEMP/cnshell-signing.keychain-db"
+          rm -f "$RUNNER_TEMP/DeveloperID.p12" "$RUNNER_TEMP/AuthKey.p8" src-tauri/tauri.release.json
+          if [[ -e "$keychain_path" ]]; then
+            security delete-keychain "$keychain_path"
+          fi
+          test ! -e "$RUNNER_TEMP/DeveloperID.p12"
+          test ! -e "$RUNNER_TEMP/AuthKey.p8"
+          test ! -e src-tauri/tauri.release.json
+          test ! -e "$keychain_path"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: success()
         with:
           name: cnshell-signed-candidate
           path: |
@@ -78,8 +94,3 @@ jobs:
             src-tauri/target/universal-apple-darwin/release/bundle/latest.json
           if-no-files-found: error
           retention-days: 14
-      - name: Remove release credentials
-        if: always()
-        run: |
-          rm -f "$RUNNER_TEMP/DeveloperID.p12" "$RUNNER_TEMP/AuthKey.p8" src-tauri/tauri.release.json
-          security delete-keychain "$RUNNER_TEMP/cnshell-signing.keychain-db" 2>/dev/null || true

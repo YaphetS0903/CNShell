@@ -25,7 +25,7 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="..."
 
 真实 SSH/SFTP 协议测试须在发布前独立执行并记录到 `docs/ACCEPTANCE.md`。耐久测试沿用已经验收的约 2 小时 50 分钟结果，不在发布脚本中重复执行。正式发布前还必须在没有开发环境的 Ventura、Sonoma 和 Sequoia Mac 上验证安装、更新与卸载。
 
-GitHub Actions 的 `CI` 工作流在提交和 PR 上运行短时质量、Rust、WebKit E2E、本机 PTY 夹具与 universal App 烟雾构建，不自动运行 1 GB 协议测试或耐久测试。`Signed Release Candidate` 只能手动触发，并要求受保护的 `release` environment 及以下 secrets：
+GitHub Actions 的 `CI` 工作流在提交和 PR 上运行短时质量、Rust、WebKit E2E、本机 PTY 夹具与 universal App 烟雾构建，不自动运行 1 GB 协议测试或耐久测试。两个 workflow 的第三方 Actions 均固定到完整 commit SHA，Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；Dependabot 每月提出 Actions 升级，必须审查变更后合并，不能改回浮动 tag。`Signed Release Candidate` 只能手动触发，并要求受保护的 `release` environment 及以下 secrets：
 
 - `APPLE_CERTIFICATE_BASE64`（Developer ID Application `.p12` 的 Base64）
 - `APPLE_CERTIFICATE_PASSWORD`
@@ -39,7 +39,7 @@ GitHub Actions 的 `CI` 工作流在提交和 PR 上运行短时质量、Rust、
 
 在 GitHub `release` environment 中另外设置非秘密变量 `UPDATER_DOWNLOAD_BASE_URL`，例如 `https://github.com/YaphetS0903/CNShell/releases/download`。发布脚本会组合 `v<version>/<archive>`，拒绝非 HTTPS、带凭据、片段或文件名不匹配的地址，并生成同时覆盖 `darwin-aarch64` 与 `darwin-x86_64` 的 `latest.json`。
 
-工作流把 `.p12` 导入随机密码保护的临时 Keychain，限制私钥供 `codesign` 使用，确认精确签名身份后才构建；无论成功或失败都会删除证书、API 私钥、release 配置和临时 Keychain。FreeRDP、Mosh 与 G-Kermit 均从固定哈希源码重建，并使用同一 Developer ID、Hardened Runtime 和可信时间戳签名；发布门禁逐个复核 Authority 和 runtime flag。
+工作流把 `.p12` 导入随机密码保护的临时 Keychain，限制私钥供 `codesign` 使用，确认精确签名身份后才构建；无论前置步骤成功或失败，凭据清理步骤都会运行。证书、API 私钥、release 配置和临时 Keychain 全部删除且清理步骤成功后，才允许第三方 Artifact Action 上传候选产物；构建或清理失败时不会上传。FreeRDP、Mosh 与 G-Kermit 均从固定哈希源码重建，并使用同一 Developer ID、Hardened Runtime 和可信时间戳签名；发布门禁逐个复核 Authority 和 runtime flag。
 
 CNshell 采用 Developer ID 站外分发，不以 Mac App Store 为目标。Hardened Runtime 显式开启；App Sandbox 保持关闭，因为本地 PTY、X11 Unix socket、Serial 设备和隔离 sidecar 是核心功能。用户文件仍只通过原生文件选择器和 security-scoped Bookmark 授权，RDP 麦克风重定向默认关闭且只在用户明确开启时触发系统权限提示。
 

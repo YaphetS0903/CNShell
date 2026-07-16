@@ -83,6 +83,24 @@ describe("release script gates", () => {
     expect(releaseWorkflow).toContain("bundle/latest.json");
   });
 
+  it("removes release credentials before running the artifact upload action", () => {
+    const cleanup = releaseWorkflow.indexOf(
+      "- name: Remove release credentials",
+    );
+    const upload = releaseWorkflow.indexOf("actions/upload-artifact@");
+
+    expect(cleanup).toBeGreaterThan(0);
+    expect(cleanup).toBeLessThan(upload);
+    expect(releaseWorkflow.slice(cleanup, upload)).toContain("if: always()");
+    expect(releaseWorkflow.slice(cleanup, upload)).toContain(
+      'test ! -e "$keychain_path"',
+    );
+    expect(releaseWorkflow.slice(cleanup, upload)).not.toContain("|| true");
+    expect(releaseWorkflow.slice(upload)).toMatch(
+      /actions\/upload-artifact@[0-9a-f]{40} # v4\.6\.2\n\s+if: success\(\)/,
+    );
+  });
+
   it("rebuilds and Developer ID signs every bundled sidecar", () => {
     expect(packageJson.scripts["build:desktop"]).toContain("build:kermit");
     for (const buildScript of [
@@ -170,6 +188,10 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
+  const dependabot = readFileSync(
+    resolve(".github/dependabot.yml"),
+    "utf8",
+  );
   const playwrightConfig = readFileSync(
     resolve("playwright.config.ts"),
     "utf8",
@@ -187,16 +209,8 @@ describe("relay container smoke", () => {
     expect(workflow).toContain("relay-container:");
     expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(workflow).toContain("npm run test:relay-container");
-    expect(workflow).toContain("actions/checkout@v5");
-    expect(workflow).not.toContain("actions/checkout@v4");
-    expect(workflow).toContain("actions/setup-node@v5");
-    expect(workflow).not.toContain("actions/setup-node@v4");
     expect(workflow).toContain("runs-on: macos-15");
     expect(workflow).not.toContain("runs-on: macos-13");
-    expect(releaseWorkflow).toContain("actions/checkout@v5");
-    expect(releaseWorkflow).not.toContain("actions/checkout@v4");
-    expect(releaseWorkflow).toContain("actions/setup-node@v5");
-    expect(releaseWorkflow).not.toContain("actions/setup-node@v4");
     expect(releaseWorkflow).toContain("runs-on: macos-15");
     expect(releaseWorkflow).not.toContain("runs-on: macos-13");
     expect(workflow).toContain("npx playwright install webkit");
@@ -210,6 +224,43 @@ describe("relay container smoke", () => {
     expect(script).toContain("/health");
     expect(script).toContain("/ready");
     expect(script).toContain("/metrics");
+  });
+
+  it("pins external actions and build toolchains exactly", () => {
+    const checkout =
+      "actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5.0.1";
+    const setupNode =
+      "actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0";
+    const rustToolchain =
+      "dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4";
+    const rustCache =
+      "Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1";
+    const uploadArtifact =
+      "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2";
+
+    for (const contents of [workflow, releaseWorkflow]) {
+      const actionLines = contents
+        .split(/\r?\n/)
+        .filter((line) => /^\s*- uses:/.test(line));
+      expect(actionLines.length).toBeGreaterThan(0);
+      for (const line of actionLines) {
+        expect(line).toMatch(/^\s*- uses: [^@\s]+@[0-9a-f]{40}(?: # .+)?$/);
+      }
+      expect(contents).toContain(checkout);
+      expect(contents).toContain(setupNode);
+      expect(contents).toContain("node-version: 20.20.2");
+      expect(contents).toContain(rustToolchain);
+      expect(contents).toContain("toolchain: 1.96.0");
+      expect(contents).toContain(rustCache);
+      for (const match of contents.matchAll(
+        /^\s+(?:node-version|toolchain): (.+)$/gm,
+      )) {
+        expect(["20.20.2", "1.96.0"]).toContain(match[1]);
+      }
+    }
+    expect(releaseWorkflow).toContain(uploadArtifact);
+    expect(dependabot).toContain("package-ecosystem: github-actions");
+    expect(dependabot).toContain("interval: monthly");
   });
 
   it("checks container isolation, persistence, loopback binding, and graceful stop", () => {
