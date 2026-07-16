@@ -67,7 +67,7 @@ team-terminal WebSockets before the server drains.
 digest-pinned unprivileged NGINX TLS/WSS proxy, per-IP registration/auth/general rate limits,
 WebSocket connection limits, strict public Host matching, private relay/monitoring networks,
 Prometheus rules, an NGINX exporter and Alertmanager. The public proxy does not expose `/health`,
-`/ready` or `/metrics`; Prometheus and Alertmanager bind only to host loopback. Access logs contain
+`/ready` or `/metrics`; Prometheus and Alertmanager do not publish host ports. Access logs contain
 only a generated request ID, method, status, byte count, duration and upstream status.
 
 Before using the production template, prepare an exact public DNS name, a full-chain TLS

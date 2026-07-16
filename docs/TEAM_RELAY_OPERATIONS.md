@@ -44,8 +44,9 @@ RUST_LOG=cnshell_team_relay=info,tower_http=info
 
 `services/team-relay/docker-compose.production.yml` 将 Relay、TLS/WSS 代理、代理指标导出、
 Prometheus 和 Alertmanager 拆成五个非 root、只读根文件系统容器。镜像固定版本和 manifest
-digest，详见 `services/team-relay/production/THIRD_PARTY.md`。Relay 的 `8787` 不发布到宿主机；
-Prometheus/Alertmanager 只绑定 `127.0.0.1`，生产访问应再通过受控运维通道。
+digest，详见 `services/team-relay/production/THIRD_PARTY.md`。Relay 的 `8787`、Prometheus 的
+`9090` 和 Alertmanager 的 `9093` 均不发布到宿主机，生产访问必须通过受控运维通道或显式的
+本机端口转发覆盖配置。
 
 启动前必须在仓库外准备并通过绝对路径传入：
 

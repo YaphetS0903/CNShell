@@ -74,9 +74,9 @@ services:
     read_only: true
     tmpfs:
       - /tmp:size=16m,mode=1777
-      - /var/cache/nginx:size=16m,mode=0700
-      - /var/run:size=1m,mode=0700
-      - /etc/nginx/conf.d:size=1m,mode=0700
+      - /var/cache/nginx:size=16m,uid=101,gid=101,mode=0700
+      - /var/run:size=1m,uid=101,gid=101,mode=0700
+      - /etc/nginx/conf.d:size=1m,uid=101,gid=101,mode=0700
     cap_drop:
       - ALL
     security_opt:
@@ -124,8 +124,6 @@ services:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
       - --storage.tsdb.retention.time=${CNSHELL_RELAY_METRICS_RETENTION:-30d}
-    ports:
-      - "127.0.0.1:${CNSHELL_RELAY_PROMETHEUS_PORT:-9090}:9090"
     volumes:
       - ./production/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./production/relay-alerts.yml:/etc/prometheus/relay-alerts.yml:ro
@@ -159,8 +157,6 @@ services:
     command:
       - --config.file=/etc/alertmanager/alertmanager.yml
       - --storage.path=/alertmanager
-    ports:
-      - "127.0.0.1:${CNSHELL_RELAY_ALERTMANAGER_PORT:-9093}:9093"
     volumes:
       - type: bind
         source: "${CNSHELL_RELAY_ALERTMANAGER_CONFIG_FILE:?set an absolute Alertmanager config file}"

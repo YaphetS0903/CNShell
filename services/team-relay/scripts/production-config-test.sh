@@ -24,8 +24,6 @@ export CNSHELL_RELAY_HTTP_BIND=127.0.0.1
 export CNSHELL_RELAY_HTTPS_BIND=127.0.0.1
 export CNSHELL_RELAY_HTTP_PORT="$port_base"
 export CNSHELL_RELAY_HTTPS_PORT="$((port_base + 1))"
-export CNSHELL_RELAY_PROMETHEUS_PORT="$((port_base + 2))"
-export CNSHELL_RELAY_ALERTMANAGER_PORT="$((port_base + 3))"
 export CNSHELL_RELAY_SMTP_HOST=mail.invalid
 export CNSHELL_RELAY_SMTP_PORT=465
 export CNSHELL_RELAY_SMTP_SECURITY=tls
@@ -112,10 +110,8 @@ for id in "$relay_id" "$proxy_id" "$proxy_metrics_id" "$prometheus_id" "$alertma
 done
 
 [[ -z "$(docker port "$relay_id")" ]] || fail "relay port was published directly"
-[[ "$(docker port "$prometheus_id" 9090/tcp)" == "127.0.0.1:$CNSHELL_RELAY_PROMETHEUS_PORT" ]] \
-  || fail "Prometheus was not bound only to host loopback"
-[[ "$(docker port "$alertmanager_id" 9093/tcp)" == "127.0.0.1:$CNSHELL_RELAY_ALERTMANAGER_PORT" ]] \
-  || fail "Alertmanager was not bound only to host loopback"
+[[ -z "$(docker port "$prometheus_id")" ]] || fail "Prometheus port was published"
+[[ -z "$(docker port "$alertmanager_id")" ]] || fail "Alertmanager port was published"
 
 redirect_headers="$temporary/redirect-headers"
 redirect_code="$(curl --silent --show-error --output /dev/null --dump-header "$redirect_headers" \
@@ -159,6 +155,7 @@ curl --insecure --silent --resolve "$https_resolve" --output /dev/null \
   "$https_url/v1/workspaces/bootstrap" || true
 proxy_logs="$("${compose[@]}" logs --no-color proxy)"
 [[ "$proxy_logs" != *"$secret_marker"* ]] || fail "proxy logs exposed a header or request body"
+[[ "$proxy_logs" != *'ERROR:'* ]] || fail "proxy entrypoint reported a configuration error"
 
 "${compose[@]}" exec --no-TTY prometheus /bin/promtool check config /etc/prometheus/prometheus.yml
 "${compose[@]}" exec --no-TTY prometheus /bin/promtool check rules /etc/prometheus/relay-alerts.yml
@@ -166,12 +163,10 @@ proxy_logs="$("${compose[@]}" logs --no-color proxy)"
 
 metrics_ready=false
 for _ in {1..60}; do
-  relay_query="$(curl --fail --silent --get \
-    --data-urlencode 'query=cnshell_relay_up' \
-    "http://127.0.0.1:$CNSHELL_RELAY_PROMETHEUS_PORT/api/v1/query" || true)"
-  proxy_query="$(curl --fail --silent --get \
-    --data-urlencode 'query=nginx_up' \
-    "http://127.0.0.1:$CNSHELL_RELAY_PROMETHEUS_PORT/api/v1/query" || true)"
+  relay_query="$("${compose[@]}" exec --no-TTY prometheus /bin/wget -qO- \
+    'http://127.0.0.1:9090/api/v1/query?query=cnshell_relay_up' || true)"
+  proxy_query="$("${compose[@]}" exec --no-TTY prometheus /bin/wget -qO- \
+    'http://127.0.0.1:9090/api/v1/query?query=nginx_up' || true)"
   if jq -e 'any(.data.result[]?; .value[1] == "1")' >/dev/null <<<"$relay_query" \
     && jq -e 'any(.data.result[]?; .value[1] == "1")' >/dev/null <<<"$proxy_query"; then
     metrics_ready=true
