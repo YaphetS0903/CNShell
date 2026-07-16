@@ -175,7 +175,7 @@
 | WebDAV 与 AI | 本机 TCP 夹具验证两者在响应头之后仍可取消、chunked body 采用累计上限；WebDAV 另覆盖 412、507、503 分类和逐块进度，AI 输出限制为 64 KB |
 | 团队目录与历史 | Owner/Admin `workspaceExport` 原子导出只含工作区、成员、设备公钥/指纹和元数据审计，Operator/Viewer 拒绝，符号链接拒绝且秘密字段扫描通过；真实 Keychain 分享在 epoch 轮换后仍允许有效原接收设备解密，撤销与篡改继续拒绝 |
 | Relay 有界性与观测 | 客户端 REST 对未知长度 chunked 响应执行累计 1 MiB 上限；真实 loopback HTTP/WebSocket 集成看到两条活动连接后归零；`/metrics` 没有工作区、设备和房间标签；Relay Clippy `-D warnings` 通过 |
-| 完整短时门禁 | 本轮 IPC 一致性、ESLint、TypeScript/Vite production build 与前端 50 个文件、160 项测试通过；最近全量 `npm run check`/CI 的 Rust 205 项测试、Relay 2 项单元测试与 1 项真实 loopback 集成测试、Relay Clippy 和默认不使用系统 `age` 的运维演练继续通过。此前同版本代码另有一次完整门禁显式注入经 Sigsum 验证的官方 `age v1.3.1`，真实加密备份/恢复分支通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
+| 完整短时门禁 | 本轮 IPC 一致性、ESLint、TypeScript/Vite production build 与前端 51 个文件、161 项测试通过；新增测试验证终端 ResizeObserver 把 fit 后的尺寸发送给同一 Mosh session 并在卸载时清理。最近全量 `npm run check`/CI 的 Rust 205 项测试、Relay 2 项单元测试与 1 项真实 loopback 集成测试、Relay Clippy 和默认不使用系统 `age` 的运维演练继续通过。此前同版本代码另有一次完整门禁显式注入经 Sigsum 验证的官方 `age v1.3.1`，真实加密备份/恢复分支通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
 | universal 候选 CI | GitHub Actions run `29467617374` 四个 job 全部通过；干净 macOS 15 arm64 runner 从源码生成 universal App，并验证主程序、FreeRDP、Mosh、G-Kermit 均含 arm64/x86_64、启用 Hardened Runtime、最低 macOS 13，且 G-Kermit 许可证与固定哈希对应源码随包存在。该 ad-hoc 候选证据不等同 Developer ID、公证或 Intel 真机运行 |
 | 外部验收预检 | 新增只读 `npm run preflight:external`：统一检查发布凭据是否存在、系统架构、XQuartz、FIDO2 Agent 身份数量、实体串口数量及 RDP/Mosh/WebDAV/Relay 资料标记；默认不联网、不触发生物识别、不打开设备，只输出脱敏状态。可原子生成 `0600` Markdown 报告，`READY` 明确不等同场景通过 |
 | 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、正式 DNS/TLS/WSS/邮件/限速/监控、生产加密异地恢复和双设备跨网络协作仍未验证 |
