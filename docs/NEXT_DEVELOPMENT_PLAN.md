@@ -49,7 +49,7 @@
 ### 当前进度（2026-07-16）
 
 - 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份，并在结束时清理证书、API 私钥、release 配置和 Keychain。
-- FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，发布门禁逐个验证 Authority、runtime flag、universal 架构和最低系统版本。
+- FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用带 Hardened Runtime 的 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，CI/发布门禁逐个验证 runtime flag、universal 架构、最低系统版本，正式门禁额外验证 Authority。
 - 已明确采用 Developer ID 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。
 - 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和候选版空 endpoint 已完成。发布脚本会从签名 universal 归档生成同时覆盖 Apple Silicon/Intel 的 HTTPS `latest.json`，版本只取当前 package/Changelog；真实 Developer ID、公证、正式 endpoint 部署、更新与回滚、干净 Mac 和跨版本/Intel 验收仍需外部凭据或设备，不声明通过。
 

@@ -88,6 +88,7 @@ describe("release script gates", () => {
       expect(buildScript).toContain("sign-macos-binary.sh");
     }
     expect(signingScript).toContain("--options runtime --timestamp");
+    expect(signingScript).toContain("--options runtime --sign -");
     expect(script).toContain(
       'verify_developer_id_signature "$FREERDP_HELPER"',
     );
@@ -212,5 +213,13 @@ describe("relay container smoke", () => {
     expect(workflow.indexOf(prepareResources)).toBeLessThan(
       workflow.indexOf(rustTests),
     );
+  });
+
+  it("verifies privacy metadata and all hardened universal sidecars", () => {
+    expect(workflow).toContain("NSMicrophoneUsageDescription");
+    expect(workflow).toContain("flags=.*runtime");
+    expect(workflow).toContain("G-Kermit-GPL-2.0.txt");
+    expect(workflow).toContain("gku201.tar.gz");
+    expect(workflow).toContain("G-Kermit 2.01");
   });
 });
