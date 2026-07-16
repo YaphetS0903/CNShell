@@ -320,6 +320,8 @@ pub fn run() {
             commands::team_relay_profile_delete,
             commands::team_relay_account_register,
             commands::team_relay_account_login,
+            commands::team_relay_account_verify_email,
+            commands::team_relay_account_resend_verification,
             commands::team_relay_account_logout,
             commands::team_relay_binding_list,
             commands::team_relay_workspace_publish,

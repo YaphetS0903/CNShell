@@ -418,6 +418,39 @@
   font: 10px SFMono-Regular, Menlo, monospace;
 }
 
+.team-relay-verification {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.team-relay-verification > label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.team-relay-verification input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 8px;
+  font-family: SFMono-Regular, Menlo, monospace;
+}
+
+.team-relay-verification > small {
+  grid-column: 1 / -1;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 680px) {
   .team-relay-form-row > label {
     flex-basis: 100%;
@@ -427,6 +460,10 @@
   .team-relay-account-status > .mini-button,
   .team-relay-token > .mini-button {
     margin-left: 0;
+  }
+
+  .team-relay-verification {
+    grid-template-columns: 1fr;
   }
 }
 

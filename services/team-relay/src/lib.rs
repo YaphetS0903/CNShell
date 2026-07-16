@@ -1,9 +1,14 @@
+mod email;
 mod error;
 mod metrics;
 pub mod models;
 mod store;
 mod terminal;
 
+pub use email::{
+    AccountRegistrationMode, SmtpVerificationEmailSender, VerificationEmail,
+    VerificationEmailSender,
+};
 pub use error::{RelayError, RelayResult};
 use metrics::RelayMetrics;
 pub use store::RelayStore;
@@ -29,6 +34,7 @@ struct RelayState {
     store: RelayStore,
     terminal: TerminalRelay,
     metrics: RelayMetrics,
+    registration: AccountRegistrationMode,
 }
 
 pub fn router(store: RelayStore) -> Router {
@@ -47,11 +53,19 @@ impl RelayShutdownHandle {
 }
 
 pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) {
+    router_with_registration_mode(store, AccountRegistrationMode::TrustedLocal)
+}
+
+pub fn router_with_registration_mode(
+    store: RelayStore,
+    registration: AccountRegistrationMode,
+) -> (Router, RelayShutdownHandle) {
     let metrics = RelayMetrics::default();
     let state = RelayState {
         terminal: TerminalRelay::new(store.clone(), metrics.clone()),
         store,
         metrics: metrics.clone(),
+        registration,
     };
     let shutdown = RelayShutdownHandle {
         terminal: state.terminal.clone(),
@@ -62,6 +76,11 @@ pub fn router_with_shutdown(store: RelayStore) -> (Router, RelayShutdownHandle) 
         .route("/metrics", get(prometheus_metrics))
         .route("/v1/accounts/register", post(register_account))
         .route("/v1/accounts/login", post(login))
+        .route("/v1/accounts/verify-email", post(verify_email))
+        .route(
+            "/v1/accounts/resend-verification-email",
+            post(resend_verification_email),
+        )
         .route("/v1/workspaces/bootstrap", post(bootstrap_workspace))
         .route(
             "/v1/workspaces/{workspace_id}/invitations",
@@ -140,11 +159,19 @@ async fn prometheus_metrics(State(state): State<RelayState>) -> impl IntoRespons
 async fn register_account(
     State(state): State<RelayState>,
     Json(input): Json<RegisterAccountInput>,
-) -> RelayResult<(StatusCode, Json<AccountSessionOutput>)> {
-    Ok((
-        StatusCode::CREATED,
-        Json(state.store.register_account(input).await?),
-    ))
+) -> RelayResult<(StatusCode, Json<AccountRegistrationOutput>)> {
+    let sender = match &state.registration {
+        AccountRegistrationMode::TrustedLocal => None,
+        AccountRegistrationMode::RequireEmail(sender) => Some(sender.clone()),
+    };
+    let result = state
+        .store
+        .register_account(input, sender.is_some())
+        .await?;
+    if let (Some(sender), Some(message)) = (sender, result.verification_email) {
+        sender.send_verification(message).await?;
+    }
+    Ok((StatusCode::CREATED, Json(result.output)))
 }
 
 async fn login(
@@ -152,6 +179,29 @@ async fn login(
     Json(input): Json<LoginInput>,
 ) -> RelayResult<Json<AccountSessionOutput>> {
     Ok(Json(state.store.login(input).await?))
+}
+
+async fn verify_email(
+    State(state): State<RelayState>,
+    Json(input): Json<VerifyEmailInput>,
+) -> RelayResult<Json<AccountSessionOutput>> {
+    Ok(Json(state.store.verify_email(&input.token).await?))
+}
+
+async fn resend_verification_email(
+    State(state): State<RelayState>,
+    Json(input): Json<ResendVerificationEmailInput>,
+) -> RelayResult<(StatusCode, Json<VerificationEmailAcceptedOutput>)> {
+    if let AccountRegistrationMode::RequireEmail(sender) = &state.registration
+        && let Some(message) = state.store.resend_verification_email(&input.email).await?
+        && let Err(error) = sender.send_verification(message).await
+    {
+        tracing::warn!(error = %error, "verification email resend failed");
+    }
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(VerificationEmailAcceptedOutput { accepted: true }),
+    ))
 }
 
 async fn bootstrap_workspace(
@@ -476,6 +526,7 @@ mod tests {
             terminal: TerminalRelay::new(store.clone(), metrics.clone()),
             store: store.clone(),
             metrics,
+            registration: AccountRegistrationMode::TrustedLocal,
         };
 
         assert_eq!(health().await.into_response().status(), StatusCode::OK);

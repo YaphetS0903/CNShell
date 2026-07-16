@@ -14,6 +14,11 @@ CNSHELL_RELAY_DATABASE_URL='sqlite://relay.sqlite?mode=rwc' \
 The default listener is `127.0.0.1:8787`. A non-loopback bind is rejected unless
 `CNSHELL_RELAY_BEHIND_TLS_PROXY=1` is set.
 
+Loopback development may create trusted accounts without email verification. A non-loopback
+listener refuses to start unless TLS SMTP delivery is configured. The explicit
+`CNSHELL_RELAY_ALLOW_UNVERIFIED_ACCOUNTS=1` escape hatch exists only for the loopback-published
+container smoke test and must never be set in production.
+
 ```bash
 npm run check:relay
 ```
@@ -38,7 +43,20 @@ Required runtime settings:
 | `CNSHELL_RELAY_DATABASE_URL` | SQLite URL on an encrypted, backed-up persistent volume |
 | `CNSHELL_RELAY_BIND` | Listener, normally `0.0.0.0:8787` inside a private container network |
 | `CNSHELL_RELAY_BEHIND_TLS_PROXY=1` | Explicit acknowledgement required for a non-loopback bind |
+| `CNSHELL_RELAY_SMTP_HOST` | SMTP server used for account verification delivery |
+| `CNSHELL_RELAY_SMTP_PORT` | Optional port; defaults to 465 for TLS or 587 for STARTTLS |
+| `CNSHELL_RELAY_SMTP_SECURITY` | `tls` (default) or `starttls`; plaintext SMTP is rejected |
+| `CNSHELL_RELAY_SMTP_FROM` | Valid sender mailbox, for example `CNshell <relay@example.com>` |
+| `CNSHELL_RELAY_SMTP_USERNAME` | Optional SMTP username; requires exactly one password source |
+| `CNSHELL_RELAY_SMTP_PASSWORD` | SMTP password supplied by the runtime secret manager |
+| `CNSHELL_RELAY_SMTP_PASSWORD_FILE` | Alternative small regular-file secret; mutually exclusive with the password variable |
 | `RUST_LOG` | Metadata-only service logs; request bodies and tokens are never intentionally logged |
+
+Production registration creates an unverified account, stores only a domain-separated SHA-256
+hash of the one-hour token, and does not issue an account session until the token is consumed.
+Tokens are single-use, resends are atomically limited to one per minute, and resend responses do
+not reveal whether an address exists. Existing accounts are marked verified by migration. The
+client exposes verification and resend controls without storing the token in SQLite.
 
 The example Compose file publishes the relay only on host loopback so a host reverse proxy can
 reach it. `/health` is process liveness, while `/ready` executes a database query and is the
@@ -63,8 +81,8 @@ run in CI; neither claims off-host storage or a production restore test. See
 [`docs/TEAM_RELAY_OPERATIONS.md`](../../docs/TEAM_RELAY_OPERATIONS.md) for deployment, retention,
 restore, monitoring and incident procedures.
 
-Public DNS, certificates, email delivery, production backup scheduling, monitoring and incident
-response remain deployment responsibilities.
+Public DNS, certificates, a real SMTP provider and delivery reputation, proxy rate limits,
+production backup scheduling, monitoring and incident response remain deployment responsibilities.
 
 ## Stored data
 

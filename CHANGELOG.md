@@ -33,6 +33,7 @@
 - 团队 relay 新增数据库感知的 `/ready`、WebSocket 优雅停机、默认强制 `age` 的一致性备份、安全恢复脚本、本地恢复演练及部署/监控/事故 runbook；明文备份只允许显式测试开关。
 - 团队 relay 新增低基数 Prometheus `/metrics` 和客户端 chunked 响应累计上限；新增固定发布者公钥、`sigsum-verify v0.13.1` 与官方生产策略的 `age` release 验证入口。Sigsum 验证后的 v1.3.1 本机演练覆盖正确/错误 identity 与私钥权限拒绝，生产异地恢复仍待部署环境。
 - 团队 relay 新增 GitHub Ubuntu 24.04 Docker/Compose 真运行门禁，验证非 root、只读根文件系统、tmpfs、持久卷、loopback 端口、健康/指标和 SIGTERM 退出；Rust 与 Debian 基础镜像固定到已运行的 manifest digest。
+- 团队 relay 新增生产邮箱验证：TLS SMTP 投递一小时一次性令牌，数据库只保存域分离哈希，验证前不签发账号会话，令牌单次使用且重发每分钟原子限流；客户端支持验证和重发，非 loopback 服务漏配 SMTP 会拒绝启动。
 
 ### 调整
 
@@ -87,4 +88,4 @@
 - RDP 当前采用受管独立 FreeRDP 窗口深度联动；真实 Windows 画面、输入法、剪贴板和重连矩阵仍待可用主机验收。
 - Debian、Rocky、Alpine，多版本/Intel Mac，完整弱网、VoiceOver 和干净 Mac 安装矩阵尚未完成。
 - X11 已完成协议与本地转发代码，但本机缺少 XQuartz 图形端到端证据；FIDO2、Touch ID 和 Serial 仍缺对应实体硬件的完整人工验收。
-- 团队终端加密协议、relay 服务端、客户端账号/工作区同步、房间观看控制入口和备份/恢复运维代码已完成；正式域名/TLS/WSS/邮件/限速/监控、生产 `age` identity 的异地恢复和跨设备真机会话仍未完成。X/Ymodem/Kermit 的实体串口及第三方设备互操作待补。
+- 团队终端加密协议、relay 服务端、客户端账号/工作区同步、邮箱验证、房间观看控制入口和备份/恢复运维代码已完成；正式域名/TLS/WSS、真实 SMTP 投递、代理限速/监控、生产 `age` identity 的异地恢复和跨设备真机会话仍未完成。X/Ymodem/Kermit 的实体串口及第三方设备互操作待补。

@@ -1153,7 +1153,7 @@ pub async fn team_relay_profile_delete(state: State<'_, AppState>, id: String) -
 pub async fn team_relay_account_register(
     state: State<'_, AppState>,
     input: TeamRelayAccountInput,
-) -> AppResult<TeamRelayProfile> {
+) -> AppResult<TeamRelayAccountRegistration> {
     crate::team_relay::register_account(&state.db, input).await
 }
 
@@ -1163,6 +1163,22 @@ pub async fn team_relay_account_login(
     input: TeamRelayAccountInput,
 ) -> AppResult<TeamRelayProfile> {
     crate::team_relay::login_account(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_account_verify_email(
+    state: State<'_, AppState>,
+    input: VerifyTeamRelayAccountInput,
+) -> AppResult<TeamRelayProfile> {
+    crate::team_relay::verify_account_email(&state.db, input).await
+}
+
+#[tauri::command]
+pub async fn team_relay_account_resend_verification(
+    state: State<'_, AppState>,
+    input: ResendTeamRelayVerificationInput,
+) -> AppResult<()> {
+    crate::team_relay::resend_account_verification(&state.db, input).await
 }
 
 #[tauri::command]

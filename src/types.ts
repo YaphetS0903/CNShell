@@ -64,7 +64,9 @@ import type {
   AcceptTeamRelayInvitationInput,
   CreateTeamRelayInvitationInput,
   SaveTeamRelayProfileInput,
+  ResendTeamRelayVerificationInput,
   TeamRelayAccountInput,
+  TeamRelayAccountRegistration,
   TeamRelayInvitation,
   TeamRelayProfile,
   TeamRelayWorkspaceBinding,
@@ -72,6 +74,7 @@ import type {
   TeamRelayTerminalInvitation,
   TeamRelayTerminalSession,
   UpdateTeamRelayMemberInput,
+  VerifyTeamRelayAccountInput,
   SyncOptions,
   SyncResult,
   ProxyProfile as GeneratedProxyProfile,
@@ -176,7 +179,7 @@ export type AppSettings = Omit<GeneratedAppSettings, "theme" | "terminal" | "ter
   terminalOverrides: Record<string, TerminalPreferences>;
 };
 
-export type { AcceptTeamRelayInvitationInput, AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, CreateTeamRelayInvitationInput, CreateTeamWorkspaceInput, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, PluginPublisherRoot, PluginRunInput, PluginRunResult, PluginCredentialProxyRequest, PluginTerminalInputRequest, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, SaveTeamMemberInput, SaveTeamRelayProfileInput, SerialDeviceInfo, SerialConnectionOptions, SerialTransferEvent, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TeamAuditEvent, TeamControlLease, TeamDevice, TeamMember, TeamPermissionReport, TeamRelayAccountInput, TeamRelayInvitation, TeamRelayProfile, TeamRelayTerminalEvent, TeamRelayTerminalInvitation, TeamRelayTerminalSession, TeamRelayWorkspaceBinding, TeamShareExportInput, TeamSharePreview, TeamTerminalClientRoom, TeamTerminalEncryptedFrame, TeamTerminalFrame, TeamTerminalInvitation, TeamTerminalParticipant, TeamTerminalRoom, TeamWorkspace, TerminalOutput, UpdateTeamRelayMemberInput, WebDavProfile, WebDavSyncProgress };
+export type { AcceptTeamRelayInvitationInput, AiAssistantResult, AiPreviewInput, AiProviderProfile, AiRequestPreview, AutomationPlan, AutomationRun, AutomationSchedule, AutomationStep, AutomationStepResult, BatchExecution, BatchTargetResult, ConnectionProtocolOptions, CreateTeamRelayInvitationInput, CreateTeamWorkspaceInput, DiskInfo, ExternalEditSession, ExternalEditSnapshot, Folder, GeneratedSshKey, MonitorSnapshot, NetworkDiagnosticResult, NetworkInfo, NetworkSocket, NetworkSocketReport, OpenSshHost, PluginPermissionReport, PluginInstallRecord, PluginAuditEvent, PluginPublisherRoot, PluginRunInput, PluginRunResult, PluginCredentialProxyRequest, PluginTerminalInputRequest, ProcessInfo, ProtocolCapability, PythonAutomationManifest, PythonAutomationPreview, PythonAutomationRequest, RdpDisplay, RdpPreflight, ResendTeamRelayVerificationInput, SaveTeamMemberInput, SaveTeamRelayProfileInput, SerialDeviceInfo, SerialConnectionOptions, SerialTransferEvent, SaveAiProviderInput, SaveWebDavProfileInput, SessionLogStatus, SshCertificateInfo, SyncOptions, SyncResult, SystemInfo, TeamAuditEvent, TeamControlLease, TeamDevice, TeamMember, TeamPermissionReport, TeamRelayAccountInput, TeamRelayAccountRegistration, TeamRelayInvitation, TeamRelayProfile, TeamRelayTerminalEvent, TeamRelayTerminalInvitation, TeamRelayTerminalSession, TeamRelayWorkspaceBinding, TeamShareExportInput, TeamSharePreview, TeamTerminalClientRoom, TeamTerminalEncryptedFrame, TeamTerminalFrame, TeamTerminalInvitation, TeamTerminalParticipant, TeamTerminalRoom, TeamWorkspace, TerminalOutput, UpdateTeamRelayMemberInput, VerifyTeamRelayAccountInput, WebDavProfile, WebDavSyncProgress };
 
 export const defaultSettings: AppSettings = {
   theme: "system",

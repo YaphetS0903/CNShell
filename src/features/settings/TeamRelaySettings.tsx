@@ -4,6 +4,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  MailCheck,
   LogIn,
   LogOut,
   Plus,
@@ -44,6 +45,9 @@ export function TeamRelaySettings({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [verificationToken, setVerificationToken] = useState("");
+  const [verificationExpiresAt, setVerificationExpiresAt] = useState<string | null>(null);
+  const [verificationNotice, setVerificationNotice] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("viewer");
@@ -114,10 +118,50 @@ export function TeamRelaySettings({
         password,
         displayName: mode === "register" ? displayName : null,
       };
-      if (mode === "register") await api.registerTeamRelayAccount(input);
-      else await api.loginTeamRelayAccount(input);
+      if (mode === "register") {
+        const registration = await api.registerTeamRelayAccount(input);
+        if (registration.verificationRequired) {
+          setVerificationExpiresAt(registration.verificationExpiresAt);
+          setVerificationNotice("验证邮件已发送，请粘贴邮件中的一次性令牌。");
+        }
+      } else await api.loginTeamRelayAccount(input);
       setPassword("");
       await refreshProfiles();
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const verifyEmail = async () => {
+    if (!selectedProfile || !verificationToken.trim()) return;
+    try {
+      setBusy("verify");
+      await api.verifyTeamRelayAccountEmail({
+        profileId: selectedProfile.id,
+        token: verificationToken.trim(),
+      });
+      setVerificationToken("");
+      setVerificationExpiresAt(null);
+      setVerificationNotice("");
+      await refreshProfiles();
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setBusy("");
+    }
+  };
+
+  const resendVerification = async () => {
+    if (!selectedProfile || !email.trim()) return;
+    try {
+      setBusy("resend");
+      await api.resendTeamRelayAccountVerification({
+        profileId: selectedProfile.id,
+        email: email.trim(),
+      });
+      setVerificationNotice("如果该邮箱存在待验证账号，新的验证邮件会在限流允许后发送。");
     } catch (error) {
       onError(errorMessage(error));
     } finally {
@@ -237,6 +281,14 @@ export function TeamRelaySettings({
         <div className="backup-actions">
           <button className="mini-button" disabled={Boolean(busy) || !email.trim() || password.length < 12} onClick={() => void authenticate("login")}><LogIn size={13}/>登录</button>
           <button className="mini-button" disabled={Boolean(busy) || !email.trim() || password.length < 12 || !displayName.trim()} onClick={() => void authenticate("register")}><UserPlus size={13}/>注册</button>
+        </div>
+        <div className="team-relay-verification">
+          <label><span>邮箱验证令牌</span><input value={verificationToken} onChange={(event) => setVerificationToken(event.target.value)} maxLength={128} autoComplete="one-time-code" autoCapitalize="none" spellCheck={false}/></label>
+          <div className="backup-actions">
+            <button className="mini-button" disabled={Boolean(busy) || !verificationToken.trim()} onClick={() => void verifyEmail()}><MailCheck size={13}/>验证并登录</button>
+            <button className="mini-button" disabled={Boolean(busy) || !email.trim()} onClick={() => void resendVerification()}><Send size={13}/>重发验证邮件</button>
+          </div>
+          {(verificationNotice || verificationExpiresAt) && <small role="status">{verificationNotice}{verificationExpiresAt ? ` 令牌有效至 ${new Date(verificationExpiresAt).toLocaleString()}。` : ""}</small>}
         </div>
       </>}
     </div>}

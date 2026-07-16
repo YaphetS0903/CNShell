@@ -15,12 +15,39 @@ pub struct LoginInput {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifyEmailInput {
+    pub token: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResendVerificationEmailInput {
+    pub email: String,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountSessionOutput {
     pub account_id: String,
+    pub email: String,
     pub token: String,
     pub expires_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountRegistrationOutput {
+    pub verification_required: bool,
+    pub verification_expires_at: Option<String>,
+    pub account_session: Option<AccountSessionOutput>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VerificationEmailAcceptedOutput {
+    pub accepted: bool,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

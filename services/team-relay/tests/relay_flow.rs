@@ -1,14 +1,15 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{Duration as ChronoDuration, Utc};
 use cnshell_team_relay::{
-    RelayShutdownHandle, RelayStore,
+    AccountRegistrationMode, RelayError, RelayResult, RelayShutdownHandle, RelayStore,
+    VerificationEmail, VerificationEmailSender,
     models::{
-        AccountSessionOutput, ControlLeaseOutput, DeviceChallengeOutput, DeviceRegistration,
-        DeviceSessionOutput, RelayAuditEvent, RoomView, RoutedRoomInvitation,
+        AccountRegistrationOutput, AccountSessionOutput, ControlLeaseOutput, DeviceChallengeOutput,
+        DeviceRegistration, DeviceSessionOutput, RelayAuditEvent, RoomView, RoutedRoomInvitation,
         TeamTerminalEncryptedFrame, TeamTerminalInvitation, WorkspaceInvitationOutput,
         WorkspaceSnapshot,
     },
-    router_with_shutdown,
+    router_with_registration_mode, router_with_shutdown,
 };
 use ed25519_dalek::{Signer, SigningKey};
 use futures_util::{SinkExt, StreamExt};
@@ -16,6 +17,10 @@ use reqwest::{Client, StatusCode};
 use serde::Serialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 use tempfile::TempDir;
 use tokio::task::JoinHandle;
 use tokio_tungstenite::{
@@ -42,6 +47,34 @@ struct TestDevice {
     signing: SigningKey,
 }
 
+#[derive(Clone, Default)]
+struct CapturingEmailSender {
+    messages: Arc<Mutex<Vec<VerificationEmail>>>,
+}
+
+#[async_trait::async_trait]
+impl VerificationEmailSender for CapturingEmailSender {
+    async fn send_verification(&self, message: VerificationEmail) -> RelayResult<()> {
+        self.messages.lock().unwrap().push(message);
+        Ok(())
+    }
+}
+
+#[derive(Clone, Default)]
+struct FailAfterFirstEmailSender {
+    sends: Arc<AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl VerificationEmailSender for FailAfterFirstEmailSender {
+    async fn send_verification(&self, _message: VerificationEmail) -> RelayResult<()> {
+        if self.sends.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Ok(());
+        }
+        Err(RelayError::Unavailable("simulated SMTP outage".into()))
+    }
+}
+
 async fn start_server() -> TestServer {
     let directory = tempfile::tempdir().unwrap();
     let database = directory.path().join("relay.sqlite");
@@ -60,6 +93,33 @@ async fn start_server() -> TestServer {
         handle,
         shutdown,
     }
+}
+
+async fn start_verified_server() -> (TestServer, CapturingEmailSender) {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("relay.sqlite");
+    let database_url = format!("sqlite://{}?mode=rwc", database.display());
+    let store = RelayStore::open(&database_url).await.unwrap();
+    let sender = CapturingEmailSender::default();
+    let (app, shutdown) = router_with_registration_mode(
+        store,
+        AccountRegistrationMode::RequireEmail(Arc::new(sender.clone())),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (
+        TestServer {
+            base_url: format!("http://{address}"),
+            ws_url: format!("ws://{address}"),
+            _directory: directory,
+            handle,
+            shutdown,
+        },
+        sender,
+    )
 }
 
 fn device(seed: u8) -> TestDevice {
@@ -83,7 +143,7 @@ fn device(seed: u8) -> TestDevice {
 }
 
 async fn register(client: &Client, server: &TestServer, email: &str) -> AccountSessionOutput {
-    client
+    let registration: AccountRegistrationOutput = client
         .post(format!("{}/v1/accounts/register", server.base_url))
         .json(&json!({
             "email": email,
@@ -97,7 +157,9 @@ async fn register(client: &Client, server: &TestServer, email: &str) -> AccountS
         .unwrap()
         .json()
         .await
-        .unwrap()
+        .unwrap();
+    assert!(!registration.verification_required);
+    registration.account_session.unwrap()
 }
 
 fn bearer(token: &str) -> String {
@@ -138,6 +200,173 @@ fn signed_invitation(
     };
     invitation.signature = Some(sign_canonical(&invitation, &host.signing));
     invitation
+}
+
+#[tokio::test]
+async fn registration_requires_single_use_email_verification_when_configured() {
+    let (server, sender) = start_verified_server().await;
+    let client = Client::new();
+    let registration: AccountRegistrationOutput = client
+        .post(format!("{}/v1/accounts/register", server.base_url))
+        .json(&json!({
+            "email": "verify@example.com",
+            "password": "correct horse battery staple",
+            "displayName": "Verify"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert!(registration.verification_required);
+    assert!(registration.account_session.is_none());
+    assert!(registration.verification_expires_at.is_some());
+    let messages = sender.messages.lock().unwrap().clone();
+    assert_eq!(messages.len(), 1);
+    assert_eq!(messages[0].recipient, "verify@example.com");
+    let token = messages[0].token.clone();
+    assert!(!token.is_empty());
+
+    let rate_limited_resend = client
+        .post(format!(
+            "{}/v1/accounts/resend-verification-email",
+            server.base_url
+        ))
+        .json(&json!({ "email": "verify@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(rate_limited_resend.status(), StatusCode::ACCEPTED);
+    assert_eq!(sender.messages.lock().unwrap().len(), 1);
+
+    let before_verification = client
+        .post(format!("{}/v1/accounts/login", server.base_url))
+        .json(&json!({
+            "email": "verify@example.com",
+            "password": "correct horse battery staple"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(before_verification.status(), StatusCode::FORBIDDEN);
+
+    let session: AccountSessionOutput = client
+        .post(format!("{}/v1/accounts/verify-email", server.base_url))
+        .json(&json!({ "token": token }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(session.email, "verify@example.com");
+
+    let reused = client
+        .post(format!("{}/v1/accounts/verify-email", server.base_url))
+        .json(&json!({ "token": messages[0].token }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(reused.status(), StatusCode::UNAUTHORIZED);
+
+    let login: AccountSessionOutput = client
+        .post(format!("{}/v1/accounts/login", server.base_url))
+        .json(&json!({
+            "email": "verify@example.com",
+            "password": "correct horse battery staple"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    assert_eq!(login.account_id, session.account_id);
+
+    let resend = client
+        .post(format!(
+            "{}/v1/accounts/resend-verification-email",
+            server.base_url
+        ))
+        .json(&json!({ "email": "missing@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resend.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn verification_resend_does_not_reveal_delivery_failure() {
+    let directory = tempfile::tempdir().unwrap();
+    let database = directory.path().join("relay.sqlite");
+    let database_url = format!("sqlite://{}?mode=rwc", database.display());
+    let store = RelayStore::open(&database_url).await.unwrap();
+    let sender = FailAfterFirstEmailSender::default();
+    let (app, shutdown) = router_with_registration_mode(
+        store,
+        AccountRegistrationMode::RequireEmail(Arc::new(sender.clone())),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let handle = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let server = TestServer {
+        base_url: format!("http://{address}"),
+        ws_url: format!("ws://{address}"),
+        _directory: directory,
+        handle,
+        shutdown,
+    };
+    let client = Client::new();
+    client
+        .post(format!("{}/v1/accounts/register", server.base_url))
+        .json(&json!({
+            "email": "smtp-outage@example.com",
+            "password": "correct horse battery staple",
+            "displayName": "SMTP Outage"
+        }))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+
+    let pool = sqlx::SqlitePool::connect(&database_url).await.unwrap();
+    sqlx::query("UPDATE accounts SET email_verification_sent_at='2026-01-01T00:00:00Z' WHERE email='smtp-outage@example.com'")
+        .execute(&pool)
+        .await
+        .unwrap();
+    pool.close().await;
+
+    let existing = client
+        .post(format!(
+            "{}/v1/accounts/resend-verification-email",
+            server.base_url
+        ))
+        .json(&json!({ "email": "smtp-outage@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    let missing = client
+        .post(format!(
+            "{}/v1/accounts/resend-verification-email",
+            server.base_url
+        ))
+        .json(&json!({ "email": "missing@example.com" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(existing.status(), StatusCode::ACCEPTED);
+    assert_eq!(missing.status(), StatusCode::ACCEPTED);
+    assert_eq!(sender.sends.load(Ordering::SeqCst), 2);
 }
 
 fn signed_frame(

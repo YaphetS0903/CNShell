@@ -65,6 +65,50 @@ describe("TeamRelaySettings", () => {
     }));
   });
 
+  it("completes the email verification flow before exposing an account session", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "listTeamRelayProfiles").mockResolvedValue([profile]);
+    const register = vi.spyOn(api, "registerTeamRelayAccount").mockResolvedValue({
+      profile,
+      verificationRequired: true,
+      verificationExpiresAt: "2026-07-15T01:00:00Z",
+    });
+    const verify = vi.spyOn(api, "verifyTeamRelayAccountEmail").mockResolvedValue({
+      ...profile,
+      accountId: binding.accountId,
+      accountEmail: "alice@example.com",
+      hasAccountSession: true,
+      accountSessionExpiresAt: "2026-07-15T00:10:00Z",
+    });
+    const resend = vi.spyOn(api, "resendTeamRelayAccountVerification").mockResolvedValue();
+    render(<TeamRelaySettings workspaces={[workspace]} workspaceId={workspace.id} binding={null} canManageMembers onChanged={vi.fn()} onError={vi.fn()}/>);
+
+    await user.type(await screen.findByLabelText("邮箱"), "alice@example.com");
+    await user.type(screen.getByLabelText("显示名称"), "Alice");
+    await user.type(screen.getByLabelText("密码"), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: "注册" }));
+    await waitFor(() => expect(register).toHaveBeenCalledWith({
+      profileId: profile.id,
+      email: "alice@example.com",
+      password: "correct horse battery staple",
+      displayName: "Alice",
+    }));
+    expect(screen.getByRole("status")).toHaveTextContent("验证邮件已发送");
+
+    await user.type(screen.getByLabelText("邮箱验证令牌"), "a".repeat(43));
+    await user.click(screen.getByRole("button", { name: "验证并登录" }));
+    await waitFor(() => expect(verify).toHaveBeenCalledWith({
+      profileId: profile.id,
+      token: "a".repeat(43),
+    }));
+
+    await user.click(screen.getByRole("button", { name: "重发验证邮件" }));
+    await waitFor(() => expect(resend).toHaveBeenCalledWith({
+      profileId: profile.id,
+      email: "alice@example.com",
+    }));
+  });
+
   it("creates a bounded online invitation for a connected workspace", async () => {
     const user = userEvent.setup();
     const onlineProfile = {

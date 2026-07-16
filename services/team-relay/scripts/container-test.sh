@@ -20,6 +20,7 @@ run_suffix="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-1}-$$"
 run_suffix="$(printf '%s' "$run_suffix" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9_-')"
 project_name="cnshell-relay-smoke-$run_suffix"
 export CNSHELL_RELAY_HOST_PORT="$host_port"
+export CNSHELL_RELAY_ALLOW_UNVERIFIED_ACCOUNTS=1
 compose=(docker compose --file "$compose_file" --project-name "$project_name")
 
 cleanup() {

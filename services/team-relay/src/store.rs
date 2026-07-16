@@ -1,11 +1,12 @@
 use crate::{
+    email::VerificationEmail,
     error::{RelayError, RelayResult},
     models::{
-        AcceptWorkspaceInvitationInput, AccountSessionOutput, BootstrapWorkspaceInput,
-        CreateDeviceSessionInput, CreateWorkspaceInvitationInput, DeviceChallengeOutput,
-        DeviceRegistration, DeviceSessionOutput, LoginInput, RegisterAccountInput, RelayAuditEvent,
-        UpdateMemberInput, WorkspaceDeviceView, WorkspaceInvitationOutput, WorkspaceMemberView,
-        WorkspaceSnapshot,
+        AcceptWorkspaceInvitationInput, AccountRegistrationOutput, AccountSessionOutput,
+        BootstrapWorkspaceInput, CreateDeviceSessionInput, CreateWorkspaceInvitationInput,
+        DeviceChallengeOutput, DeviceRegistration, DeviceSessionOutput, LoginInput,
+        RegisterAccountInput, RelayAuditEvent, UpdateMemberInput, WorkspaceDeviceView,
+        WorkspaceInvitationOutput, WorkspaceMemberView, WorkspaceSnapshot,
     },
 };
 use argon2::{
@@ -26,9 +27,12 @@ use std::{str::FromStr, sync::OnceLock, time::Duration};
 const ACCOUNT_SESSION_MINUTES: i64 = 10;
 const DEVICE_SESSION_MINUTES: i64 = 15;
 const DEVICE_CHALLENGE_MINUTES: i64 = 2;
+const EMAIL_VERIFICATION_HOURS: i64 = 1;
+const EMAIL_RESEND_SECONDS: i64 = 60;
 const WORKSPACE_INVITATION_HOURS: i64 = 24;
 const MAX_AUDIT_EVENTS: i64 = 4096;
 const MAX_ACCOUNT_SESSIONS: i64 = 16;
+const MAX_EMAIL_VERIFICATIONS: i64 = 8;
 const MAX_ACCOUNT_WORKSPACES: i64 = 32;
 const MAX_DEVICE_SESSIONS: i64 = 16;
 const MAX_DEVICE_CHALLENGES: i64 = 32;
@@ -51,6 +55,11 @@ pub struct DeviceAuth {
     pub role: String,
     pub key_epoch: i64,
     pub token_hash: String,
+}
+
+pub struct AccountRegistrationResult {
+    pub output: AccountRegistrationOutput,
+    pub verification_email: Option<VerificationEmail>,
 }
 
 #[derive(Clone)]
@@ -93,7 +102,8 @@ impl RelayStore {
     pub async fn register_account(
         &self,
         input: RegisterAccountInput,
-    ) -> RelayResult<AccountSessionOutput> {
+        require_email_verification: bool,
+    ) -> RelayResult<AccountRegistrationResult> {
         let email = clean_email(&input.email)?;
         let display_name = clean_name(&input.display_name, "显示名称")?;
         validate_password(&input.password)?;
@@ -109,17 +119,39 @@ impl RelayStore {
         .map_err(|_| RelayError::Internal)?;
         let account_id = uuid::Uuid::new_v4().to_string();
         let now = Utc::now().to_rfc3339();
-        let result = sqlx::query("INSERT INTO accounts(id,email,display_name,password_hash,status,created_at,updated_at) VALUES(?,?,?,?,'active',?,?)")
+        let email_verified_at = (!require_email_verification).then_some(now.clone());
+        let email_verification_sent_at = require_email_verification.then_some(now.clone());
+        let result = sqlx::query("INSERT INTO accounts(id,email,display_name,password_hash,status,created_at,updated_at,email_verified_at,email_verification_sent_at) VALUES(?,?,?,?,'active',?,?,?,?)")
             .bind(&account_id)
             .bind(&email)
             .bind(display_name)
             .bind(password_hash)
             .bind(&now)
             .bind(&now)
+            .bind(email_verified_at)
+            .bind(email_verification_sent_at)
             .execute(&self.pool)
             .await;
         match result {
-            Ok(_) => self.issue_account_session(&account_id).await,
+            Ok(_) if require_email_verification => {
+                let verification = self.issue_email_verification(&account_id, &email).await?;
+                Ok(AccountRegistrationResult {
+                    output: AccountRegistrationOutput {
+                        verification_required: true,
+                        verification_expires_at: Some(verification.expires_at.clone()),
+                        account_session: None,
+                    },
+                    verification_email: Some(verification),
+                })
+            }
+            Ok(_) => Ok(AccountRegistrationResult {
+                output: AccountRegistrationOutput {
+                    verification_required: false,
+                    verification_expires_at: None,
+                    account_session: Some(self.issue_account_session(&account_id).await?),
+                },
+                verification_email: None,
+            }),
             Err(sqlx::Error::Database(error)) if error.is_unique_violation() => {
                 Err(RelayError::Conflict("该邮箱已经注册".into()))
             }
@@ -129,14 +161,21 @@ impl RelayStore {
 
     pub async fn login(&self, input: LoginInput) -> RelayResult<AccountSessionOutput> {
         let email = clean_email(&input.email)?;
-        let row =
-            sqlx::query("SELECT id,password_hash FROM accounts WHERE email=? AND status='active'")
-                .bind(email)
-                .fetch_optional(&self.pool)
-                .await?;
-        let (account_id, password_hash) = row.map_or_else(
-            || (None, dummy_password_hash().clone()),
-            |row| (Some(row.get::<String, _>(0)), row.get(1)),
+        let row = sqlx::query(
+            "SELECT id,password_hash,email_verified_at FROM accounts WHERE email=? AND status='active'",
+        )
+        .bind(email)
+        .fetch_optional(&self.pool)
+        .await?;
+        let (account_id, password_hash, email_verified_at) = row.map_or_else(
+            || (None, dummy_password_hash().clone(), None),
+            |row| {
+                (
+                    Some(row.get::<String, _>(0)),
+                    row.get(1),
+                    row.get::<Option<String>, _>(2),
+                )
+            },
         );
         let password = input.password;
         let valid = tokio::task::spawn_blocking(move || {
@@ -151,10 +190,22 @@ impl RelayStore {
         let Some(account_id) = account_id.filter(|_| valid) else {
             return Err(RelayError::Authentication("邮箱或密码错误".into()));
         };
+        if email_verified_at.is_none() {
+            return Err(RelayError::PermissionDenied(
+                "邮箱尚未验证，请先完成验证或重发验证邮件".into(),
+            ));
+        }
         self.issue_account_session(&account_id).await
     }
 
     async fn issue_account_session(&self, account_id: &str) -> RelayResult<AccountSessionOutput> {
+        let email: String = sqlx::query_scalar(
+            "SELECT email FROM accounts WHERE id=? AND status='active' AND email_verified_at IS NOT NULL",
+        )
+        .bind(account_id)
+        .fetch_optional(&self.pool)
+        .await?
+        .ok_or_else(|| RelayError::Authentication("账号不可用或邮箱尚未验证".into()))?;
         let (token, token_hash) = new_token("account-session");
         let now = Utc::now();
         let expires_at = now + ChronoDuration::minutes(ACCOUNT_SESSION_MINUTES);
@@ -175,15 +226,141 @@ impl RelayStore {
             .await?;
         Ok(AccountSessionOutput {
             account_id: account_id.into(),
+            email,
             token,
             expires_at: expires_at.to_rfc3339(),
         })
     }
 
+    async fn issue_email_verification(
+        &self,
+        account_id: &str,
+        email: &str,
+    ) -> RelayResult<VerificationEmail> {
+        let (token, token_hash) = new_token("email-verification");
+        let now = Utc::now();
+        let expires_at = now + ChronoDuration::hours(EMAIL_VERIFICATION_HOURS);
+        sqlx::query("INSERT INTO account_email_verifications(id,account_id,token_hash,expires_at,used_at,last_sent_at,created_at) VALUES(?,?,?,?,NULL,?,?)")
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(account_id)
+            .bind(token_hash)
+            .bind(expires_at.to_rfc3339())
+            .bind(now.to_rfc3339())
+            .bind(now.to_rfc3339())
+            .execute(&self.pool)
+            .await?;
+        sqlx::query("DELETE FROM account_email_verifications WHERE expires_at<=? OR (account_id=? AND id NOT IN (SELECT id FROM account_email_verifications WHERE account_id=? ORDER BY created_at DESC LIMIT ?))")
+            .bind(now.to_rfc3339())
+            .bind(account_id)
+            .bind(account_id)
+            .bind(MAX_EMAIL_VERIFICATIONS)
+            .execute(&self.pool)
+            .await?;
+        Ok(VerificationEmail {
+            recipient: email.into(),
+            token,
+            expires_at: expires_at.to_rfc3339(),
+        })
+    }
+
+    pub async fn verify_email(&self, token: &str) -> RelayResult<AccountSessionOutput> {
+        validate_token_shape(token)?;
+        let verification_hash = token_hash("email-verification", token);
+        let now = Utc::now().to_rfc3339();
+        let mut transaction = self.pool.begin().await?;
+        let row = sqlx::query("SELECT v.id,v.account_id FROM account_email_verifications v JOIN accounts a ON a.id=v.account_id WHERE v.token_hash=? AND v.used_at IS NULL AND v.expires_at>? AND a.status='active' AND a.email_verified_at IS NULL")
+            .bind(verification_hash)
+            .bind(&now)
+            .fetch_optional(&mut *transaction)
+            .await?
+            .ok_or_else(|| RelayError::Authentication("验证令牌无效、已使用或已过期".into()))?;
+        let verification_id: String = row.get(0);
+        let account_id: String = row.get(1);
+        let updated = sqlx::query(
+            "UPDATE account_email_verifications SET used_at=? WHERE id=? AND used_at IS NULL",
+        )
+        .bind(&now)
+        .bind(&verification_id)
+        .execute(&mut *transaction)
+        .await?;
+        if updated.rows_affected() != 1 {
+            return Err(RelayError::Authentication(
+                "验证令牌无效、已使用或已过期".into(),
+            ));
+        }
+        sqlx::query("UPDATE accounts SET email_verified_at=?,updated_at=? WHERE id=? AND email_verified_at IS NULL")
+            .bind(&now)
+            .bind(&now)
+            .bind(&account_id)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            "UPDATE account_email_verifications SET used_at=COALESCE(used_at,?) WHERE account_id=?",
+        )
+        .bind(&now)
+        .bind(&account_id)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        self.issue_account_session(&account_id).await
+    }
+
+    pub async fn resend_verification_email(
+        &self,
+        email: &str,
+    ) -> RelayResult<Option<VerificationEmail>> {
+        let email = clean_email(email)?;
+        let (token, verification_hash) = new_token("email-verification");
+        let now = Utc::now();
+        let expires_at = now + ChronoDuration::hours(EMAIL_VERIFICATION_HOURS);
+        let resend_before = (now - ChronoDuration::seconds(EMAIL_RESEND_SECONDS)).to_rfc3339();
+        let now = now.to_rfc3339();
+        let mut transaction = self.pool.begin().await?;
+        let account_id: Option<String> = sqlx::query_scalar("UPDATE accounts SET email_verification_sent_at=?,updated_at=? WHERE email=? AND status='active' AND email_verified_at IS NULL AND (email_verification_sent_at IS NULL OR email_verification_sent_at<=?) RETURNING id")
+            .bind(&now)
+            .bind(&now)
+            .bind(&email)
+            .bind(resend_before)
+            .fetch_optional(&mut *transaction)
+            .await?;
+        let Some(account_id) = account_id else {
+            return Ok(None);
+        };
+        sqlx::query(
+            "UPDATE account_email_verifications SET used_at=COALESCE(used_at,?) WHERE account_id=?",
+        )
+        .bind(&now)
+        .bind(&account_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query("INSERT INTO account_email_verifications(id,account_id,token_hash,expires_at,used_at,last_sent_at,created_at) VALUES(?,?,?,?,NULL,?,?)")
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(&account_id)
+            .bind(verification_hash)
+            .bind(expires_at.to_rfc3339())
+            .bind(&now)
+            .bind(&now)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("DELETE FROM account_email_verifications WHERE expires_at<=? OR (account_id=? AND id NOT IN (SELECT id FROM account_email_verifications WHERE account_id=? ORDER BY created_at DESC LIMIT ?))")
+            .bind(&now)
+            .bind(&account_id)
+            .bind(&account_id)
+            .bind(MAX_EMAIL_VERIFICATIONS)
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(Some(VerificationEmail {
+            recipient: email,
+            token,
+            expires_at: expires_at.to_rfc3339(),
+        }))
+    }
+
     pub async fn authenticate_account(&self, token: &str) -> RelayResult<AccountAuth> {
         validate_token_shape(token)?;
         let token_hash = token_hash("account-session", token);
-        let row = sqlx::query("SELECT a.id,a.email,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.status='active'")
+        let row = sqlx::query("SELECT a.id,a.email,a.display_name FROM account_sessions s JOIN accounts a ON a.id=s.account_id WHERE s.token_hash=? AND s.revoked_at IS NULL AND s.expires_at>? AND a.status='active' AND a.email_verified_at IS NOT NULL")
             .bind(token_hash)
             .bind(Utc::now().to_rfc3339())
             .fetch_optional(&self.pool)
@@ -1078,4 +1255,80 @@ fn dummy_password_hash() -> &'static String {
             .expect("fixed dummy password hashes")
             .to_string()
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    #[tokio::test]
+    async fn existing_accounts_are_marked_verified_during_migration() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("relay.sqlite");
+        let database_url = format!("sqlite://{}?mode=rwc", path.display());
+        let options = SqliteConnectOptions::from_str(&database_url)
+            .unwrap()
+            .create_if_missing(true)
+            .foreign_keys(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let full = sqlx::migrate!("./migrations");
+        let first = sqlx::migrate::Migrator {
+            migrations: Cow::Owned(full.iter().take(1).cloned().collect()),
+            ..sqlx::migrate::Migrator::DEFAULT
+        };
+        first.run(&pool).await.unwrap();
+        sqlx::query("INSERT INTO accounts(id,email,display_name,password_hash,status,created_at,updated_at) VALUES('existing','existing@example.com','Existing','hash','active','2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')")
+            .execute(&pool)
+            .await
+            .unwrap();
+        pool.close().await;
+
+        let store = RelayStore::open(&database_url).await.unwrap();
+        let verified_at: Option<String> =
+            sqlx::query_scalar("SELECT email_verified_at FROM accounts WHERE id='existing'")
+                .fetch_one(&store.pool)
+                .await
+                .unwrap();
+        assert_eq!(verified_at.as_deref(), Some("2026-01-01T00:00:00Z"));
+    }
+
+    #[tokio::test]
+    async fn concurrent_verification_resends_issue_only_one_token() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("relay.sqlite");
+        let database_url = format!("sqlite://{}?mode=rwc", path.display());
+        let store = RelayStore::open(&database_url).await.unwrap();
+        store
+            .register_account(
+                RegisterAccountInput {
+                    email: "resend@example.com".into(),
+                    password: "correct horse battery staple".into(),
+                    display_name: "Resend".into(),
+                },
+                true,
+            )
+            .await
+            .unwrap();
+        sqlx::query("UPDATE accounts SET email_verification_sent_at='2026-01-01T00:00:00Z' WHERE email='resend@example.com'")
+            .execute(&store.pool)
+            .await
+            .unwrap();
+
+        let first_store = store.clone();
+        let second_store = store.clone();
+        let (first, second) = tokio::join!(
+            first_store.resend_verification_email("resend@example.com"),
+            second_store.resend_verification_email("resend@example.com")
+        );
+        let issued = [first.unwrap(), second.unwrap()]
+            .into_iter()
+            .filter(Option::is_some)
+            .count();
+        assert_eq!(issued, 1);
+    }
 }

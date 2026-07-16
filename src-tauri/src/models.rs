@@ -878,6 +878,28 @@ pub struct TeamRelayAccountInput {
     pub display_name: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifyTeamRelayAccountInput {
+    pub profile_id: String,
+    pub token: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResendTeamRelayVerificationInput {
+    pub profile_id: String,
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TeamRelayAccountRegistration {
+    pub profile: TeamRelayProfile,
+    pub verification_required: bool,
+    pub verification_expires_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamRelayWorkspaceBinding {

@@ -686,6 +686,22 @@ export interface TeamRelayAccountInput {
   displayName?: string | null;
 }
 
+export interface VerifyTeamRelayAccountInput {
+  profileId: string;
+  token: string;
+}
+
+export interface ResendTeamRelayVerificationInput {
+  profileId: string;
+  email: string;
+}
+
+export interface TeamRelayAccountRegistration {
+  profile: TeamRelayProfile;
+  verificationRequired: boolean;
+  verificationExpiresAt: string | null;
+}
+
 export interface TeamRelayWorkspaceBinding {
   workspaceId: string;
   profileId: string;

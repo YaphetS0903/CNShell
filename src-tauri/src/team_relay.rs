@@ -2,10 +2,11 @@ use crate::{
     db::Database,
     error::{AppError, AppResult},
     models::{
-        AcceptTeamRelayInvitationInput, CreateTeamRelayInvitationInput, SaveTeamRelayProfileInput,
-        TeamControlLease, TeamDevice, TeamRelayAccountInput, TeamRelayInvitation, TeamRelayProfile,
+        AcceptTeamRelayInvitationInput, CreateTeamRelayInvitationInput,
+        ResendTeamRelayVerificationInput, SaveTeamRelayProfileInput, TeamControlLease, TeamDevice,
+        TeamRelayAccountInput, TeamRelayAccountRegistration, TeamRelayInvitation, TeamRelayProfile,
         TeamRelayTerminalInvitation, TeamRelayWorkspaceBinding, TeamTerminalInvitation,
-        TeamTerminalRoom, TeamWorkspace, UpdateTeamRelayMemberInput,
+        TeamTerminalRoom, TeamWorkspace, UpdateTeamRelayMemberInput, VerifyTeamRelayAccountInput,
     },
     team, team_share,
 };
@@ -124,6 +125,7 @@ struct LoginRequest<'a> {
 #[serde(rename_all = "camelCase")]
 struct AccountSessionResponse {
     account_id: String,
+    email: String,
     token: String,
     expires_at: String,
 }
@@ -132,6 +134,26 @@ impl Drop for AccountSessionResponse {
     fn drop(&mut self) {
         self.token.zeroize();
     }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AccountRegistrationResponse {
+    verification_required: bool,
+    verification_expires_at: Option<String>,
+    account_session: Option<AccountSessionResponse>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct VerifyEmailRequest<'a> {
+    token: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ResendVerificationEmailRequest<'a> {
+    email: &'a str,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -376,7 +398,7 @@ impl RelayApi {
         email: &str,
         password: &str,
         display_name: &str,
-    ) -> Result<AccountSessionResponse, RelayFailure> {
+    ) -> Result<AccountRegistrationResponse, RelayFailure> {
         send_json(
             self.client
                 .post(self.endpoint("v1/accounts/register")?)
@@ -398,6 +420,24 @@ impl RelayApi {
             self.client
                 .post(self.endpoint("v1/accounts/login")?)
                 .json(&LoginRequest { email, password }),
+        )
+        .await
+    }
+
+    async fn verify_email(&self, token: &str) -> Result<AccountSessionResponse, RelayFailure> {
+        send_json(
+            self.client
+                .post(self.endpoint("v1/accounts/verify-email")?)
+                .json(&VerifyEmailRequest { token }),
+        )
+        .await
+    }
+
+    async fn resend_verification_email(&self, email: &str) -> Result<(), RelayFailure> {
+        send_empty(
+            self.client
+                .post(self.endpoint("v1/accounts/resend-verification-email")?)
+                .json(&ResendVerificationEmailRequest { email }),
         )
         .await
     }
@@ -897,7 +937,7 @@ pub async fn delete_profile(db: &Database, id: &str) -> AppResult<()> {
 pub async fn register_account(
     db: &Database,
     mut input: TeamRelayAccountInput,
-) -> AppResult<TeamRelayProfile> {
+) -> AppResult<TeamRelayAccountRegistration> {
     let display_name = clean_name(
         input.display_name.as_deref().unwrap_or_default(),
         "账号显示名称",
@@ -908,13 +948,34 @@ pub async fn register_account(
         .register(&input.email, &input.password, &display_name)
         .await;
     input.password.zeroize();
-    save_account_response(
-        db,
+    let response = response.map_err(RelayFailure::into_app)?;
+    if response.verification_required {
+        if response.account_session.is_some() {
+            return Err(AppError::Remote(
+                "团队服务在邮箱待验证状态返回了账号会话".into(),
+            ));
+        }
+        let expires_at = response
+            .verification_expires_at
+            .as_deref()
+            .ok_or_else(|| AppError::Remote("团队服务未返回邮箱验证到期时间".into()))?;
+        DateTime::parse_from_rfc3339(expires_at)
+            .map_err(|_| AppError::Remote("团队服务返回的邮箱验证到期时间无效".into()))?;
+        return Ok(TeamRelayAccountRegistration {
+            profile: profile_view(profile, false),
+            verification_required: true,
+            verification_expires_at: response.verification_expires_at,
+        });
+    }
+    let session = response
+        .account_session
+        .ok_or_else(|| AppError::Remote("团队服务未返回注册账号会话".into()))?;
+    let profile = save_account_response(db, profile, session).await?;
+    Ok(TeamRelayAccountRegistration {
         profile,
-        &input.email,
-        response.map_err(RelayFailure::into_app)?,
-    )
-    .await
+        verification_required: false,
+        verification_expires_at: None,
+    })
 }
 
 pub async fn login_account(
@@ -925,22 +986,45 @@ pub async fn login_account(
     let api = RelayApi::new(&profile.base_url)?;
     let response = api.login(&input.email, &input.password).await;
     input.password.zeroize();
-    save_account_response(
-        db,
-        profile,
-        &input.email,
-        response.map_err(RelayFailure::into_app)?,
-    )
-    .await
+    save_account_response(db, profile, response.map_err(RelayFailure::into_app)?).await
+}
+
+pub async fn verify_account_email(
+    db: &Database,
+    mut input: VerifyTeamRelayAccountInput,
+) -> AppResult<TeamRelayProfile> {
+    let profile = stored_profile(db, &input.profile_id).await?;
+    validate_secret_token(&input.token, "邮箱验证令牌")?;
+    let api = RelayApi::new(&profile.base_url)?;
+    let response = api.verify_email(&input.token).await;
+    input.token.zeroize();
+    let response = response.map_err(RelayFailure::into_app)?;
+    save_account_response(db, profile, response).await
+}
+
+pub async fn resend_account_verification(
+    db: &Database,
+    input: ResendTeamRelayVerificationInput,
+) -> AppResult<()> {
+    let profile = stored_profile(db, &input.profile_id).await?;
+    if input.email.len() > 254 || !input.email.contains('@') {
+        return Err(AppError::Validation("邮箱格式无效".into()));
+    }
+    RelayApi::new(&profile.base_url)?
+        .resend_verification_email(input.email.trim())
+        .await
+        .map_err(RelayFailure::into_app)
 }
 
 async fn save_account_response(
     db: &Database,
     profile: StoredProfile,
-    email: &str,
     response: AccountSessionResponse,
 ) -> AppResult<TeamRelayProfile> {
     validate_uuid(&response.account_id, "团队账号 ID")?;
+    if response.email.len() > 254 || !response.email.contains('@') {
+        return Err(AppError::Remote("团队服务返回的账号邮箱无效".into()));
+    }
     DateTime::parse_from_rfc3339(&response.expires_at)
         .map_err(|_| AppError::Remote("团队服务返回的账号会话到期时间无效".into()))?;
     let binding_accounts: Vec<String> = sqlx::query_scalar(
@@ -965,7 +1049,7 @@ async fn save_account_response(
     let now = Utc::now().to_rfc3339();
     if let Err(error) = sqlx::query("UPDATE team_relay_profiles SET account_id=?,account_email=?,account_session_expires_at=?,updated_at=? WHERE id=?")
         .bind(&response.account_id)
-        .bind(email.trim().to_ascii_lowercase())
+        .bind(response.email.trim().to_ascii_lowercase())
         .bind(&response.expires_at)
         .bind(&now)
         .bind(&profile.id)
@@ -1955,14 +2039,7 @@ async fn pending_acceptance(
     token: &str,
     device_name: &str,
 ) -> AppResult<PendingAcceptance> {
-    if token.len() != 43
-        || URL_SAFE_NO_PAD
-            .decode(token)
-            .ok()
-            .is_none_or(|bytes| bytes.len() != 32)
-    {
-        return Err(AppError::Validation("在线团队邀请令牌格式无效".into()));
-    }
+    validate_secret_token(token, "在线团队邀请令牌")?;
     cleanup_expired_pending(db).await?;
     let token_hash = invitation_token_hash(token);
     if let Some(pending) = sqlx::query_as::<_, PendingAcceptance>("SELECT token_hash,profile_id,device_id,device_name,encryption_public_key,signing_public_key,fingerprint,created_at FROM team_relay_pending_acceptances WHERE token_hash=?")
@@ -2020,6 +2097,18 @@ async fn pending_acceptance(
     Ok(pending)
 }
 
+fn validate_secret_token(token: &str, field: &str) -> AppResult<()> {
+    if token.len() != 43
+        || URL_SAFE_NO_PAD
+            .decode(token)
+            .ok()
+            .is_none_or(|bytes| bytes.len() != 32)
+    {
+        return Err(AppError::Validation(format!("{field}格式无效")));
+    }
+    Ok(())
+}
+
 fn invitation_token_hash(token: &str) -> String {
     let mut digest = Sha256::new();
     digest.update(b"cnshell-team-relay-client-invitation-v1\0");
@@ -2055,7 +2144,11 @@ async fn cleanup_pending_acceptance(db: &Database, pending: &PendingAcceptance) 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cnshell_team_relay::{RelayStore, router};
+    use cnshell_team_relay::{
+        AccountRegistrationMode, RelayResult, RelayStore, VerificationEmail,
+        VerificationEmailSender, router, router_with_registration_mode,
+    };
+    use std::sync::{Arc, Mutex};
     use tempfile::tempdir;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::task::JoinHandle;
@@ -2064,6 +2157,19 @@ mod tests {
         base_url: String,
         handle: JoinHandle<()>,
         _directory: tempfile::TempDir,
+    }
+
+    #[derive(Clone, Default)]
+    struct CapturingEmailSender {
+        messages: Arc<Mutex<Vec<VerificationEmail>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl VerificationEmailSender for CapturingEmailSender {
+        async fn send_verification(&self, message: VerificationEmail) -> RelayResult<()> {
+            self.messages.lock().unwrap().push(message);
+            Ok(())
+        }
     }
 
     impl Drop for TestRelay {
@@ -2091,6 +2197,33 @@ mod tests {
         }
     }
 
+    async fn start_verified_relay() -> (TestRelay, CapturingEmailSender) {
+        let directory = tempdir().unwrap();
+        let database_url = format!(
+            "sqlite://{}?mode=rwc",
+            directory.path().join("relay.sqlite").display()
+        );
+        let store = RelayStore::open(&database_url).await.unwrap();
+        let sender = CapturingEmailSender::default();
+        let (app, _) = router_with_registration_mode(
+            store,
+            AccountRegistrationMode::RequireEmail(Arc::new(sender.clone())),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        (
+            TestRelay {
+                base_url: format!("http://{address}"),
+                handle,
+                _directory: directory,
+            },
+            sender,
+        )
+    }
+
     #[test]
     fn endpoint_validation_requires_tls_except_loopback() {
         assert!(validate_base_url("https://relay.example.com").is_ok());
@@ -2098,6 +2231,56 @@ mod tests {
         assert!(validate_base_url("http://relay.example.com").is_err());
         assert!(validate_base_url("https://relay.example.com/path").is_err());
         assert!(validate_base_url("https://user@relay.example.com").is_err());
+    }
+
+    #[tokio::test]
+    async fn client_registration_waits_for_email_verification_before_saving_session() {
+        let (relay, sender) = start_verified_relay().await;
+        let directory = tempdir().unwrap();
+        let db = Database::open(&directory.path().join("cnshell.sqlite"))
+            .await
+            .unwrap();
+        let profile_id = uuid::Uuid::new_v4().to_string();
+        save_profile(
+            &db,
+            SaveTeamRelayProfileInput {
+                id: profile_id.clone(),
+                name: "Verified relay".into(),
+                base_url: relay.base_url.clone(),
+            },
+        )
+        .await
+        .unwrap();
+        let registration = register_account(
+            &db,
+            TeamRelayAccountInput {
+                profile_id: profile_id.clone(),
+                email: "verified-client@example.com".into(),
+                password: "correct horse battery staple".into(),
+                display_name: Some("Verified Client".into()),
+            },
+        )
+        .await
+        .unwrap();
+        assert!(registration.verification_required);
+        assert!(!registration.profile.has_account_session);
+        let token = sender.messages.lock().unwrap()[0].token.clone();
+
+        let profile = verify_account_email(
+            &db,
+            VerifyTeamRelayAccountInput {
+                profile_id: profile_id.clone(),
+                token,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(profile.has_account_session);
+        assert_eq!(
+            profile.account_email.as_deref(),
+            Some("verified-client@example.com")
+        );
+        logout_account(&db, &profile_id).await.unwrap();
     }
 
     #[tokio::test]
