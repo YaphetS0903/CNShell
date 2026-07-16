@@ -27,6 +27,17 @@ const directory = (name: string, path: string): RemoteFile => ({
   group: 0,
 });
 
+const file = (name: string, path: string): RemoteFile => ({
+  name,
+  path,
+  kind: "file",
+  size: 16,
+  modifiedAt: null,
+  permissions: "-rw-r--r--",
+  owner: 0,
+  group: 0,
+});
+
 describe("FileManager navigation state", () => {
   beforeEach(() => {
     vi.stubGlobal(
@@ -38,7 +49,7 @@ describe("FileManager navigation state", () => {
     );
     workspaceRuntime.remoteFileBrowserBySession.clear();
     vi.spyOn(api, "listFiles").mockImplementation(async (_sessionId, path) => {
-      if (path === "/") return [directory("home", "/home")];
+      if (path === "/") return [directory("home", "/home"), file("notes.txt", "/notes.txt")];
       if (path === "/home") return [directory("ubuntu", "/home/ubuntu")];
       return [];
     });
@@ -74,5 +85,31 @@ describe("FileManager navigation state", () => {
     first.unmount();
     render(<FileManager session={session("two")} />);
     expect(screen.getByLabelText("远程路径")).toHaveValue("/");
+  });
+
+  it("opens and dismisses the selected file action menu", async () => {
+    const user = userEvent.setup();
+    render(<FileManager session={session("one")} />);
+
+    await user.click(await screen.findByRole("row", { name: /notes\.txt/ }));
+    const more = screen.getByRole("button", { name: "更多文件操作" });
+    expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+
+    await user.click(more);
+    expect(screen.getByRole("button", { name: "编辑文本" })).toBeVisible();
+    await user.click(more);
+    expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+
+    await user.click(more);
+    await user.click(screen.getByLabelText("远程路径"));
+    expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+
+    await user.click(more);
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+
+    await user.click(more);
+    await user.click(screen.getByRole("button", { name: "复制路径" }));
+    expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
   });
 });
