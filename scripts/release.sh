@@ -7,7 +7,7 @@ cd "${0:A:h}/.."
   echo "拒绝发布：请从 tauri.release.example.json 创建含真实 updater 配置的 tauri.release.json。" >&2
   exit 1
 }
-rg -q 'REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY|\.example' src-tauri/tauri.release.json && {
+grep -Eq 'REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY|\.example' src-tauri/tauri.release.json && {
   echo "拒绝发布：tauri.release.json 仍含 updater 占位值。" >&2
   exit 1
 }
@@ -22,11 +22,11 @@ verify_developer_id_signature() {
   local details
   codesign --verify --strict --verbose=2 "$path"
   details="$(codesign -dv --verbose=4 "$path" 2>&1)"
-  printf '%s\n' "$details" | rg -Fq "Authority=$APPLE_SIGNING_IDENTITY" || {
+  printf '%s\n' "$details" | grep -F "Authority=$APPLE_SIGNING_IDENTITY" >/dev/null || {
     echo "发布失败：$label 未使用指定 Developer ID 签名。" >&2
     exit 1
   }
-  printf '%s\n' "$details" | rg -q 'flags=.*\(runtime\)' || {
+  printf '%s\n' "$details" | grep -E 'flags=.*\(runtime\)' >/dev/null || {
     echo "发布失败：$label 未启用 Hardened Runtime。" >&2
     exit 1
   }
@@ -90,8 +90,8 @@ FREERDP_ARCHITECTURES="$(lipo -archs "$FREERDP_HELPER")"
   exit 1
 }
 RDP_PREFLIGHT="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$EXECUTABLE_PATH" --rdp-preflight)"
-printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq '"available":true'
-printf '%s\n' "$RDP_PREFLIGHT" | rg -Fq 'Contents/Resources/freerdp/sdl-freerdp'
+printf '%s\n' "$RDP_PREFLIGHT" | grep -F '"available":true' >/dev/null
+printf '%s\n' "$RDP_PREFLIGHT" | grep -F 'Contents/Resources/freerdp/sdl-freerdp' >/dev/null
 verify_developer_id_signature "$FREERDP_HELPER" "FreeRDP helper"
 
 MOSH_CLIENT="$APP_PATH/Contents/Resources/mosh/mosh-client"
@@ -128,7 +128,7 @@ KERMIT_ARCHITECTURES="$(lipo -archs "$KERMIT_HELPER")"
 KERMIT_SOURCE="$APP_PATH/Contents/Resources/kermit/source/gku201.tar.gz"
 [[ -s "$KERMIT_SOURCE" ]] || { echo "发布失败：G-Kermit 对应源码缺失。" >&2; exit 1; }
 echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $KERMIT_SOURCE" | shasum -a 256 -c - >/dev/null
-"$KERMIT_HELPER" -h 2>&1 | rg -Fq "G-Kermit 2.01"
+"$KERMIT_HELPER" -h 2>&1 | grep -F "G-Kermit 2.01" >/dev/null
 verify_developer_id_signature "$KERMIT_HELPER" "G-Kermit helper"
 
 [[ -s "$APP_PATH/Contents/Resources/licenses/serialport-MPL-2.0.txt" ]] || {

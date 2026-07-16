@@ -70,7 +70,7 @@ MINIMUM="$(otool -arch arm64 -l "$OUTPUT/gkermit" | awk '/LC_BUILD_VERSION/{foun
   echo "G-Kermit 最低系统版本不匹配：$MINIMUM" >&2
   exit 1
 }
-"$OUTPUT/gkermit" -h 2>&1 | rg -Fq "G-Kermit $VERSION"
+"$OUTPUT/gkermit" -h 2>&1 | grep -F "G-Kermit $VERSION" >/dev/null
 
 cp "$SOURCE/COPYING" "$OUTPUT/licenses/G-Kermit-GPL-2.0.txt"
 cp "$DOWNLOADS/$ARCHIVE" "$OUTPUT/source/$ARCHIVE"

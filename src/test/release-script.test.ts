@@ -99,6 +99,17 @@ describe("release script gates", () => {
       'verify_developer_id_signature "$KERMIT_HELPER"',
     );
   });
+
+  it("uses only system text tools in macOS packaging and release gates", () => {
+    expect(kermitBuildScript).not.toMatch(/\brg\b/);
+    expect(script).not.toMatch(/\brg\b/);
+    expect(kermitBuildScript).toContain(
+      'grep -F "G-Kermit $VERSION" >/dev/null',
+    );
+    expect(script).toContain("grep -Eq");
+    expect(kermitBuildScript).not.toContain("grep -Fq");
+    expect(script).not.toContain("| grep -Fq");
+  });
 });
 
 describe("relay age release verification", () => {
