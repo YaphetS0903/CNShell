@@ -7,7 +7,9 @@ describe("release script gates", () => {
 
   it("uses the executable declared by the app bundle instead of assuming its case", () => {
     expect(script).toContain("Print :CFBundleExecutable");
-    expect(script).toContain('EXECUTABLE_PATH="$APP_PATH/Contents/MacOS/$EXECUTABLE_NAME"');
+    expect(script).toContain(
+      'EXECUTABLE_PATH="$APP_PATH/Contents/MacOS/$EXECUTABLE_NAME"',
+    );
     expect(script).not.toContain("Contents/MacOS/CNshell");
   });
 
@@ -48,7 +50,9 @@ describe("relay age release verification", () => {
   });
 
   it("rejects existing destinations and removes partial output on failure", () => {
-    expect(script).toContain('[[ ! -e "$destination" && ! -L "$destination" ]]');
+    expect(script).toContain(
+      '[[ ! -e "$destination" && ! -L "$destination" ]]',
+    );
     expect(script).toContain('if [[ "$completed" != true ]]');
     expect(script).toContain('rm -rf "$destination"');
     expect(script).toContain("release archive contains unexpected entries");
@@ -61,6 +65,10 @@ describe("relay container smoke", () => {
     "utf8",
   );
   const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
+  const releaseWorkflow = readFileSync(
+    resolve(".github/workflows/release.yml"),
+    "utf8",
+  );
   const compose = readFileSync(
     resolve("services/team-relay/docker-compose.example.yml"),
     "utf8",
@@ -78,6 +86,10 @@ describe("relay container smoke", () => {
     expect(workflow).not.toContain("actions/checkout@v4");
     expect(workflow).toContain("actions/setup-node@v5");
     expect(workflow).not.toContain("actions/setup-node@v4");
+    expect(releaseWorkflow).toContain("actions/checkout@v5");
+    expect(releaseWorkflow).not.toContain("actions/checkout@v4");
+    expect(releaseWorkflow).toContain("actions/setup-node@v5");
+    expect(releaseWorkflow).not.toContain("actions/setup-node@v4");
     expect(script).toContain("docker compose");
     expect(script).toContain("up --detach --build");
     expect(script).toContain("/health");
@@ -86,7 +98,9 @@ describe("relay container smoke", () => {
   });
 
   it("checks container isolation, persistence, loopback binding, and graceful stop", () => {
-    expect(compose).toContain('127.0.0.1:${CNSHELL_RELAY_HOST_PORT:-8787}:8787');
+    expect(compose).toContain(
+      "127.0.0.1:${CNSHELL_RELAY_HOST_PORT:-8787}:8787",
+    );
     expect(script).toContain("ReadonlyRootfs");
     expect(script).toContain("no-new-privileges:true");
     expect(script).toContain("10001:10001");
