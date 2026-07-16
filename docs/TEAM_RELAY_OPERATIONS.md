@@ -2,8 +2,8 @@
 
 > 适用范围：`services/team-relay` 单实例 SQLite 部署。
 > 当前证据：本机 loopback 的健康检查、指标、优雅停机、明文测试及 Sigsum 验证后的官方
-> `age v1.3.1` 加密备份/恢复功能演练已通过；正式 DNS/TLS/WSS、生产 identity、加密卷、
-> 监控平台和异地主机恢复仍需部署环境验收。
+> `age v1.3.1` 加密备份/恢复功能演练已通过；GitHub Ubuntu 24.04 Docker/Compose smoke 也已
+> 通过。正式 DNS/TLS/WSS、生产 identity、加密卷、监控平台和异地主机恢复仍需部署环境验收。
 
 ## 1. 运行边界
 
@@ -168,7 +168,8 @@ readiness 检查/失败和授权 WebSocket 总数/活动数。磁盘、备份、
 
 ## 7. 发布前未完成项
 
-- 当前机器没有 Docker，示例镜像和 Compose 健康检查尚未实际构建运行。
+- GitHub Ubuntu 24.04 Linux amd64 已构建并运行示例镜像与 Compose；这不替代目标生产主机、
+  加密卷、反向代理和持久化平台验收。
 - 官方 `age v1.3.1` 的 Sigsum release 验证和本机加密/解密功能演练已通过；尚无生产
   identity、加密卷、对象存储或异地主机恢复证据。
 - 正式 DNS/TLS/WSS、邮件验证/投递、代理层限速、监控告警和对象存储尚未部署。

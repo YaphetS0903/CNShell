@@ -59,7 +59,12 @@ SQLite 完整性、`/health`、`/ready`、`/metrics` 和 SIGTERM。`verify:relay
 cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings
 cargo test --manifest-path services/team-relay/Cargo.toml
 npm run test:relay-ops
+npm run test:relay-container
 ```
+
+容器门禁在 GitHub Ubuntu 24.04 Linux amd64 上真实构建固定 digest 基础镜像并启动 Compose，
+覆盖 UID/GID 10001、只读根文件系统、`no-new-privileges`、tmpfs、命名卷、host loopback 端口、
+健康/就绪/指标和 SIGTERM 退出码 0；完成后删除容器与测试卷。
 
 ## macOS 客户端接入
 

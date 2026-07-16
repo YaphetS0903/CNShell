@@ -143,7 +143,8 @@
 | 工作区生命周期 | 已完成账号注册/登录/退出、工作区发布、邮箱邀请令牌、可重试邀请接受、成员/设备/epoch 快照同步、在线角色更新和设备撤销；本机公钥与 Keychain 私钥身份固定比对 |
 | 自动刷新与证据 | 双账号、双 SQLite/Keychain 身份通过真实 relay HTTP 完成发布、邀请、角色同步；删除设备 token 后通过 Ed25519 一次性 challenge 自动恢复。客户端数据库检查不含明文密码或 token |
 | 保留验收边界 | 本阶段只验收账号与目录同步；房间 WebSocket、观看/控制 UI 和备份恢复运维代码已在后续增量中接通。正式 TLS 域名、邮件、监控平台、生产 identity 加密异地恢复和两台真实设备跨网络证据仍未完成 |
-| 部署边界 | 提供非 root、只读文件系统兼容的 Dockerfile 和仅绑定 host loopback 的 Compose 示例；非 loopback 启动必须显式确认位于 TLS 代理后。当前机器没有 Docker，未执行镜像构建；正式 DNS/TLS/WSS、邮件、代理限速、加密卷、生产备份恢复、监控告警和真实两设备仍待外部环境 |
+| 容器部署 | GitHub Actions run `29448613444` 的 `Relay Docker and Compose` job 在 Ubuntu 24.04 Linux amd64、Docker 28.0.4、Compose 2.38.2 上成功构建并运行；验证 UID/GID 10001、只读根文件系统、`no-new-privileges`、tmpfs、命名持久卷、host loopback 端口、健康/就绪/指标、数据库落盘和 SIGTERM 退出码 0，最后删除容器与测试卷。Rust 1.96 Bookworm 与 Debian Bookworm Slim 固定到该次成功解析的 manifest digest |
+| 部署边界 | 上述托管 runner smoke 不等于生产部署；正式 DNS/TLS/WSS、邮件、代理限速、加密卷、生产备份恢复、监控告警和真实两设备仍待外部环境 |
 
 ### 2026-07-16 在线多人终端客户端增量验收
 
@@ -164,7 +165,7 @@
 | 恢复边界 | 恢复前校验 sidecar，密文要求独立 identity；拒绝符号链接、未知文件名、运行中 PID、已有目标和损坏/错误 schema，校验完成后才把新数据库安装到目标。服务停机确认是必填开关 |
 | 本机演练 | `/usr/bin/sqlite3` 自动演练覆盖默认明文拒绝、符号链接拒绝、两份保留且不删除诱饵文件、完整往返、拒绝覆盖、篡改拒绝、真实 relay `/health`/`/ready`/`/metrics` 和 SIGTERM 正常退出；可选真实 `age` 分支覆盖密文不暴露 SQLite 头/样例邮箱、正确 identity 恢复、错误 identity 和宽权限 identity 拒绝 |
 | `age` release 供应链 | Go 1.26.5 darwin/arm64 工具链归档与 `go.dev` 清单 SHA-256 一致，通过 Go module checksum 构建固定 `sigsum-verify v0.13.1`；官方两把 age 发布公钥和内置 `sigsum-generic-2025-1` 策略成功验证 v1.3.1 proof 后才解包。归档 SHA-256 为 `01120ea2cbf0463d4c6bd767f99f3271bbed1cdc8a9aa718a76ba1fe4f01998b`，脚本另验证精确清单、普通可执行文件和版本 |
-| 保留验收边界 | 当前机器没有 Docker；未执行容器构建、生产 identity、加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
+| 保留验收边界 | Docker/Compose 托管 Linux smoke 已通过；仍未执行生产 identity、生产加密卷、对象存储、异地主机恢复、正式监控或事故演习，不将这些项目记为通过 |
 
 ### 2026-07-16 本机可实现规划收口增量验收
 
@@ -174,8 +175,8 @@
 | WebDAV 与 AI | 本机 TCP 夹具验证两者在响应头之后仍可取消、chunked body 采用累计上限；WebDAV 另覆盖 412、507、503 分类和逐块进度，AI 输出限制为 64 KB |
 | 团队目录与历史 | Owner/Admin `workspaceExport` 原子导出只含工作区、成员、设备公钥/指纹和元数据审计，Operator/Viewer 拒绝，符号链接拒绝且秘密字段扫描通过；真实 Keychain 分享在 epoch 轮换后仍允许有效原接收设备解密，撤销与篡改继续拒绝 |
 | Relay 有界性与观测 | 客户端 REST 对未知长度 chunked 响应执行累计 1 MiB 上限；真实 loopback HTTP/WebSocket 集成看到两条活动连接后归零；`/metrics` 没有工作区、设备和房间标签；Relay Clippy `-D warnings` 通过 |
-| 完整短时门禁 | `npm run check` 通过：前端 48 个文件、140 项测试，Rust 205 项测试，Relay 2 项单元测试与 1 项真实 loopback 集成测试，IPC 一致性、ESLint、TypeScript/Vite production build、Relay Clippy 和运维演练全部通过。本轮显式注入 Sigsum 验证后的官方 `age v1.3.1`，真实加密分支也属于同一次完整门禁；遵照用户要求未重复 soak、1 GB 或长时测试 |
-| 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、Docker、正式 DNS/TLS/WSS/邮件/限速/监控、生产加密异地恢复和双设备跨网络协作仍未验证 |
+| 完整短时门禁 | 最新 `npm run check` 通过：前端 48 个文件、142 项测试，Rust 205 项测试，Relay 2 项单元测试与 1 项真实 loopback 集成测试，IPC 一致性、ESLint、TypeScript/Vite production build、Relay Clippy 和默认不使用系统 `age` 的运维演练全部通过。此前同版本代码另有一次完整门禁显式注入经 Sigsum 验证的官方 `age v1.3.1`，真实加密备份/恢复分支通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
+| 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、正式 DNS/TLS/WSS/邮件/限速/监控、生产加密异地恢复和双设备跨网络协作仍未验证 |
 
 | 命令 | 结果（2026-07-12） |
 | --- | --- |

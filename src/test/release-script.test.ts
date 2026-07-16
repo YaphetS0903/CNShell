@@ -65,11 +65,19 @@ describe("relay container smoke", () => {
     resolve("services/team-relay/docker-compose.example.yml"),
     "utf8",
   );
+  const dockerfile = readFileSync(
+    resolve("services/team-relay/Dockerfile"),
+    "utf8",
+  );
 
   it("runs the real Docker and Compose path on a hosted Linux runner", () => {
     expect(workflow).toContain("relay-container:");
     expect(workflow).toContain("runs-on: ubuntu-latest");
     expect(workflow).toContain("npm run test:relay-container");
+    expect(workflow).toContain("actions/checkout@v5");
+    expect(workflow).not.toContain("actions/checkout@v4");
+    expect(workflow).toContain("actions/setup-node@v5");
+    expect(workflow).not.toContain("actions/setup-node@v4");
     expect(script).toContain("docker compose");
     expect(script).toContain("up --detach --build");
     expect(script).toContain("/health");
@@ -85,5 +93,11 @@ describe("relay container smoke", () => {
     expect(script).toContain("volume true");
     expect(script).toContain("stop --timeout 30 relay");
     expect(script).toContain("{{.State.ExitCode}}");
+    expect(dockerfile).toContain(
+      "rust:1.96-bookworm@sha256:a339861ae23e9abb272cea45dfafde21760d2ce6577a70f8a926153677902663",
+    );
+    expect(dockerfile).toContain(
+      "debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
+    );
   });
 });

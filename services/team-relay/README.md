@@ -56,8 +56,10 @@ explicit confirmation that the relay has stopped.
 npm run test:relay-ops
 ```
 
-The local drill uses plaintext only behind an explicit development flag. It does not claim a real
-`age`, Docker, off-host storage or production restore test. See
+The local drill uses plaintext only behind an explicit development flag unless verified `age`
+tools are supplied. `npm run verify:relay-age` verifies the official release Sigsum proof before
+extraction, and `npm run test:relay-container` builds and runs the Compose deployment. Both paths
+run in CI; neither claims off-host storage or a production restore test. See
 [`docs/TEAM_RELAY_OPERATIONS.md`](../../docs/TEAM_RELAY_OPERATIONS.md) for deployment, retention,
 restore, monitoring and incident procedures.
 

@@ -30,6 +30,7 @@
 - 团队设置已接入 relay 账号注册/登录、Keychain 短期会话、Ed25519 设备自动刷新、工作区发布、在线邀请接受、成员/设备/epoch 同步、服务端角色变更和设备撤销；终端工具栏已开放多人房间观看/控制入口。
 - 团队 relay 新增数据库感知的 `/ready`、WebSocket 优雅停机、默认强制 `age` 的一致性备份、安全恢复脚本、本地恢复演练及部署/监控/事故 runbook；明文备份只允许显式测试开关。
 - 团队 relay 新增低基数 Prometheus `/metrics` 和客户端 chunked 响应累计上限；新增固定发布者公钥、`sigsum-verify v0.13.1` 与官方生产策略的 `age` release 验证入口。Sigsum 验证后的 v1.3.1 本机演练覆盖正确/错误 identity 与私钥权限拒绝，生产异地恢复仍待部署环境。
+- 团队 relay 新增 GitHub Ubuntu 24.04 Docker/Compose 真运行门禁，验证非 root、只读根文件系统、tmpfs、持久卷、loopback 端口、健康/指标和 SIGTERM 退出；Rust 与 Debian 基础镜像固定到已运行的 manifest digest。
 
 ### 调整
 

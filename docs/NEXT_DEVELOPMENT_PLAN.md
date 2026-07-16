@@ -330,7 +330,7 @@
 - 客户端 relay REST 响应改为逐块累计读取，未知长度的 chunked 响应也受 1 MiB 上限约束，不再先把无界响应聚合进内存。
 - 已完成 relay 运维代码基线：`/health` 进程存活、执行数据库查询的 `/ready`、低基数且不含工作区/设备/房间标签的 Prometheus `/metrics`、SIGINT/SIGTERM 停止接流并关闭活动 WebSocket、SQLite 一致性快照、SHA-256 sidecar、生产默认强制 `age`、拒绝覆盖的恢复脚本、限定文件名保留策略和部署/监控/事故 runbook。
 - 本机运维演练覆盖默认拒绝明文、符号链接、篡改、保留、恢复、健康检查、指标和优雅停机。已新增固定 `age` 发布者公钥和 `verify:relay-age`：严格要求 `sigsum-verify v0.13.1`、官方 `sigsum-generic-2025-1` 策略、受审查版本/平台与精确归档清单，proof 验证通过后才解包。Sigsum 验证后的官方 v1.3.1 已完成真实密文、正确 identity 恢复、错误 identity 拒绝和私钥权限拒绝。
-- 当前仍未部署正式域名、TLS/WSS、邮件验证、代理层限速和监控，也未运行 Docker，未在生产 `age` identity、加密卷、异地存储及隔离恢复主机上执行演练，没有两台真实设备跨网络观看/控制/断网恢复证据。因此该入口仅适用于 loopback 与用户自行部署的测试 relay，不声明生产团队服务验收通过。
+- GitHub Actions Ubuntu 24.04 Linux amd64 已真实构建固定 digest 的 Rust/Debian 镜像并运行 Compose，验证非 root、只读根文件系统、tmpfs、持久卷、host loopback 端口、`/health`、`/ready`、`/metrics` 和 SIGTERM 退出码 0。当前仍未部署正式域名、TLS/WSS、邮件验证、代理层限速和监控，未在生产 `age` identity、加密卷、异地存储及隔离恢复主机上执行演练，也没有两台真实设备跨网络观看/控制/断网恢复证据。因此该入口不声明生产团队服务验收通过。
 
 ### 插件体系
 
