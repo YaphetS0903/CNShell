@@ -174,7 +174,7 @@
 - 已完成技术路线评估并选择独立 SDL 窗口深度联动，评估记录见 `docs/RDP_TECHNICAL_EVALUATION.md`；不把普通独立窗口冒充为画面内嵌。
 - 已完成受管 FreeRDP 状态标记、真实 `connecting/online/reconnecting/closed/failed` 生命周期、手动关窗退出 131 分类、窗口启动位置跟随 CNshell、macOS 聚焦/隐藏、全屏与 FreeRDP 显示器选择。
 - 已完成连接级显示与性能设置：动态分辨率/适应窗口/原始尺寸、自动/低带宽/均衡/高画质、文本剪贴板、远端声音、麦克风确认和单目录读写 Bookmark；参数仅通过 stdin，sidecar 继续崩溃隔离。
-- 已完成参数、显示器解析、状态标记、窗口关闭、目录安全 Bookmark、前端设置和状态按钮测试；universal FreeRDP 修订版 4 已重建，真实 Windows 画面/IME/剪贴板/重连仍待外部主机。
+- 已完成参数、显示器解析、状态标记、窗口关闭、目录安全 Bookmark、前端设置和状态按钮测试；universal FreeRDP 构建脚本修订版 5 已关闭可选宿主 JSON 库探测，避免 x86_64 构建误链接 arm64 Homebrew 依赖；真实 Windows 画面/IME/剪贴板/重连仍待外部主机。
 
 ### 技术验证门槛
 

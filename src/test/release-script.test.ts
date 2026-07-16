@@ -8,6 +8,10 @@ describe("release script gates", () => {
     resolve("scripts/build-mosh-sidecar.sh"),
     "utf8",
   );
+  const freeRdpBuildScript = readFileSync(
+    resolve("scripts/build-freerdp-sidecar.sh"),
+    "utf8",
+  );
   const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
 
   it("uses the executable declared by the app bundle instead of assuming its case", () => {
@@ -39,6 +43,11 @@ describe("release script gates", () => {
     expect(workflow).toContain(
       'env TERM=xterm-256color "$mosh" -c >/dev/null',
     );
+  });
+
+  it("keeps optional host JSON libraries out of universal FreeRDP builds", () => {
+    expect(freeRdpBuildScript).toContain('FREERDP_BUILD_REVISION="5"');
+    expect(freeRdpBuildScript).toContain("-DWITH_JSON_DISABLED=ON");
   });
 });
 
@@ -143,6 +152,16 @@ describe("relay container smoke", () => {
     );
     expect(dockerfile).toContain(
       "debian:bookworm-slim@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818",
+    );
+  });
+
+  it("creates the generated FreeRDP directory before clean-clone Rust checks", () => {
+    const prepareResources = "mkdir -p src-tauri/resources/freerdp";
+    const rustTests = "cargo test --manifest-path src-tauri/Cargo.toml";
+
+    expect(workflow).toContain(prepareResources);
+    expect(workflow.indexOf(prepareResources)).toBeLessThan(
+      workflow.indexOf(rustTests),
     );
   });
 });

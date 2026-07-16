@@ -94,7 +94,7 @@
 | 项目 | 结果 |
 | --- | --- |
 | 路线决策 | 共享帧/IOSurface、原生 NSView 子视图和独立 SDL 窗口三路线已记录比较；采用独立窗口深度联动以保留 SDL 原生 IME/Metal 与 sidecar 崩溃隔离，详见 `docs/RDP_TECHNICAL_EVALUATION.md` |
-| sidecar | FreeRDP 3.28.0 universal（arm64 + x86_64）按固定源码哈希、OpenSSL/SDL 固定版本构建；修订版 4 包含用户关窗正常退出和 `CNSHELL_RDP_STATE=online` 状态标记，签名/架构/系统库检查通过 |
+| sidecar | FreeRDP 3.28.0 universal（arm64 + x86_64）按固定源码哈希、OpenSSL/SDL 固定版本构建；构建脚本修订版 5 包含用户关窗正常退出、`CNSHELL_RDP_STATE=online` 状态标记，并关闭可选宿主 JSON 库探测以隔离跨架构依赖；产物必须通过签名、架构和系统库门禁 |
 | 连接状态与窗口 | 返回 connecting，FreeRDP `postConnect` 标记在线；自动重连日志映射 reconnecting；退出映射 closed/failed，退出 131 作为 SDL 手动关窗；窗口位置跟随 CNshell，macOS `NSRunningApplication` 支持聚焦与隐藏 |
 | 配置与权限 | UI 与 Rust 参数测试覆盖显示器、全屏、三种缩放、四档画质、文本剪贴板（文件剪贴板关闭）、声音、麦克风确认和单目录读写 Bookmark；密码和参数不进入 argv |
 | 本机证据 | 安装包严格 ad-hoc 签名验证；`--rdp-preflight` 返回内置 helper；`--rdp-displays` 解析本机 FreeRDP 显示器列表；Rust `133/133`、前端 `107/107`、lint/build 通过 |

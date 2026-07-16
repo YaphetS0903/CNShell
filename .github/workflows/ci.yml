@@ -31,6 +31,8 @@ jobs:
       - run: npm run lint
       - run: npm run test
       - run: npm run build
+      - name: Prepare generated resource directories for Rust checks
+        run: mkdir -p src-tauri/resources/freerdp
       - run: cargo test --manifest-path src-tauri/Cargo.toml
       - run: cargo clippy --manifest-path services/team-relay/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --manifest-path services/team-relay/Cargo.toml
