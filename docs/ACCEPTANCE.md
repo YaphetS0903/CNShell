@@ -1,6 +1,6 @@
-# CNshell v0.1.0 验收矩阵
+# CNshell v0.1.1 验收矩阵
 
-> 最后核验：2026-07-16（macOS 本机）
+> 最后核验：2026-07-17（macOS 本机）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -225,7 +225,7 @@
 | `zsh -n scripts/release.sh`、发布门禁单测、updater 验签与数据库回滚定向测试 | 通过；17 个发布/Tauri 配置用例、4 个 Rust updater 验签用例和 2 个数据库回滚用例通过。发布脚本检查最低 macOS 13、Developer ID、Gatekeeper、双架构、DMG、公证票据，并使用 release 公钥实际验证 updater 归档和 `.sig`；篡改归档、错误公钥与 HTTP endpoint 被拒绝。未来增量 schema 可由旧版读取并保留迁移前备份，已知 migration checksum 被修改仍会拒绝启动 |
 | 发布 workflow 供应链门禁 | 通过；CI/release 所有外部 `uses:` 均固定为 40 位 commit SHA，Dependabot 已把 `checkout/setup-node/upload-artifact` 升级至 7.0.0/7.0.0/7.0.1；`GITHUB_TOKEN` 仅 `contents: read` 且 checkout 不持久化凭据。Node `20.20.2`、Rust `1.96.0` 固定；执行 Clippy 的 workflow 显式安装 minimal profile 不包含的组件。15 个 release-script 定向测试验证精确引用、权限、checkout 凭据、Clippy 组件、拒绝浮动 tag，并保证 `.p12`、`.p8`、私有 release 配置和临时 Keychain 在 Artifact Action 前清理，只有构建与清理均成功才上传。GitHub Actions run `29525490667`（CI #75）暴露初版缺少 `cargo-clippy`；修复后的 run `29527312962`（CI #81）四个 job 全部通过，日志确认 `Contents: read`、`persist-credentials: false`、Rust 1.96.0 与 Clippy 组件实际生效。该 CI 不替代签名发布 workflow 所需的发行 secrets |
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
-| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；在仅保留 macOS 系统 PATH 的环境中，打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper；DMG SHA-256：`1837594f3bacaae218dd3a99138cf510ebb734b6ddf3e8ba09fbae061af2f3d3`；应用已覆盖安装至 `/Applications/CNshell.app` 并成功启动。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
+| `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，v0.1.1 当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper，Mosh 1.4.0 与 G-Kermit 2.01 也由包内 helper 返回版本；DMG SHA-256：`8b9d15fe66c080ebe52ef468143314cdcfa9a27911b5e4f72d559b216afd4120`。覆盖安装前后 SQLite 主文件及 WAL/SHM 校验清单一致；安装后 6 条连接完整，实际窗口无白屏，原 SSH 工作区、SFTP 和监控恢复在线。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
 ## 3. 必验场景与发布门槛
 
@@ -265,7 +265,7 @@
 
 ## 5. 结论
 
-当前代码达到可本机试用的 **v0.1.0 候选版**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收。正式对外发布仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证和正式更新通道配置。
+当前代码达到可本机试用的 **v0.1.1 候选版**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收。正式对外发布仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证和正式更新通道配置。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 

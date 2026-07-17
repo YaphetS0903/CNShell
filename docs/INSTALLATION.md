@@ -8,7 +8,7 @@
 
 ## 安装
 
-1. 打开 `CNshell_0.1.0_universal.dmg`。
+1. 打开 `CNshell_0.1.1_universal.dmg`。
 2. 将 `CNshell.app` 拖到“应用程序”。
 3. 从“应用程序”启动 CNshell。
 4. 创建 SSH 连接并通过可信渠道核对首次显示的 SHA-256 主机指纹。

@@ -7,21 +7,21 @@
 CNshell 是面向 macOS 的 SSH、SFTP、Linux 监控和 RDP 工作区。它将远程终端、文件管理、服务器状态与连接资料集中在一个原生桌面应用中。
 
 > [!WARNING]
-> `v0.1.0` 是供早期测试的 Beta 版本，采用 ad-hoc 签名，尚未完成 Apple Developer ID 签名和公证。请只在可信测试设备上使用，并在安装前核对下载来源与 SHA-256。
+> `v0.1.1` 是供早期测试的 Beta 候选版，采用 ad-hoc 签名，尚未完成 Apple Developer ID 签名和公证。请只在可信测试设备上使用，并在安装前核对下载来源与 SHA-256。
 
 ## 下载
 
-- [打开 CNshell v0.1.0 Beta 发布页](https://github.com/YaphetS0903/CNShell/releases/tag/v0.1.0)
-- [直接下载 universal DMG](https://github.com/YaphetS0903/CNShell/releases/download/v0.1.0/CNshell_0.1.0_universal.dmg)
+- [打开 CNshell v0.1.1 Beta 发布页](https://github.com/YaphetS0903/CNShell/releases/tag/v0.1.1)
+- [直接下载 universal DMG](https://github.com/YaphetS0903/CNShell/releases/download/v0.1.1/CNshell_0.1.1_universal.dmg)
 - 系统要求：macOS 13 Ventura 或更高版本
 - 处理器：Apple Silicon 与 Intel Mac
-- SHA-256：`1837594f3bacaae218dd3a99138cf510ebb734b6ddf3e8ba09fbae061af2f3d3`
+- SHA-256：`8b9d15fe66c080ebe52ef468143314cdcfa9a27911b5e4f72d559b216afd4120`
 
 DMG 已包含 universal FreeRDP 客户端。SSH、SFTP、监控和 RDP 均不要求用户安装 Homebrew、XQuartz 或开发环境。
 
 ## 安装
 
-1. 下载并打开 `CNshell_0.1.0_universal.dmg`。
+1. 下载并打开 `CNshell_0.1.1_universal.dmg`。
 2. 将 `CNshell.app` 拖入“应用程序”。
 3. 在 Finder 中打开“应用程序”，首次启动时选择 CNshell 并使用右键菜单中的“打开”。
 4. 仔细阅读 macOS 的来源提示；只有确认 DMG 来自本仓库发布页时才继续。

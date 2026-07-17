@@ -43,7 +43,7 @@ body:
     attributes:
       label: CNshell 版本
       description: 可在“关于 CNshell”或 GitHub Release 中查看。
-      placeholder: 例如 v0.1.0
+      placeholder: 例如 v0.1.1
     validations:
       required: true
 
