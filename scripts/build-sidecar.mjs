@@ -16,7 +16,7 @@ if (!existsSync(script)) {
   console.error(`${name} sidecar 暂不支持 ${process.platform} 构建：${script}`);
   process.exit(1);
 }
-const executable = windows ? "powershell.exe" : "/bin/zsh";
+const executable = windows ? "powershell.exe" : "/bin/bash";
 const args = windows
   ? ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", script]
   : [script];

@@ -6,6 +6,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const sourcePath = resolve(root, "src-tauri/src/models.rs");
 const outputPath = resolve(root, "src/generated/ipc.ts");
 const source = await readFile(sourcePath, "utf8");
+const normalizeLineEndings = (value) => value.replace(/\r\n/g, "\n");
 
 const camelCase = (value) => value.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
 const splitGeneric = (value) => {
@@ -72,7 +73,7 @@ const output = `// Generated from src-tauri/src/models.rs by scripts/generate-ip
 
 if (process.argv.includes("--check")) {
   const current = await readFile(outputPath, "utf8").catch(() => "");
-  if (current !== output) {
+  if (normalizeLineEndings(current) !== output) {
     console.error("IPC types are stale. Run: npm run generate:ipc");
     process.exitCode = 1;
   }
