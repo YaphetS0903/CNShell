@@ -292,6 +292,32 @@ pub struct ProtocolCapability {
     pub security_warning: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformFeatureCapability {
+    pub available: bool,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct PlatformCapabilities {
+    pub operating_system: String,
+    pub architecture: String,
+    pub display_name: String,
+    pub shortcut_modifier: String,
+    pub credential_store_name: String,
+    pub file_manager_name: String,
+    pub biometric_name: String,
+    pub rdp: PlatformFeatureCapability,
+    pub mosh: PlatformFeatureCapability,
+    pub kermit: PlatformFeatureCapability,
+    pub x11: PlatformFeatureCapability,
+    pub ssh_agent: PlatformFeatureCapability,
+    pub biometric: PlatformFeatureCapability,
+    pub serial: PlatformFeatureCapability,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionProtocolOptions {

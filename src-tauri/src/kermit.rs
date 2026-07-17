@@ -23,26 +23,55 @@ pub fn helper_path() -> Option<PathBuf> {
     }
     let mut candidates = Vec::new();
     if let Ok(executable) = std::env::current_exe()
-        && let Some(macos) = executable.parent()
-        && let Some(contents) = macos.parent()
+        && let Some(path) = bundled_helper_path(&executable)
     {
-        candidates.push(contents.join("Resources/kermit/gkermit"));
+        candidates.push(path);
     }
-    candidates.push(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("resources/kermit/gkermit"));
+    let name = if cfg!(target_os = "windows") {
+        "gkermit.exe"
+    } else {
+        "gkermit"
+    };
+    candidates.push(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("kermit")
+            .join(name),
+    );
     candidates.into_iter().find(|path| path.is_file())
+}
+
+#[cfg(target_os = "macos")]
+fn bundled_helper_path(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()?
+        .parent()
+        .map(|contents| contents.join("Resources/kermit/gkermit"))
+}
+
+#[cfg(target_os = "windows")]
+fn bundled_helper_path(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("kermit").join("gkermit.exe"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn bundled_helper_path(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("kermit").join("gkermit"))
 }
 
 pub fn available() -> bool {
     helper_path().is_some_and(|path| {
-        Command::new(path)
-            .arg("-h")
-            .env_clear()
-            .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
-            .output()
-            .is_ok_and(|output| {
-                String::from_utf8_lossy(&output.stderr).contains("G-Kermit 2.01")
-                    || String::from_utf8_lossy(&output.stdout).contains("G-Kermit 2.01")
-            })
+        let mut command = Command::new(&path);
+        command.arg("-h").env_clear();
+        configure_helper_environment(&mut command, &path);
+        command.output().is_ok_and(|output| {
+            String::from_utf8_lossy(&output.stderr).contains("G-Kermit 2.01")
+                || String::from_utf8_lossy(&output.stdout).contains("G-Kermit 2.01")
+        })
     })
 }
 
@@ -103,11 +132,11 @@ where
     let mut command = Command::new(&helper);
     command
         .env_clear()
-        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .args(["-X", "-i", "-q", "-S", "-b", "5"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    configure_helper_environment(&mut command, &helper);
     if direction == "upload" {
         command.arg("-s");
         command.args(paths);
@@ -192,6 +221,26 @@ where
         return Ok(total);
     }
     move_received_files(working_directory.unwrap().path(), &paths[0], progress)
+}
+
+#[cfg(target_os = "windows")]
+fn configure_helper_environment(command: &mut Command, helper: &Path) {
+    let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    let mut paths = vec![
+        helper
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .to_path_buf(),
+    ];
+    paths.push(PathBuf::from(system_root).join("System32"));
+    if let Ok(path) = std::env::join_paths(paths) {
+        command.env("PATH", path);
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_helper_environment(command: &mut Command, _helper: &Path) {
+    command.env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
 }
 
 fn spawn_serial_to_child(

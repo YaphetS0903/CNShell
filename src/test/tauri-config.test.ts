@@ -34,7 +34,7 @@ describe("Tauri updater configuration", () => {
   });
 
   it("locks the Developer ID build to hardened runtime and a privacy plist", () => {
-    const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8")) as TauriConfig;
+    const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.macos.conf.json"), "utf8")) as TauriConfig;
     const privacyPlist = readFileSync(resolve("src-tauri/Info.plist"), "utf8");
 
     expect(config.bundle?.macOS?.hardenedRuntime).toBe(true);

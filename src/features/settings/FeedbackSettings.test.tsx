@@ -9,11 +9,13 @@ const dialog=vi.hoisted(()=>({save:vi.fn()}));
 vi.mock("@tauri-apps/plugin-dialog",()=>dialog);
 
 const environment={appVersion:"0.1.1",operatingSystem:"macos",osVersion:"15.5",architecture:"aarch64"};
+const platform={operatingSystem:"macos",architecture:"aarch64",displayName:"macOS",shortcutModifier:"⌘",credentialStoreName:"macOS Keychain",fileManagerName:"Finder",biometricName:"Touch ID",rdp:{available:true,message:"ok"},mosh:{available:true,message:"ok"},kermit:{available:true,message:"ok"},x11:{available:false,message:"missing"},sshAgent:{available:true,message:"ok"},biometric:{available:true,message:"ok"},serial:{available:true,message:"ok"}};
 
 describe("FeedbackSettings",()=>{
   beforeEach(()=>{
     vi.restoreAllMocks();
     vi.spyOn(api,"feedbackEnvironment").mockResolvedValue(environment);
+    vi.spyOn(api,"platformCapabilities").mockResolvedValue(platform);
     vi.spyOn(api,"openExternal").mockResolvedValue();
   });
   it("prefills only non-sensitive runtime metadata in a bug report",async()=>{

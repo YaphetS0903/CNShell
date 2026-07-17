@@ -71,6 +71,7 @@ import type {
   SaveConnectionInput,
   SshCertificateInfo,
   Fido2Identity,
+  PlatformCapabilities,
   TouchIdSyncStatus,
   SystemInfo,
   SyncOptions,
@@ -129,6 +130,26 @@ const browserFiles:Record<string,RemoteFile[]>={
 
 export const api = {
   isDesktop: isTauri,
+  async platformCapabilities(): Promise<PlatformCapabilities> {
+    if (isTauri()) return invoke("platform_capabilities");
+    const windows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
+    return {
+      operatingSystem: windows ? "windows" : "browser",
+      architecture: "unknown",
+      displayName: windows ? "Windows" : "浏览器预览",
+      shortcutModifier: windows ? "Ctrl" : "⌘",
+      credentialStoreName: windows ? "Windows 凭据管理器" : "系统凭据库",
+      fileManagerName: windows ? "文件资源管理器" : "文件管理器",
+      biometricName: windows ? "Windows Hello" : "系统生物识别",
+      rdp: { available: false, message: "桌面版可检测 RDP 组件" },
+      mosh: { available: false, message: "桌面版可检测 Mosh 组件" },
+      kermit: { available: false, message: "桌面版可检测 Kermit 组件" },
+      x11: { available: false, message: "桌面版可检测 X11 环境" },
+      sshAgent: { available: false, message: "桌面版可检测 SSH Agent" },
+      biometric: { available: false, message: "桌面版可检测生物识别能力" },
+      serial: { available: false, message: "桌面版可检测串口设备" },
+    };
+  },
   async listConnections(): Promise<ConnectionProfile[]> {
     return isTauri() ? invoke("connection_list") : browserConnections;
   },

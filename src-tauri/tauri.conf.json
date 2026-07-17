@@ -18,8 +18,6 @@
         "height": 900,
         "minWidth": 900,
         "minHeight": 620,
-        "titleBarStyle": "Overlay",
-        "hiddenTitle": true,
         "transparent": false
       }
     ],
@@ -29,22 +27,16 @@
   },
   "bundle": {
     "active": true,
-    "icon": ["icons/icon.icns"],
-    "targets": ["dmg", "app"],
+    "icon": ["icons/icon.icns", "icons/icon.ico", "icons/icon.png"],
     "category": "DeveloperTool",
-    "shortDescription": "SSH, SFTP and server monitoring for macOS",
-    "longDescription": "CNshell brings secure remote terminals, file transfer and Linux monitoring into one macOS workspace.",
+    "shortDescription": "SSH, SFTP and server monitoring workspace",
+    "longDescription": "CNshell brings secure remote terminals, file transfer and Linux monitoring into one native desktop workspace.",
     "copyright": "Copyright © 2026 CNshell Contributors",
     "resources": {
       "resources/freerdp/": "freerdp/",
       "resources/mosh/": "mosh/",
       "resources/kermit/": "kermit/",
       "resources/licenses/": "licenses/"
-    },
-    "macOS": {
-      "minimumSystemVersion": "13.0",
-      "hardenedRuntime": true,
-      "infoPlist": "Info.plist"
     }
   },
   "plugins": {

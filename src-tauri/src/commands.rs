@@ -446,6 +446,11 @@ pub fn protocol_capabilities() -> Vec<ProtocolCapability> {
 }
 
 #[tauri::command]
+pub fn platform_capabilities() -> crate::models::PlatformCapabilities {
+    crate::platform::capabilities()
+}
+
+#[tauri::command]
 pub async fn protocol_options_get(
     state: State<'_, AppState>,
     connection_id: String,

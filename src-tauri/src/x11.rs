@@ -1,10 +1,11 @@
 use crate::error::{AppError, AppResult};
 use rand::{RngCore, rngs::OsRng};
 use ssh2::{Channel, Session, X11ChannelReceiver};
+#[cfg(unix)]
+use std::os::unix::net::UnixStream;
 use std::{
     io::{ErrorKind, Read, Write},
     net::{IpAddr, SocketAddr, TcpStream},
-    os::unix::net::UnixStream,
     path::PathBuf,
     process::Command,
     sync::{
@@ -23,6 +24,7 @@ const SETUP_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum DisplayEndpoint {
+    #[cfg(unix)]
     Unix(PathBuf),
     Tcp(SocketAddr),
 }
@@ -60,32 +62,29 @@ impl Drop for X11Forwarder {
 }
 
 pub fn availability() -> Result<String, String> {
-    let display =
-        std::env::var("DISPLAY").map_err(|_| "未检测到 DISPLAY；请先启动 XQuartz".to_string())?;
+    let display = std::env::var("DISPLAY").map_err(|_| missing_display_message().to_string())?;
     let (_, endpoint) = parse_display(&display)?;
     validate_endpoint(&endpoint)?;
-    let executable = xauth_path().ok_or_else(|| "未检测到 XQuartz xauth".to_string())?;
+    let executable = xauth_path().ok_or_else(|| missing_xauth_message().to_string())?;
     Ok(executable.to_string_lossy().into_owned())
 }
 
 pub fn authorization() -> AppResult<X11Authorization> {
     let display = std::env::var("DISPLAY")
-        .map_err(|_| AppError::Unavailable("未检测到 DISPLAY；请先启动 XQuartz".into()))?;
+        .map_err(|_| AppError::Unavailable(missing_display_message().into()))?;
     let (screen, endpoint) = parse_display(&display).map_err(AppError::Unavailable)?;
     validate_endpoint(&endpoint).map_err(AppError::Unavailable)?;
     let executable =
-        xauth_path().ok_or_else(|| AppError::Unavailable("未检测到 XQuartz xauth".into()))?;
-    let output = Command::new(executable)
-        .args(["list", &display])
-        .env_clear()
-        .env("PATH", "/opt/X11/bin:/usr/bin:/bin:/usr/sbin:/sbin")
-        .env("DISPLAY", &display)
-        .env("HOME", std::env::var("HOME").unwrap_or_default())
+        xauth_path().ok_or_else(|| AppError::Unavailable(missing_xauth_message().into()))?;
+    let mut command = Command::new(&executable);
+    command.args(["list", &display]).env_clear();
+    configure_xauth_environment(&mut command, &executable, &display);
+    let output = command
         .output()
         .map_err(|error| AppError::Unavailable(format!("无法读取 X11 授权：{error}")))?;
     if !output.status.success() || output.stdout.len() > 64 * 1024 {
         return Err(AppError::Unavailable(
-            "XQuartz 没有返回可用的 X11 授权 cookie".into(),
+            "本地 X Server 没有返回可用的 X11 授权 cookie".into(),
         ));
     }
     let text = String::from_utf8(output.stdout)
@@ -173,6 +172,7 @@ trait LocalStream: Read + Write + Send {
     fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()>;
 }
 
+#[cfg(unix)]
 impl LocalStream for UnixStream {
     fn set_nonblocking(&self, nonblocking: bool) -> std::io::Result<()> {
         UnixStream::set_nonblocking(self, nonblocking)
@@ -314,9 +314,10 @@ fn rewrite_setup_cookie(
 
 fn connect_local(endpoint: &DisplayEndpoint) -> AppResult<Box<dyn LocalStream>> {
     match endpoint {
+        #[cfg(unix)]
         DisplayEndpoint::Unix(path) => UnixStream::connect(path)
             .map(|stream| Box::new(stream) as Box<dyn LocalStream>)
-            .map_err(|error| AppError::Unavailable(format!("无法连接 XQuartz socket：{error}"))),
+            .map_err(|error| AppError::Unavailable(format!("无法连接本地 X11 socket：{error}"))),
         DisplayEndpoint::Tcp(address) => {
             TcpStream::connect_timeout(address, Duration::from_secs(3))
                 .map(|stream| Box::new(stream) as Box<dyn LocalStream>)
@@ -365,7 +366,7 @@ fn parse_xauth(output: &str) -> AppResult<[u8; COOKIE_BYTES]> {
         }
     }
     Err(AppError::Unavailable(
-        "XQuartz 没有 MIT-MAGIC-COOKIE-1 授权".into(),
+        "本地 X Server 没有 MIT-MAGIC-COOKIE-1 授权".into(),
     ))
 }
 
@@ -387,11 +388,77 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn xauth_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    {
+        let mut candidates = Vec::new();
+        for root in [
+            std::env::var_os("ProgramFiles"),
+            std::env::var_os("ProgramFiles(x86)"),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            candidates.push(PathBuf::from(&root).join("VcXsrv").join("xauth.exe"));
+            candidates.push(PathBuf::from(&root).join("Xming").join("xauth.exe"));
+        }
+        return candidates
+            .into_iter()
+            .find(|path| path.is_file())
+            .or_else(|| which::which("xauth.exe").ok());
+    }
+    #[cfg(not(target_os = "windows"))]
     ["/opt/X11/bin/xauth", "/usr/X11/bin/xauth"]
         .into_iter()
         .map(PathBuf::from)
         .find(|path| path.is_file())
         .or_else(|| which::which("xauth").ok())
+}
+
+#[cfg(target_os = "windows")]
+fn configure_xauth_environment(command: &mut Command, executable: &PathBuf, display: &str) {
+    let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+    let mut paths = vec![
+        executable
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."))
+            .to_path_buf(),
+    ];
+    paths.push(PathBuf::from(system_root).join("System32"));
+    if let Ok(path) = std::env::join_paths(paths) {
+        command.env("PATH", path);
+    }
+    command.env("DISPLAY", display).env(
+        "USERPROFILE",
+        std::env::var_os("USERPROFILE").unwrap_or_default(),
+    );
+}
+
+#[cfg(not(target_os = "windows"))]
+fn configure_xauth_environment(command: &mut Command, _executable: &PathBuf, display: &str) {
+    command
+        .env("PATH", "/opt/X11/bin:/usr/bin:/bin:/usr/sbin:/sbin")
+        .env("DISPLAY", display)
+        .env("HOME", std::env::var("HOME").unwrap_or_default());
+}
+
+#[cfg(target_os = "windows")]
+fn missing_display_message() -> &'static str {
+    "未检测到 DISPLAY；请先启动 VcXsrv、Xming 或其他本地 X Server"
+}
+
+#[cfg(not(target_os = "windows"))]
+fn missing_display_message() -> &'static str {
+    "未检测到 DISPLAY；请先启动 XQuartz"
+}
+
+#[cfg(target_os = "windows")]
+fn missing_xauth_message() -> &'static str {
+    "未检测到本地 X Server 的 xauth.exe"
+}
+
+#[cfg(not(target_os = "windows"))]
+fn missing_xauth_message() -> &'static str {
+    "未检测到 XQuartz xauth"
 }
 
 fn parse_display(value: &str) -> Result<(i32, DisplayEndpoint), String> {
@@ -414,9 +481,29 @@ fn parse_display(value: &str) -> Result<(i32, DisplayEndpoint), String> {
         return Err("DISPLAY 屏幕编号超出范围".into());
     }
     let endpoint = if host.is_empty() || host == "unix" {
-        DisplayEndpoint::Unix(PathBuf::from(format!("/tmp/.X11-unix/X{display_number}")))
+        #[cfg(unix)]
+        {
+            DisplayEndpoint::Unix(PathBuf::from(format!("/tmp/.X11-unix/X{display_number}")))
+        }
+        #[cfg(not(unix))]
+        {
+            let port = 6000_u16
+                .checked_add(display_number)
+                .ok_or_else(|| "DISPLAY 端口超出范围".to_string())?;
+            DisplayEndpoint::Tcp(SocketAddr::new(
+                IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+                port,
+            ))
+        }
     } else if host.starts_with('/') {
-        DisplayEndpoint::Unix(PathBuf::from(host))
+        #[cfg(unix)]
+        {
+            DisplayEndpoint::Unix(PathBuf::from(host))
+        }
+        #[cfg(not(unix))]
+        {
+            return Err("Windows X11 DISPLAY 必须使用本机 TCP 地址".into());
+        }
     } else {
         let ip = host
             .trim_matches(['[', ']'])
@@ -435,12 +522,14 @@ fn parse_display(value: &str) -> Result<(i32, DisplayEndpoint), String> {
 
 fn validate_endpoint(endpoint: &DisplayEndpoint) -> Result<(), String> {
     match endpoint {
+        #[cfg(unix)]
         DisplayEndpoint::Unix(path) if path.exists() => Ok(()),
+        #[cfg(unix)]
         DisplayEndpoint::Unix(_) => Err("XQuartz socket 不存在；请确认 XQuartz 正在运行".into()),
         DisplayEndpoint::Tcp(address) => {
             TcpStream::connect_timeout(address, Duration::from_millis(300))
                 .map(|_| ())
-                .map_err(|_| "本机 X11 端口不可用；请确认 XQuartz 正在运行".into())
+                .map_err(|_| "本机 X11 端口不可用；请确认本地 X Server 正在运行".into())
         }
     }
 }
@@ -499,10 +588,20 @@ mod tests {
 
     #[test]
     fn parses_only_local_displays_and_strict_xauth_cookie() {
+        #[cfg(unix)]
         assert_eq!(
             parse_display(":0").unwrap(),
             (0, DisplayEndpoint::Unix(PathBuf::from("/tmp/.X11-unix/X0")))
         );
+        #[cfg(not(unix))]
+        assert_eq!(
+            parse_display(":0").unwrap(),
+            (
+                0,
+                DisplayEndpoint::Tcp(SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 6000,)),
+            )
+        );
+        #[cfg(unix)]
         assert_eq!(
             parse_display("/private/tmp/xquartz:1.2").unwrap(),
             (
@@ -510,6 +609,8 @@ mod tests {
                 DisplayEndpoint::Unix(PathBuf::from("/private/tmp/xquartz"))
             )
         );
+        #[cfg(not(unix))]
+        assert!(parse_display("/private/tmp/xquartz:1.2").is_err());
         assert_eq!(
             parse_display("127.0.0.1:3").unwrap(),
             (

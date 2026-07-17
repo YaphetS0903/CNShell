@@ -16,6 +16,7 @@ mod models;
 mod monitor;
 mod mosh;
 mod openssh;
+mod platform;
 mod plugin;
 mod protocols;
 mod python_automation;
@@ -247,6 +248,7 @@ pub fn run() {
             commands::connection_purge,
             commands::connection_test_start,
             commands::connection_trust_host,
+            commands::platform_capabilities,
             commands::ssh_certificate_inspect,
             commands::fido2_identity_list,
             commands::openssh_import,

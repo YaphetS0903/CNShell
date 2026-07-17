@@ -47,6 +47,36 @@ jobs:
       - run: npm run test:relay-ops
       - run: npm audit --audit-level=moderate
 
+  windows-core:
+    name: Windows x64 tests and ARM64 compile
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-pc-windows-msvc
+          components: clippy
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          key: windows-core
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build
+      - name: Run Windows x64 Rust tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Compile Windows ARM64 application and tests
+        run: cargo check --manifest-path src-tauri/Cargo.toml --target aarch64-pc-windows-msvc --all-targets
+
   relay-container:
     name: Relay Docker and Compose
     runs-on: ubuntu-latest

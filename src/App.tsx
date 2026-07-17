@@ -16,6 +16,7 @@ import { shellQuote, workspaceRuntime } from "./lib/workspace-runtime";
 import { mapLayoutSessions } from "./features/terminal/terminal-layout";
 import { ErrorToast } from "./components/ErrorToast";
 import { createWorkspaceSnapshot, saveBeforeWindowClose, saveWorkspaceIfChanged, type WorkspaceSnapshot } from "./lib/workspace-persistence";
+import { usePlatformCapabilities } from "./lib/platform";
 
 const TerminalWorkspace = lazy(() => import("./features/terminal/TerminalWorkspace"));
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
@@ -24,6 +25,7 @@ const HelpModal = lazy(() => import("./features/help/HelpModal"));
 interface HostKeyPrompt { connection: ConnectionProfile; fingerprint: string; algorithm: string }
 
 export default function App() {
+  usePlatformCapabilities();
   const { bootstrap, loading, error, setError, addSession, connections, openConnectionEditor, setSettingsOpen, setHelpOpen, settings, settingsOpen, connectionEditorOpen } = useAppStore();
   const [connectionsOpen,setConnectionsOpen]=useState(true);const[monitorOpen,setMonitorOpen]=useState(true);const[connectionWidth,setConnectionWidth]=useState(260);const[monitorWidth,setMonitorWidth]=useState(232);const[connecting,setConnecting]=useState<string|null>(null);const[hostPrompt,setHostPrompt]=useState<HostKeyPrompt|null>(null);
   const workspaceRestoreStarted=useRef(false);const workspacePersistenceReady=useRef(false);const lastSavedWorkspace=useRef<string|null>(null);const workspaceSnapshotRef=useRef<()=>WorkspaceSnapshot>(()=>createWorkspaceSnapshot([],null,workspaceRuntime.cwdBySession,{terminalLayout:null,bottomOpen:true,bottomHeight:260,connectionsOpen:true,monitorOpen:true,connectionWidth:260,monitorWidth:232}));

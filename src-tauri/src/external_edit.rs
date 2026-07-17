@@ -9,7 +9,6 @@ use parking_lot::Mutex;
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    process::Command,
     sync::Arc,
 };
 use uuid::Uuid;
@@ -101,23 +100,7 @@ fn cache_root() -> PathBuf {
     std::env::temp_dir().join("CNshellExternalEdit")
 }
 fn open_application(path: &Path, application: Option<&str>) -> AppResult<()> {
-    let mut command = Command::new("open");
-    if let Some(application) = application {
-        if !application.starts_with('/')
-            || !application.ends_with(".app")
-            || !Path::new(application).is_dir()
-        {
-            return Err(AppError::Validation(
-                "外部编辑器必须选择已安装的 macOS 应用".into(),
-            ));
-        }
-        command.arg("-a").arg(application);
-    }
-    command
-        .arg(path)
-        .spawn()
-        .map_err(|error| AppError::Unavailable(format!("无法打开外部编辑器：{error}")))?;
-    Ok(())
+    crate::platform::open_local_path(path, application)
 }
 
 #[cfg(test)]

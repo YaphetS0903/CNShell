@@ -757,10 +757,8 @@ pub fn validate_connection(input: &SaveConnectionInput) -> AppResult<()> {
         return Ok(());
     }
     if input.protocol == "serial" {
-        if !input.host.starts_with("/dev/") {
-            return Err(AppError::Validation(
-                "Serial 设备必须是 /dev 下的设备路径".into(),
-            ));
+        if !crate::serial::valid_device_path(&input.host) {
+            return Err(AppError::Validation("Serial 设备路径无效".into()));
         }
         if !(300..=4_000_000).contains(&input.port) {
             return Err(AppError::Validation(

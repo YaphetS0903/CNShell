@@ -4,7 +4,7 @@ use crate::{
     rdp,
 };
 use serde::Serialize;
-use std::{path::Path, process::Command};
+use std::path::Path;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +73,7 @@ pub fn feedback_environment() -> FeedbackEnvironment {
     FeedbackEnvironment {
         app_version: env!("CARGO_PKG_VERSION").into(),
         operating_system: std::env::consts::OS.into(),
-        os_version: system_version(),
+        os_version: crate::platform::system_version(),
         architecture: std::env::consts::ARCH.into(),
     }
 }
@@ -85,27 +85,7 @@ pub fn reveal(path: &str) -> AppResult<()> {
             "诊断文件不存在或不是 JSON 文件".into(),
         ));
     }
-    let status = Command::new("/usr/bin/open")
-        .arg("-R")
-        .arg(target)
-        .status()?;
-    if status.success() {
-        Ok(())
-    } else {
-        Err(AppError::Unavailable("无法在 Finder 中显示诊断文件".into()))
-    }
-}
-
-fn system_version() -> String {
-    Command::new("/usr/bin/sw_vers")
-        .arg("-productVersion")
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .and_then(|output| String::from_utf8(output.stdout).ok())
-        .map(|version| version.trim().to_owned())
-        .filter(|version| !version.is_empty())
-        .unwrap_or_else(|| "unknown".into())
+    crate::platform::reveal_local_file(target)
 }
 
 fn write_report(target: &Path, report: &DiagnosticReport) -> AppResult<()> {

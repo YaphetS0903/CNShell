@@ -19,13 +19,19 @@ pub fn inspect(path: &Path) -> AppResult<SshCertificateInfo> {
             "SSH Certificate 文件不能超过 1 MB".into(),
         ));
     }
-    let output = Command::new("/usr/bin/ssh-keygen")
+    let executable = crate::openssh::ssh_keygen_path()
+        .ok_or_else(|| AppError::Unavailable("未找到 OpenSSH ssh-keygen".into()))?;
+    let mut command = Command::new(executable);
+    #[cfg(not(target_os = "windows"))]
+    command
+        .env_clear()
+        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin");
+    command
         .args(["-L", "-f"])
         .arg(path)
-        .env_clear()
-        .env("PATH", "/usr/bin:/bin:/usr/sbin:/sbin")
         .env("LC_ALL", "C")
-        .env("TZ", "UTC")
+        .env("TZ", "UTC");
+    let output = command
         .output()
         .map_err(|error| AppError::Unavailable(format!("无法运行 ssh-keygen：{error}")))?;
     if output.stdout.len().saturating_add(output.stderr.len()) > MAX_INSPECT_OUTPUT {

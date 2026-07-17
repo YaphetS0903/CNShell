@@ -27,6 +27,10 @@ describe("release script gates", () => {
   const packageJson = JSON.parse(
     readFileSync(resolve("package.json"), "utf8"),
   ) as { scripts: Record<string, string> };
+  const desktopBuildScript = readFileSync(
+    resolve("scripts/build-desktop.mjs"),
+    "utf8",
+  );
   const workflow = readFileSync(resolve(".github/workflows/ci.yml"), "utf8");
 
   it("uses the executable declared by the app bundle instead of assuming its case", () => {
@@ -102,7 +106,8 @@ describe("release script gates", () => {
   });
 
   it("rebuilds and Developer ID signs every bundled sidecar", () => {
-    expect(packageJson.scripts["build:desktop"]).toContain("build:kermit");
+    expect(packageJson.scripts["build:desktop"]).toContain("build-desktop.mjs");
+    expect(desktopBuildScript).toContain('["freerdp", "mosh", "kermit"]');
     for (const buildScript of [
       freeRdpBuildScript,
       moshBuildScript,
@@ -258,9 +263,11 @@ describe("relay container smoke", () => {
         expect(["20.20.2", "1.96.0"]).toContain(match[1]);
       }
     }
-    expect(workflow.match(/components: clippy/g)).toHaveLength(1);
+    expect(workflow.match(/components: clippy/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
     expect(releaseWorkflow.match(/components: clippy/g)).toHaveLength(1);
-    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(4);
+    expect(workflow.match(/persist-credentials: false/g)).toHaveLength(
+      workflow.match(/actions\/checkout@/g)?.length ?? 0,
+    );
     expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(1);
     for (const contents of [workflow, releaseWorkflow]) {
       expect(contents).toMatch(/^permissions:\n {2}contents: read$/m);

@@ -86,6 +86,7 @@ import type {
   SerialTransferEvent,
   SshCertificateInfo,
   Fido2Identity,
+  PlatformCapabilities,
   TouchIdSyncStatus,
   SessionLogStatus,
   RemoteFile as GeneratedRemoteFile,
@@ -135,7 +136,7 @@ export type PortForward = Omit<GeneratedPortForward, "type" | "status"> & {
   status: "stopped" | "running" | "failed" | null;
 };
 export type CommandSnippet = GeneratedCommandSnippet & { builtIn?: boolean };
-export type { Fido2Identity, TouchIdSyncStatus };
+export type { Fido2Identity, PlatformCapabilities, TouchIdSyncStatus };
 export type RdpConnectionOptions = Omit<GeneratedRdpConnectionOptions,"displayMode"|"scaleMode"|"quality"|"audioMode"> & {
   displayMode:"window"|"fullscreen";
   scaleMode:"dynamic"|"fit"|"native";

@@ -811,6 +811,7 @@ mod tests {
         assert_eq!(list_audit(&db, &workspace.id).await.unwrap().len(), 2);
     }
 
+    #[cfg(unix)]
     #[tokio::test]
     async fn workspace_export_contains_only_directory_public_keys_and_metadata() {
         let directory = tempdir().unwrap();

@@ -62,12 +62,14 @@ import {
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
 import { TeamTerminalCenter } from "./TeamTerminalCenter";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export default function TerminalWorkspace({
   connect,
 }: {
   connect: (profile: ConnectionProfile) => Promise<void>;
 }) {
+  const platform = usePlatformCapabilities();
   const {
     sessions,
     connections,
@@ -417,11 +419,11 @@ export default function TerminalWorkspace({
             在线团队终端
           </button>
           <div className="shortcut-row">
-            <kbd>⌘N</kbd>
+            <kbd>{platform.shortcutModifier}N</kbd>
             <span>新建连接</span>
-            <kbd>⌘T</kbd>
+            <kbd>{platform.shortcutModifier}T</kbd>
             <span>打开终端</span>
-            <kbd>⌘?</kbd>
+            <kbd>{platform.shortcutModifier}?</kbd>
             <span>查看帮助</span>
           </div>
         </main>

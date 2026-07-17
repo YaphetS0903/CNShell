@@ -8,7 +8,9 @@ use parking_lot::Mutex;
 use portable_pty::{Child, CommandBuilder, MasterPty, PtySize, native_pty_system};
 use std::{
     collections::HashMap,
+    ffi::OsString,
     io::{ErrorKind, Read, Write},
+    path::PathBuf,
     sync::Arc,
 };
 use tauri::{AppHandle, Emitter};
@@ -56,9 +58,11 @@ impl LocalShellManager {
             .master
             .take_writer()
             .map_err(|error| AppError::Internal(format!("写入本地 PTY 失败：{error}")))?;
-        let shell = std::env::var_os("SHELL").unwrap_or_else(|| "/bin/zsh".into());
+        let (shell, arguments) = shell_command()?;
         let mut command = CommandBuilder::new(shell);
-        command.arg("-l");
+        for argument in arguments {
+            command.arg(argument);
+        }
         command.env("TERM", "xterm-256color");
         for (key, value) in &profile.environment {
             if crate::serial::is_option_key(key) {
@@ -84,7 +88,7 @@ impl LocalShellManager {
         {
             let mut handle = managed.lock();
             handle.writer.write_all(startup.as_bytes())?;
-            handle.writer.write_all(b"\n")?;
+            handle.writer.write_all(local_line_ending())?;
             handle.writer.flush()?;
         }
         self.sessions.lock().insert(id.clone(), managed.clone());
@@ -225,6 +229,38 @@ fn validate_size(cols: u32, rows: u32) -> AppResult<()> {
         return Err(AppError::Validation("PTY 尺寸超出允许范围".into()));
     }
     Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn shell_command() -> AppResult<(PathBuf, Vec<OsString>)> {
+    for (candidate, arguments) in [
+        ("pwsh.exe", vec![OsString::from("-NoLogo")]),
+        ("powershell.exe", vec![OsString::from("-NoLogo")]),
+        ("cmd.exe", Vec::new()),
+    ] {
+        if let Ok(path) = which::which(candidate) {
+            return Ok((path, arguments));
+        }
+    }
+    Err(AppError::Unavailable(
+        "未找到 pwsh.exe、powershell.exe 或 cmd.exe".into(),
+    ))
+}
+
+#[cfg(not(target_os = "windows"))]
+fn shell_command() -> AppResult<(PathBuf, Vec<OsString>)> {
+    let shell = std::env::var_os("SHELL").unwrap_or_else(|| OsString::from("/bin/zsh"));
+    Ok((PathBuf::from(shell), vec![OsString::from("-l")]))
+}
+
+#[cfg(target_os = "windows")]
+fn local_line_ending() -> &'static [u8] {
+    b"\r\n"
+}
+
+#[cfg(not(target_os = "windows"))]
+fn local_line_ending() -> &'static [u8] {
+    b"\n"
 }
 
 #[cfg(test)]

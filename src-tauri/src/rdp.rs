@@ -33,6 +33,7 @@ const MAX_DIAGNOSTIC_BYTES: usize = 64 * 1024;
 
 struct ManagedRdpChild {
     child: Child,
+    _process_guard: ManagedProcessGuard,
     diagnostics: Arc<Mutex<Vec<u8>>>,
     stderr_reader: Option<JoinHandle<()>>,
     runtime_event: Arc<AtomicU8>,
@@ -59,13 +60,32 @@ pub fn preflight() -> RdpPreflight {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 const HELPER_NAMES: [&str; 3] = ["sdl-freerdp", "xfreerdp", "wlfreerdp"];
 
+#[cfg(target_os = "windows")]
+const HELPER_NAMES: [&str; 2] = ["sdl-freerdp.exe", "xfreerdp.exe"];
+
+#[cfg(target_os = "macos")]
 fn bundled_helper_path_for(executable: &Path) -> Option<PathBuf> {
     executable
         .parent()?
         .parent()
         .map(|contents| contents.join("Resources/freerdp/sdl-freerdp"))
+}
+
+#[cfg(target_os = "windows")]
+fn bundled_helper_path_for(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("freerdp").join("sdl-freerdp.exe"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn bundled_helper_path_for(executable: &Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("freerdp").join("sdl-freerdp"))
 }
 
 fn helper_path() -> Option<PathBuf> {
@@ -79,14 +99,33 @@ fn helper_path() -> Option<PathBuf> {
                 .filter(|path| path.is_file())
         })
         .or_else(|| {
-            ["/opt/homebrew/bin", "/usr/local/bin"]
-                .into_iter()
-                .flat_map(|directory| {
-                    HELPER_NAMES
-                        .into_iter()
-                        .map(move |name| Path::new(directory).join(name))
-                })
-                .find(|path| path.is_file())
+            #[cfg(target_os = "macos")]
+            {
+                ["/opt/homebrew/bin", "/usr/local/bin"]
+                    .into_iter()
+                    .flat_map(|directory| {
+                        HELPER_NAMES
+                            .into_iter()
+                            .map(move |name| Path::new(directory).join(name))
+                    })
+                    .find(|path| path.is_file())
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                None
+            }
+        })
+        .or_else(|| {
+            let name = if cfg!(target_os = "windows") {
+                "sdl-freerdp.exe"
+            } else {
+                "sdl-freerdp"
+            };
+            let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("freerdp")
+                .join(name);
+            path.is_file().then_some(path)
         })
         .or_else(|| {
             HELPER_NAMES
@@ -208,7 +247,7 @@ impl RdpManager {
             .is_some_and(|bundled| bundled == executable);
         let password = zeroize::Zeroizing::new(
             load_credential(&profile.id)?
-                .ok_or_else(|| AppError::Authentication("Keychain 中没有保存 RDP 密码".into()))?,
+                .ok_or_else(|| AppError::Authentication("系统凭据库中没有保存 RDP 密码".into()))?,
         );
         let drive_access = options
             .drive_path
@@ -410,6 +449,13 @@ fn spawn_helper(
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| AppError::Unavailable(format!("无法启动 FreeRDP：{error}")))?;
+    let process_guard = match ManagedProcessGuard::attach(&child) {
+        Ok(guard) => guard,
+        Err(error) => {
+            let _ = child.kill();
+            return Err(error);
+        }
+    };
     let result = child
         .stdin
         .take()
@@ -460,6 +506,7 @@ fn spawn_helper(
     });
     Ok(ManagedRdpChild {
         child,
+        _process_guard: process_guard,
         diagnostics,
         stderr_reader: Some(stderr_reader),
         runtime_event,
@@ -626,9 +673,26 @@ fn focus_process(pid: u32) -> AppResult<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn focus_process(pid: u32) -> AppResult<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SW_RESTORE, SetForegroundWindow, ShowWindow,
+    };
+    let window = find_process_window(pid)?;
+    unsafe {
+        ShowWindow(window, SW_RESTORE);
+        if SetForegroundWindow(window) == 0 {
+            return Err(AppError::Unavailable(
+                "Windows 未允许激活 FreeRDP 窗口，请从任务栏选择该窗口".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn focus_process(_pid: u32) -> AppResult<()> {
-    Err(AppError::Unavailable("RDP 窗口联动仅支持 macOS".into()))
+    Err(AppError::Unavailable("此平台不支持 RDP 窗口联动".into()))
 }
 
 #[cfg(target_os = "macos")]
@@ -642,9 +706,124 @@ fn hide_process(pid: u32) -> AppResult<()> {
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn hide_process(pid: u32) -> AppResult<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindow};
+    let window = find_process_window(pid)?;
+    unsafe {
+        ShowWindow(window, SW_HIDE);
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn hide_process(_pid: u32) -> AppResult<()> {
-    Err(AppError::Unavailable("RDP 窗口联动仅支持 macOS".into()))
+    Err(AppError::Unavailable("此平台不支持 RDP 窗口联动".into()))
+}
+
+#[cfg(target_os = "windows")]
+fn find_process_window(pid: u32) -> AppResult<windows_sys::Win32::Foundation::HWND> {
+    use windows_sys::Win32::{
+        Foundation::{HWND, LPARAM},
+        UI::WindowsAndMessaging::{EnumWindows, GetWindowThreadProcessId},
+    };
+    struct Search {
+        pid: u32,
+        window: HWND,
+    }
+    unsafe extern "system" fn visit(window: HWND, parameter: LPARAM) -> i32 {
+        let search = unsafe { &mut *(parameter as *mut Search) };
+        let mut window_pid = 0;
+        unsafe {
+            GetWindowThreadProcessId(window, &mut window_pid);
+        }
+        if window_pid == search.pid {
+            search.window = window;
+            0
+        } else {
+            1
+        }
+    }
+    let mut search = Search {
+        pid,
+        window: std::ptr::null_mut(),
+    };
+    unsafe {
+        EnumWindows(Some(visit), &mut search as *mut Search as LPARAM);
+    }
+    if search.window.is_null() {
+        Err(AppError::Unavailable("FreeRDP 窗口尚未完成系统注册".into()))
+    } else {
+        Ok(search.window)
+    }
+}
+
+#[cfg(target_os = "windows")]
+struct ManagedProcessGuard {
+    job: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(target_os = "windows")]
+impl ManagedProcessGuard {
+    fn attach(child: &Child) -> AppResult<Self> {
+        use std::os::windows::io::AsRawHandle as _;
+        use windows_sys::Win32::System::JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        };
+        let job = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if job.is_null() {
+            return Err(AppError::Unavailable(format!(
+                "无法创建 FreeRDP 进程组：{}",
+                std::io::Error::last_os_error()
+            )));
+        }
+        let mut information = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        information.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let configured = unsafe {
+            SetInformationJobObject(
+                job,
+                JobObjectExtendedLimitInformation,
+                &information as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        let assigned = if configured != 0 {
+            unsafe { AssignProcessToJobObject(job, child.as_raw_handle() as _) }
+        } else {
+            0
+        };
+        if configured == 0 || assigned == 0 {
+            let error = std::io::Error::last_os_error();
+            unsafe {
+                windows_sys::Win32::Foundation::CloseHandle(job);
+            }
+            return Err(AppError::Unavailable(format!(
+                "无法管理 FreeRDP 子进程：{error}"
+            )));
+        }
+        Ok(Self { job })
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Drop for ManagedProcessGuard {
+    fn drop(&mut self) {
+        unsafe {
+            windows_sys::Win32::Foundation::CloseHandle(self.job);
+        }
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+struct ManagedProcessGuard;
+
+#[cfg(not(target_os = "windows"))]
+impl ManagedProcessGuard {
+    fn attach(_child: &Child) -> AppResult<Self> {
+        Ok(Self)
+    }
 }
 
 #[cfg(test)]
@@ -762,11 +941,13 @@ mod tests {
         ));
     }
 
+    #[cfg(not(target_os = "windows"))]
     #[test]
     fn native_sdl_helper_is_preferred_over_x11_and_wayland() {
         assert_eq!(HELPER_NAMES, ["sdl-freerdp", "xfreerdp", "wlfreerdp"]);
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn bundled_helper_uses_the_macos_resource_directory() {
         let executable = Path::new("/Applications/CNshell.app/Contents/MacOS/cnshell");
@@ -776,6 +957,19 @@ mod tests {
                 "/Applications/CNshell.app/Contents/Resources/freerdp/sdl-freerdp"
             ))
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn bundled_helper_uses_the_windows_resource_directory() {
+        let executable = Path::new(r"C:\Program Files\CNshell\CNshell.exe");
+        assert_eq!(
+            bundled_helper_path_for(executable),
+            Some(PathBuf::from(
+                r"C:\Program Files\CNshell\freerdp\sdl-freerdp.exe"
+            ))
+        );
+        assert_eq!(HELPER_NAMES[0], "sdl-freerdp.exe");
     }
 
     #[cfg(unix)]

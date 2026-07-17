@@ -9,8 +9,10 @@ import { errorMessage } from "../../lib/format";
 import { TunnelManager } from "./TunnelManager";
 import { ConnectionDiagnostics } from "./ConnectionDiagnostics";
 import { ConnectionFolderTree } from "./ConnectionFolderTree";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export function ConnectionSidebar({ connect }: { connect: (profile: ConnectionProfile) => Promise<void> }) {
+  const platform=usePlatformCapabilities();
   const { connections, openConnectionEditor, refreshConnections, setError } = useAppStore();
   const [query, setQuery] = useState(""); const [menuId, setMenuId] = useState<string|null>(null);
   const [tunnelConnection,setTunnelConnection]=useState<ConnectionProfile|null>(null);
@@ -26,7 +28,7 @@ export function ConnectionSidebar({ connect }: { connect: (profile: ConnectionPr
   const reorderConnection=(event:React.DragEvent,targetId:string)=>{event.preventDefault();event.stopPropagation();const sourceId=event.dataTransfer.getData("text/cnshell-connection");if(!sourceId||sourceId===targetId)return;setConnectionOrder(()=>{const order=connections.map((item)=>item.id).filter((id)=>id!==sourceId);const targetIndex=order.indexOf(targetId);order.splice(targetIndex<0?order.length:targetIndex,0,sourceId);return order;});};
   const remove = async (connection: ConnectionProfile) => { if (!confirm(`将“${connection.name}”移到已删除项目？已打开会话不会断开。`)) return; try { await api.deleteConnection(connection.id);setMenuId(null);await Promise.all([refreshConnections(),loadDeleted()]); } catch (error) { setError(errorMessage(error)); } };
   const restore=async(connection:ConnectionProfile)=>{try{await api.restoreConnection(connection.id);setMenuId(null);await Promise.all([refreshConnections(),loadDeleted()]);}catch(error){setError(errorMessage(error));}};
-  const purge=async(connection:ConnectionProfile)=>{if(!confirm(`永久删除“${connection.name}”及其 Keychain 凭据？此操作无法撤销。`))return;try{await api.purgeConnection(connection.id);setMenuId(null);await loadDeleted();}catch(error){setError(errorMessage(error));}};
+  const purge=async(connection:ConnectionProfile)=>{if(!confirm(`永久删除“${connection.name}”及其${platform.credentialStoreName}凭据？此操作无法撤销。`))return;try{await api.purgeConnection(connection.id);setMenuId(null);await loadDeleted();}catch(error){setError(errorMessage(error));}};
   const duplicate=async(connection:ConnectionProfile)=>{try{await api.duplicateConnection(connection.id,crypto.randomUUID());setMenuId(null);await refreshConnections();}catch(error){setError(errorMessage(error));}};
   const folderPath=(folder:FolderModel)=>{const names=[folder.name];let parent=folder.parentId;const seen=new Set([folder.id]);while(parent){const match=folders.find((item)=>item.id===parent);if(!match||seen.has(match.id))break;seen.add(match.id);names.unshift(match.name);parent=match.parentId;}return names.join(" / ");};
   const move=async(connection:ConnectionProfile)=>{const choices=["0：未分组",...folders.map((folder,index)=>`${index+1}：${folderPath(folder)}`)];const answer=prompt(`移动到文件夹：\n${choices.join("\n")}`,String(Math.max(0,folders.findIndex((folder)=>folder.id===connection.folderId)+1)));if(answer==null)return;const index=Number(answer);if(!Number.isInteger(index)||index<0||index>folders.length){setError("请输入列表中的文件夹编号");return;}try{await api.moveConnection(connection.id,index===0?null:folders[index-1].id);setMenuId(null);await refreshConnections();}catch(error){setError(errorMessage(error));}};
@@ -50,7 +52,7 @@ export function ConnectionSidebar({ connect }: { connect: (profile: ConnectionPr
       </div>)}
       {!filtered.length && <div className="empty-sidebar"><CircleOff size={24}/><span>没有匹配的连接</span><button onClick={() => openConnectionEditor()}>新建连接</button></div>}
     </div>
-    <div className="security-note"><ShieldAlert size={15}/><span>主机指纹严格校验 · 凭据存于 Keychain</span></div>
+    <div className="security-note"><ShieldAlert size={15}/><span>主机指纹严格校验 · 凭据存于{platform.credentialStoreName}</span></div>
     {tunnelConnection&&<TunnelManager connection={tunnelConnection} onClose={()=>setTunnelConnection(null)} onError={setError}/>}
     {diagnosticConnection&&<ConnectionDiagnostics connection={diagnosticConnection} onClose={()=>setDiagnosticConnection(null)} onError={setError}/>}
   </aside>;

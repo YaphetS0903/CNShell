@@ -233,6 +233,28 @@ export interface ProtocolCapability {
   securityWarning: string | null;
 }
 
+export interface PlatformFeatureCapability {
+  available: boolean;
+  message: string;
+}
+
+export interface PlatformCapabilities {
+  operatingSystem: string;
+  architecture: string;
+  displayName: string;
+  shortcutModifier: string;
+  credentialStoreName: string;
+  fileManagerName: string;
+  biometricName: string;
+  rdp: PlatformFeatureCapability;
+  mosh: PlatformFeatureCapability;
+  kermit: PlatformFeatureCapability;
+  x11: PlatformFeatureCapability;
+  sshAgent: PlatformFeatureCapability;
+  biometric: PlatformFeatureCapability;
+  serial: PlatformFeatureCapability;
+}
+
 export interface ConnectionProtocolOptions {
   connectionId: string;
   agentForwarding: boolean;

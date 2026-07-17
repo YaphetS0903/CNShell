@@ -591,19 +591,7 @@ pub fn devices() -> AppResult<Vec<SerialDeviceInfo>> {
             },
         })
         .collect::<Vec<_>>();
-    devices.sort_by(|left, right| {
-        let left_rank = if left.path.starts_with("/dev/cu.") {
-            0
-        } else {
-            1
-        };
-        let right_rank = if right.path.starts_with("/dev/cu.") {
-            0
-        } else {
-            1
-        };
-        left_rank.cmp(&right_rank).then(left.path.cmp(&right.path))
-    });
+    devices.sort_by(|left, right| serial_sort_key(&left.path).cmp(&serial_sort_key(&right.path)));
     Ok(devices)
 }
 
@@ -611,12 +599,50 @@ fn bounded(value: Option<String>, max_bytes: usize) -> Option<String> {
     value.filter(|item| item.len() <= max_bytes && !item.chars().any(char::is_control))
 }
 
+pub fn valid_device_path(path: &str) -> bool {
+    path.len() <= 16 * 1024 && enumerable_path(path)
+}
+
 fn enumerable_path(path: &str) -> bool {
     if cfg!(target_os = "macos") {
         path.starts_with("/dev/cu.")
+    } else if cfg!(target_os = "windows") {
+        windows_com_number(path).is_some()
     } else {
         path.starts_with("/dev/")
     }
+}
+
+fn serial_sort_key(path: &str) -> (u8, u16, String) {
+    if path.starts_with("/dev/cu.") {
+        return (0, 0, path.to_owned());
+    }
+    if let Some(number) = windows_com_number(path) {
+        return (0, number, path.to_ascii_uppercase());
+    }
+    (1, 0, path.to_owned())
+}
+
+fn windows_com_number(path: &str) -> Option<u16> {
+    let normalized = path.strip_prefix(r"\\.\").unwrap_or(path);
+    let suffix = normalized
+        .get(..3)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("COM"))
+        .and_then(|_| normalized.get(3..))?;
+    let number = suffix.parse::<u16>().ok()?;
+    (1..=256).contains(&number).then_some(number)
+}
+
+fn native_device_path(path: &str) -> String {
+    #[cfg(target_os = "windows")]
+    if let Some(number) = windows_com_number(path) {
+        return if number >= 10 {
+            format!(r"\\.\COM{number}")
+        } else {
+            format!("COM{number}")
+        };
+    }
+    path.to_owned()
 }
 
 fn open_port(
@@ -647,7 +673,8 @@ fn open_port(
         "hardware" => FlowControl::Hardware,
         _ => FlowControl::None,
     };
-    let mut port = serialport::new(&profile.host, baud_rate)
+    let device_path = native_device_path(&profile.host);
+    let mut port = serialport::new(&device_path, baud_rate)
         .data_bits(data_bits)
         .parity(parity)
         .stop_bits(stop_bits)
@@ -875,10 +902,21 @@ mod tests {
     #[test]
     fn local_device_enumeration_returns_bounded_paths() {
         let devices = devices().unwrap();
-        assert!(devices.iter().all(|device| {
-            device.path.starts_with("/dev/")
-                && device.path.len() <= 16 * 1024
-                && device.label.len() <= 256
-        }));
+        assert!(devices.iter().all(|device| valid_device_path(&device.path)
+            && device.path.len() <= 16 * 1024
+            && device.label.len() <= 256));
+    }
+
+    #[test]
+    fn windows_com_paths_are_bounded_and_normalized() {
+        assert_eq!(windows_com_number("COM1"), Some(1));
+        assert_eq!(windows_com_number("com10"), Some(10));
+        assert_eq!(windows_com_number(r"\\.\COM256"), Some(256));
+        assert_eq!(native_device_path("COM9"), "COM9");
+        #[cfg(target_os = "windows")]
+        assert_eq!(native_device_path("COM10"), r"\\.\COM10");
+        assert_eq!(windows_com_number("COM0"), None);
+        assert_eq!(windows_com_number("COM257"), None);
+        assert_eq!(windows_com_number("COM1extra"), None);
     }
 }

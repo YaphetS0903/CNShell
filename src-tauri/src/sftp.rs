@@ -529,17 +529,7 @@ pub async fn open_local(
             let mut remote = sftp.open(&decoded)?;
             let mut output = std::fs::File::create(&local)?;
             std::io::copy(&mut remote, &mut output)?;
-            if let Some(application) = application.as_deref() {
-                validate_application_path(application)?;
-            }
-            let mut command = Command::new("open");
-            if let Some(application) = application.as_deref() {
-                command.arg("-a").arg(application);
-            }
-            command
-                .arg(&local)
-                .spawn()
-                .map_err(|error| AppError::Unavailable(format!("无法打开本地预览：{error}")))?;
+            crate::platform::open_local_path(&local, application.as_deref())?;
             Ok(local.to_string_lossy().into_owned())
         })();
         if result.is_err() {
@@ -549,17 +539,6 @@ pub async fn open_local(
     })
     .await
     .map_err(|error| AppError::Internal(error.to_string()))?
-}
-
-fn validate_application_path(application: &str) -> AppResult<()> {
-    validate_local_path(application)?;
-    let path = Path::new(application);
-    if !application.ends_with(".app") || !path.is_dir() {
-        return Err(AppError::Validation(
-            "打开方式必须选择已安装的 macOS 应用".into(),
-        ));
-    }
-    Ok(())
 }
 
 fn check_directory_transfer_cancelled(cancelled: &AtomicBool) -> AppResult<()> {
@@ -1262,15 +1241,21 @@ mod tests {
         assert!(validate_local_path("/tmp/file").is_ok());
         assert!(validate_local_path("relative").is_err());
     }
+    #[cfg(target_os = "macos")]
     #[test]
     fn open_with_requires_an_existing_app_directory() {
-        assert!(validate_application_path("relative.app").is_err());
-        assert!(validate_application_path("/Applications/missing-cnshell-test.app").is_err());
+        assert!(crate::platform::validate_application_path("relative.app").is_err());
+        assert!(
+            crate::platform::validate_application_path("/Applications/missing-cnshell-test.app")
+                .is_err()
+        );
         let directory = tempfile::tempdir().unwrap();
         let application = directory.path().join("Preview.app");
         std::fs::create_dir(&application).unwrap();
-        assert!(validate_application_path(application.to_str().unwrap()).is_ok());
-        assert!(validate_application_path(directory.path().to_str().unwrap()).is_err());
+        assert!(crate::platform::validate_application_path(application.to_str().unwrap()).is_ok());
+        assert!(
+            crate::platform::validate_application_path(directory.path().to_str().unwrap()).is_err()
+        );
     }
     #[test]
     fn remote_root_cannot_be_deleted() {

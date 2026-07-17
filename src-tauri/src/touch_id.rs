@@ -42,6 +42,10 @@ fn touch_id_available() -> bool {
     false
 }
 
+pub fn supported() -> bool {
+    touch_id_available()
+}
+
 #[cfg(target_os = "macos")]
 fn password_options(account: &str) -> security_framework::passwords::PasswordOptions {
     let mut options =

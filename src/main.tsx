@@ -5,6 +5,7 @@ import "uplot/dist/uPlot.min.css";
 import "./styles.css";
 import "./advanced.css";
 import "./roadmap.css";
+import "./platform.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

@@ -145,7 +145,9 @@ pub fn generate_key(path: &Path, comment: &str) -> AppResult<GeneratedSshKey> {
     if path.exists() || path.with_extension("pub").exists() {
         return Err(AppError::Validation("目标密钥文件已存在".into()));
     }
-    let output = Command::new("ssh-keygen")
+    let executable = ssh_keygen_path()
+        .ok_or_else(|| AppError::Unavailable("未找到 OpenSSH ssh-keygen".into()))?;
+    let output = Command::new(&executable)
         .args(["-t", "ed25519", "-a", "64", "-N", "", "-C", comment, "-f"])
         .arg(path)
         .output()
@@ -157,7 +159,7 @@ pub fn generate_key(path: &Path, comment: &str) -> AppResult<GeneratedSshKey> {
     }
     let public_path = PathBuf::from(format!("{}.pub", path.display()));
     let public_key = std::fs::read_to_string(&public_path)?.trim().to_string();
-    let fingerprint_output = Command::new("ssh-keygen")
+    let fingerprint_output = Command::new(&executable)
         .args(["-lf"])
         .arg(&public_path)
         .output()?;
@@ -212,10 +214,32 @@ pub async fn deploy_public_key(
 }
 
 fn ssh_root() -> AppResult<PathBuf> {
-    let home = std::env::var_os("HOME")
-        .ok_or_else(|| AppError::Unavailable("无法确定用户主目录".into()))?;
+    let home =
+        home_directory().ok_or_else(|| AppError::Unavailable("无法确定用户主目录".into()))?;
     let root = PathBuf::from(home).join(".ssh");
     Ok(root.canonicalize().unwrap_or(root))
+}
+pub fn ssh_keygen_path() -> Option<PathBuf> {
+    #[cfg(target_os = "windows")]
+    if let Some(windows) = std::env::var_os("WINDIR") {
+        let path = PathBuf::from(windows)
+            .join("System32")
+            .join("OpenSSH")
+            .join("ssh-keygen.exe");
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    which::which(if cfg!(target_os = "windows") {
+        "ssh-keygen.exe"
+    } else {
+        "ssh-keygen"
+    })
+    .ok()
+}
+
+fn home_directory() -> Option<std::ffi::OsString> {
+    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE"))
 }
 fn validate_key_path(path: &Path) -> AppResult<()> {
     if !path.is_absolute() || path.file_name().is_none() {
@@ -258,7 +282,7 @@ fn shell_words(value: &str) -> Vec<String> {
 fn expand_home(value: &str) -> String {
     let value = value.trim().trim_matches(['"', '\'']);
     if let Some(rest) = value.strip_prefix("~/") {
-        if let Some(home) = std::env::var_os("HOME") {
+        if let Some(home) = home_directory() {
             return PathBuf::from(home)
                 .join(rest)
                 .to_string_lossy()

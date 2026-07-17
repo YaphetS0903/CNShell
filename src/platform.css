@@ -1,0 +1,11 @@
+html[data-platform="windows"] .traffic-light-space {
+  display: none;
+}
+
+html[data-platform="windows"] .titlebar {
+  padding-left: 12px;
+}
+
+html[data-platform="windows"] .brand {
+  min-width: 240px;
+}

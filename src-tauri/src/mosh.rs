@@ -126,19 +126,55 @@ pub fn validate_ports(start: u16, end: u16) -> AppResult<()> {
 pub fn helper_path() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
-        .and_then(|executable| {
-            executable
-                .parent()?
-                .parent()
-                .map(|contents| contents.join("Resources/mosh/mosh-client"))
-        })
+        .and_then(|executable| bundled_helper_path(&executable))
         .filter(|path| path.is_file())
         .or_else(|| {
             std::env::var_os("CNSHELL_MOSH_CLIENT")
                 .map(PathBuf::from)
                 .filter(|path| path.is_file())
         })
-        .or_else(|| which::which("mosh-client").ok())
+        .or_else(|| {
+            let name = if cfg!(target_os = "windows") {
+                "mosh-client.exe"
+            } else {
+                "mosh-client"
+            };
+            let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("mosh")
+                .join(name);
+            path.is_file().then_some(path)
+        })
+        .or_else(|| {
+            which::which(if cfg!(target_os = "windows") {
+                "mosh-client.exe"
+            } else {
+                "mosh-client"
+            })
+            .ok()
+        })
+}
+
+#[cfg(target_os = "macos")]
+fn bundled_helper_path(executable: &std::path::Path) -> Option<PathBuf> {
+    executable
+        .parent()?
+        .parent()
+        .map(|contents| contents.join("Resources/mosh/mosh-client"))
+}
+
+#[cfg(target_os = "windows")]
+fn bundled_helper_path(executable: &std::path::Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("mosh").join("mosh-client.exe"))
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+fn bundled_helper_path(executable: &std::path::Path) -> Option<PathBuf> {
+    executable
+        .parent()
+        .map(|directory| directory.join("mosh").join("mosh-client"))
 }
 
 pub fn available() -> bool {
@@ -575,6 +611,7 @@ mod tests {
         assert!(!command.contains('\n'));
     }
 
+    #[cfg(target_os = "macos")]
     #[test]
     fn bundled_path_resolves_inside_app_resources() {
         let executable = Path::new("/Applications/CNshell.app/Contents/MacOS/cnshell");
