@@ -297,6 +297,7 @@ describe("relay container smoke", () => {
     expect(windowsPackageWorkflow).toContain("x86_64-pc-windows-msvc");
     expect(windowsPackageWorkflow).toContain("aarch64-pc-windows-msvc");
     expect(windowsPackageWorkflow).toContain("npm run build:freerdp");
+    expect(windowsPackageWorkflow).toContain('"scripts/patches/**"');
     expect(windowsPackageWorkflow).toContain("test-windows-installer.ps1");
     expect(windowsPackageWorkflow).toContain("verify-windows-pe.ps1");
     expect(installerTest).toContain('if ($env:CI -ne "true")');

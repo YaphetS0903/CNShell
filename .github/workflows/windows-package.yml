@@ -10,6 +10,7 @@ on:
       - "scripts/build-desktop.mjs"
       - "scripts/build-sidecar.mjs"
       - "scripts/build-freerdp-sidecar.ps1"
+      - "scripts/patches/**"
       - "scripts/test-windows-installer.ps1"
       - "scripts/verify-windows-pe.ps1"
       - "src/**"
