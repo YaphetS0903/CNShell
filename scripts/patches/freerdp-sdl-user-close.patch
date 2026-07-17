@@ -12,13 +12,13 @@ index 723107de1..5a897af11 100644
  
  	return static_cast<DWORD>(exit_code);
 @@ -1150,6 +1152,7 @@ bool SdlContext::handleEvent(const SDL_WindowEvent& ev)
-		case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-		{
-			SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "Window closed, terminating RDP session...");
+ 		case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+ 		{
+ 			SDL_LogDebug(SDL_LOG_CATEGORY_APPLICATION, "Window closed, terminating RDP session...");
 +			_userCloseRequested = true;
-			freerdp_abort_connect_context(context());
-		}
-		break;
+ 			freerdp_abort_connect_context(context());
+ 		}
+ 		break;
 diff --git a/client/SDL/SDL3/sdl_context.hpp b/client/SDL/SDL3/sdl_context.hpp
 index 289c844c7..a4d109369 100644
 --- a/client/SDL/SDL3/sdl_context.hpp
