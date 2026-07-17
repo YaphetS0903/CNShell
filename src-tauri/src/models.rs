@@ -314,6 +314,7 @@ pub struct PlatformCapabilities {
     pub kermit: PlatformFeatureCapability,
     pub x11: PlatformFeatureCapability,
     pub ssh_agent: PlatformFeatureCapability,
+    pub fido2: PlatformFeatureCapability,
     pub biometric: PlatformFeatureCapability,
     pub serial: PlatformFeatureCapability,
 }

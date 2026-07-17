@@ -62,7 +62,7 @@ import {
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
 import { TeamTerminalCenter } from "./TeamTerminalCenter";
-import { usePlatformCapabilities } from "../../lib/platform";
+import { primaryShortcutPressed, usePlatformCapabilities } from "../../lib/platform";
 
 export default function TerminalWorkspace({
   connect,
@@ -203,8 +203,9 @@ export default function TerminalWorkspace({
   };
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
+      const primary = primaryShortcutPressed(event, platform.operatingSystem);
       if (
-        event.metaKey &&
+        primary &&
         !event.shiftKey &&
         event.key.toLowerCase() === "f" &&
         sessions.find((item) => item.id === activeSessionId)?.sessionType ===
@@ -213,12 +214,12 @@ export default function TerminalWorkspace({
         event.preventDefault();
         setFindOpen(true);
       }
-      if (event.metaKey && event.shiftKey && event.key.toLowerCase() === "f") {
+      if (primary && event.shiftKey && event.key.toLowerCase() === "f") {
         event.preventDefault();
         setGlobalSearchOpen(true);
       }
       if (
-        event.metaKey &&
+        primary &&
         event.shiftKey &&
         event.key.toLowerCase() === "c" &&
         activeSessionId
@@ -244,16 +245,16 @@ export default function TerminalWorkspace({
           setCopyMode(false);
         }
       }
-      if (event.metaKey && event.key.toLowerCase() === "j") {
+      if (primary && event.key.toLowerCase() === "j") {
         event.preventDefault();
         setBottomOpen((value) => !value);
       }
-      if (event.metaKey && event.key.toLowerCase() === "k" && activeSessionId) {
+      if (primary && event.key.toLowerCase() === "k" && activeSessionId) {
         event.preventDefault();
         refs.get(activeSessionId)?.current?.clear();
       }
       if (
-        event.metaKey &&
+        primary &&
         activeSessionId &&
         ["=", "+", "-", "0"].includes(event.key)
       ) {
@@ -271,7 +272,7 @@ export default function TerminalWorkspace({
           ).catch((reason) => setError(errorMessage(reason)));
         }
       }
-      if (event.metaKey && event.key.toLowerCase() === "w" && activeSessionId) {
+      if (primary && event.key.toLowerCase() === "w" && activeSessionId) {
         const session = sessions.find((item) => item.id === activeSessionId);
         if (
           session &&
@@ -282,7 +283,7 @@ export default function TerminalWorkspace({
           void close(session.id);
         }
       }
-      if (event.metaKey && /^[1-9]$/.test(event.key)) {
+      if (primary && /^[1-9]$/.test(event.key)) {
         const session = sessions[Number(event.key) - 1];
         if (session) {
           event.preventDefault();
@@ -296,6 +297,7 @@ export default function TerminalWorkspace({
     activeSessionId,
     close,
     copyMode,
+    platform.operatingSystem,
     refs,
     selectSession,
     sessions,

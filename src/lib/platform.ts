@@ -15,12 +15,24 @@ const browserFallback: PlatformCapabilities = {
   kermit: { available: false, message: "桌面版可用" },
   x11: { available: false, message: "桌面版可用" },
   sshAgent: { available: false, message: "桌面版可用" },
+  fido2: { available: false, message: "桌面版可用" },
   biometric: { available: false, message: "桌面版可用" },
   serial: { available: false, message: "桌面版可用" },
 };
 
 let cached = browserFallback;
 let request: Promise<PlatformCapabilities> | null = null;
+
+export function primaryShortcutPressed(
+  event: Pick<KeyboardEvent, "metaKey" | "ctrlKey">,
+  operatingSystem?: string,
+): boolean {
+  const detected =
+    operatingSystem ??
+    (typeof document !== "undefined" ? document.documentElement.dataset.platform : undefined) ??
+    (typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "macos" : "windows");
+  return detected === "macos" ? event.metaKey : event.ctrlKey;
+}
 
 export function loadPlatformCapabilities(): Promise<PlatformCapabilities> {
   request ??= api.platformCapabilities().then((value) => {

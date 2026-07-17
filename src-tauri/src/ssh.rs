@@ -60,7 +60,7 @@ where
         Ok(Ok(result)) => result,
         Ok(Err(error)) => Err(AppError::Internal(error.to_string())),
         Err(_) => Err(AppError::Unavailable(format!(
-            "{operation}超时，请检查 macOS 系统授权或网络状态后重试"
+            "{operation}超时，请检查系统凭据授权或网络状态后重试"
         ))),
     }
 }
@@ -661,9 +661,10 @@ fn fido2_identity(identity: &ssh2::PublicKey) -> Option<crate::models::Fido2Iden
 }
 
 fn connected_agent(session: &ssh2::Session) -> AppResult<ssh2::Agent> {
+    #[cfg(not(target_os = "windows"))]
     if std::env::var_os("SSH_AUTH_SOCK").is_none() {
         return Err(AppError::Unavailable(
-            "未检测到 SSH Agent。请先将 FIDO2 硬件密钥加入 macOS/OpenSSH Agent".into(),
+            "未检测到 SSH Agent。请先将 FIDO2 硬件密钥加入系统 OpenSSH Agent".into(),
         ));
     }
     let mut agent = session
@@ -1964,7 +1965,7 @@ mod tests {
         })
         .await;
         assert!(
-            matches!(result, Err(AppError::Unavailable(message)) if message.contains("系统授权") && message.contains("重试"))
+            matches!(result, Err(AppError::Unavailable(message)) if message.contains("系统凭据授权") && message.contains("重试"))
         );
         assert!(started.elapsed() < Duration::from_millis(100));
     }

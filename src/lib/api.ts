@@ -146,6 +146,7 @@ export const api = {
       kermit: { available: false, message: "桌面版可检测 Kermit 组件" },
       x11: { available: false, message: "桌面版可检测 X11 环境" },
       sshAgent: { available: false, message: "桌面版可检测 SSH Agent" },
+      fido2: { available: false, message: "桌面版可检测 FIDO2 硬件身份" },
       biometric: { available: false, message: "桌面版可检测生物识别能力" },
       serial: { available: false, message: "桌面版可检测串口设备" },
     };

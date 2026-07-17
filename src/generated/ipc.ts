@@ -251,6 +251,7 @@ export interface PlatformCapabilities {
   kermit: PlatformFeatureCapability;
   x11: PlatformFeatureCapability;
   sshAgent: PlatformFeatureCapability;
+  fido2: PlatformFeatureCapability;
   biometric: PlatformFeatureCapability;
   serial: PlatformFeatureCapability;
 }

@@ -49,6 +49,14 @@ pub fn capabilities() -> PlatformCapabilities {
                 "未检测到可用的 SSH Agent"
             },
         ),
+        fido2: feature(
+            agent,
+            if agent {
+                "可从系统 SSH Agent 检测 FIDO2 硬件身份"
+            } else {
+                "请先启动系统 SSH Agent 并加载 FIDO2 硬件身份"
+            },
+        ),
         biometric: biometric_capability(),
         serial: feature(true, "Serial/COM 串口支持已启用"),
     }
@@ -148,7 +156,23 @@ fn biometric_capability() -> PlatformFeatureCapability {
 
 #[cfg(target_os = "windows")]
 pub fn ssh_agent_available() -> bool {
-    std::env::var_os("SSH_AUTH_SOCK").is_some() || which::which("ssh-add.exe").is_ok()
+    use std::os::windows::ffi::OsStrExt as _;
+    use windows_sys::Win32::{
+        Storage::FileSystem::WaitNamedPipeW,
+        UI::WindowsAndMessaging::FindWindowA,
+    };
+
+    if std::env::var_os("SSH_AUTH_SOCK").is_some() {
+        return true;
+    }
+    let pipe = std::ffi::OsStr::new(r"\\.\pipe\openssh-ssh-agent")
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+    unsafe {
+        WaitNamedPipeW(pipe.as_ptr(), 0) != 0
+            || !FindWindowA(b"Pageant\0".as_ptr(), b"Pageant\0".as_ptr()).is_null()
+    }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -345,6 +369,7 @@ mod tests {
         assert!(!value.credential_store_name.is_empty());
         assert!(!value.file_manager_name.is_empty());
         assert!(!value.rdp.message.is_empty());
+        assert!(!value.fido2.message.is_empty());
         assert!(!value.serial.message.is_empty());
     }
 }

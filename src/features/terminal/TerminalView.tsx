@@ -27,6 +27,7 @@ import { useAppStore } from "../../store/app-store";
 import { resolveTerminalPreferences, terminalFontFamilies, terminalThemes } from "./terminal-preferences";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ZmodemEvent } from "../../types";
+import { primaryShortcutPressed } from "../../lib/platform";
 
 export interface TerminalActions {
   findNext: (term: string) => boolean;
@@ -304,15 +305,16 @@ export const TerminalView = forwardRef<
     });
     terminal.attachCustomKeyEventHandler((event) => {
       if (event.type !== "keydown") return true;
+      const primary = primaryShortcutPressed(event);
       if (
-        event.metaKey &&
+        primary &&
         event.key.toLowerCase() === "c" &&
         terminal.hasSelection()
       ) {
         void navigator.clipboard.writeText(terminal.getSelection());
         return false;
       }
-      if (event.metaKey && event.key.toLowerCase() === "v") {
+      if (primary && event.key.toLowerCase() === "v") {
         void navigator.clipboard
           .readText()
           .then((text) =>
@@ -325,7 +327,7 @@ export const TerminalView = forwardRef<
         return false;
       }
       return !(
-        event.metaKey && ["f", "k", "w", "t", "=", "+", "-", "0"].includes(event.key.toLowerCase())
+        primary && ["f", "k", "w", "t", "=", "+", "-", "0"].includes(event.key.toLowerCase())
       );
     });
     const scrollDisposable = terminal.onScroll(updateTimestampRows);
