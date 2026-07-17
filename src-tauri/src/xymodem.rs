@@ -704,7 +704,12 @@ fn atomic_replace(temporary: &Path, destination: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{io::Cursor, os::unix::net::UnixStream, thread, time::Duration};
+    use std::{
+        io::Cursor,
+        net::{TcpListener, TcpStream},
+        thread,
+        time::Duration,
+    };
 
     struct ScriptedDevice {
         input: Cursor<Vec<u8>>,
@@ -728,8 +733,11 @@ mod tests {
         }
     }
 
-    fn duplex() -> (UnixStream, UnixStream) {
-        let (left, right) = UnixStream::pair().unwrap();
+    fn duplex() -> (TcpStream, TcpStream) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let address = listener.local_addr().unwrap();
+        let left = TcpStream::connect(address).unwrap();
+        let (right, _) = listener.accept().unwrap();
         left.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
         right
             .set_read_timeout(Some(Duration::from_secs(1)))

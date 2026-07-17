@@ -4,12 +4,15 @@ import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
 import type { SyncOptions, SyncResult, TouchIdSyncStatus } from "../../types";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export function EncryptedSyncSettings({
   onError,
 }: {
   onError: (message: string) => void;
 }) {
+  const platform = usePlatformCapabilities();
+  const biometric = platform.biometricName;
   const [folder, setFolder] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [options, setOptions] = useState<SyncOptions>({
@@ -49,7 +52,7 @@ export function EncryptedSyncSettings({
     if (
       options.includeCredentials &&
       !confirm(
-        "凭据将从 macOS Keychain 读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？",
+        `凭据将从${platform.credentialStoreName}读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？`,
       )
     )
       return;
@@ -66,7 +69,7 @@ export function EncryptedSyncSettings({
   const touchSync = async () => {
     if (
       options.includeCredentials &&
-      !confirm("凭据将从 macOS Keychain 读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？")
+      !confirm(`凭据将从${platform.credentialStoreName}读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？`)
     ) return;
     setTouchBusy(true);
     try {
@@ -95,7 +98,7 @@ export function EncryptedSyncSettings({
     }
   };
   const touchPull = async () => {
-    if (!confirm("使用 Touch ID 解锁并从同步目录导入连接？同 ID 的本地连接不会被覆盖，将保留为双方冲突副本。")) return;
+    if (!confirm(`使用${biometric}解锁并从同步目录导入连接？同 ID 的本地连接不会被覆盖，将保留为双方冲突副本。`)) return;
     setTouchBusy(true);
     try {
       setResult(await api.readEncryptedSyncWithTouchId(folder));
@@ -117,7 +120,7 @@ export function EncryptedSyncSettings({
     }
   };
   const deleteTouchId = async () => {
-    if (!confirm("移除此同步文件夹保存的 Touch ID 口令？现有加密同步包不会被删除，之后仍可用手动口令恢复。")) return;
+    if (!confirm(`移除此同步文件夹保存的${biometric}口令？现有加密同步包不会被删除，之后仍可用手动口令恢复。`)) return;
     setTouchBusy(true);
     try {
       await api.deleteTouchIdSyncKey(folder);
@@ -161,12 +164,12 @@ export function EncryptedSyncSettings({
         />
       </label>
       {folder && touchStatus && <div className={`touch-id-vault ${touchStatus.supported ? "available" : "unavailable"}`}>
-        <div><Fingerprint size={17}/><span><strong>Touch ID 本地保护</strong><small>{touchStatus.message}</small></span></div>
+        <div><Fingerprint size={17}/><span><strong>{biometric}本地保护</strong><small>{touchStatus.message}</small></span></div>
         <div className="backup-actions">
-          {!touchStatus.saved && <button className="button secondary" disabled={!touchStatus.supported || passphrase.length < 8 || busy || touchBusy} onClick={()=>void saveTouchId()}><Fingerprint size={14}/>{touchBusy?"处理中…":"用 Touch ID 保存当前口令"}</button>}
+          {!touchStatus.saved && <button className="button secondary" disabled={!touchStatus.supported || passphrase.length < 8 || busy || touchBusy} onClick={()=>void saveTouchId()}><Fingerprint size={14}/>{touchBusy?"处理中…":`用${biometric}保存当前口令`}</button>}
           {touchStatus.saved && <button className="button secondary danger" disabled={busy || touchBusy} onClick={()=>void deleteTouchId()}><Trash2 size={14}/>移除已保存口令</button>}
         </div>
-        <small>口令使用仅限这台 Mac，并绑定当前录入的指纹集合；指纹变化或验证失败时可继续使用上方手动口令。</small>
+        <small>口令仅限这台电脑使用，并受当前系统生物识别策略保护；验证失败时可继续使用上方手动口令。</small>
       </div>}
       <div className="sync-toggles">
         <label className="check-row">
@@ -205,7 +208,7 @@ export function EncryptedSyncSettings({
               })
             }
           />
-          <span>同步 Keychain 凭据（默认关闭）</span>
+          <span>同步{platform.credentialStoreName}凭据（默认关闭）</span>
         </label>
       </div>
       <div className="backup-actions">
@@ -224,8 +227,8 @@ export function EncryptedSyncSettings({
         >
           用手动口令导入
         </button>
-        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchSync()}><Fingerprint size={14}/>{touchBusy?"等待 Touch ID…":"用 Touch ID 生成"}</button>}
-        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchPull()}>用 Touch ID 导入</button>}
+        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchSync()}><Fingerprint size={14}/>{touchBusy?`等待${biometric}…`:`用${biometric}生成`}</button>}
+        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchPull()}>用{biometric}导入</button>}
       </div>
       {result && (
         <div className="sync-result">

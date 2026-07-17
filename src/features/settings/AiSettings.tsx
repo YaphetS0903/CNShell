@@ -4,8 +4,10 @@ import { IconButton } from "../../components/IconButton";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
 import type { AiRequestPreview, AiProviderProfile, BackgroundTask } from "../../types";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export function AiSettings({ onError }: { onError: (message: string) => void }) {
+  const platform = usePlatformCapabilities();
   const [providers, setProviders] = useState<AiProviderProfile[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [name, setName] = useState("");
@@ -30,7 +32,7 @@ export function AiSettings({ onError }: { onError: (message: string) => void }) 
   const save = async () => {
     try { const saved = await api.saveAiProvider({ id: selectedId || crypto.randomUUID(), name, endpoint, model, apiKey: apiKey || null }); setProviders((current) => [...current.filter((item) => item.id !== saved.id), saved]); select(saved); } catch (error) { onError(errorMessage(error)); }
   };
-  const remove = async () => { if (!selectedId || !confirm("删除 AI Provider 配置及 Keychain API Key？")) return; try { await api.deleteAiProvider(selectedId); setProviders((current) => current.filter((item) => item.id !== selectedId)); setSelectedId(""); } catch (error) { onError(errorMessage(error)); } };
+  const remove = async () => { if (!selectedId || !confirm(`删除 AI Provider 配置及${platform.credentialStoreName} API Key？`)) return; try { await api.deleteAiProvider(selectedId); setProviders((current) => current.filter((item) => item.id !== selectedId)); setSelectedId(""); } catch (error) { onError(errorMessage(error)); } };
   const inspect = async () => { try { setAnswer(""); setPreview(await api.previewAi({ providerId: selectedId, kind, content })); } catch (error) { onError(errorMessage(error)); } };
   const execute = async () => { if (!preview) return; if (!confirm(`将把预览中的脱敏文本发送到 ${preview.providerName}，不会自动执行命令。确认发送？`)) return; try { setTask(await api.executeAi(preview.requestId)); } catch (error) { onError(errorMessage(error)); } };
   const copy = async () => { if (answer) await navigator.clipboard.writeText(answer); };

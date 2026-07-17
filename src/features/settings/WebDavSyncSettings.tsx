@@ -4,10 +4,12 @@ import { IconButton } from "../../components/IconButton";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
 import type { BackgroundTask, SaveWebDavProfileInput, SyncOptions, SyncResult, WebDavProfile } from "../../types";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 const defaultOptions: SyncOptions = { includeHosts: true, includePrivateKeyPaths: false, includeCredentials: false };
 
 export function WebDavSyncSettings({ onError }: { onError: (message: string) => void }) {
+  const platform = usePlatformCapabilities();
   const [profiles, setProfiles] = useState<WebDavProfile[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [name, setName] = useState("");
@@ -49,12 +51,12 @@ export function WebDavSyncSettings({ onError }: { onError: (message: string) => 
     } catch (error) { onError(errorMessage(error)); }
   };
   const remove = async () => {
-    if (!selectedId || !confirm("删除这条 WebDAV 配置及 Keychain 密码？远端同步文件不会删除。")) return;
+    if (!selectedId || !confirm(`删除这条 WebDAV 配置及${platform.credentialStoreName}密码？远端同步文件不会删除。`)) return;
     try { await api.deleteWebDavProfile(selectedId); setProfiles((current) => current.filter((item) => item.id !== selectedId)); reset(); } catch (error) { onError(errorMessage(error)); }
   };
   const run = async (direction: "write" | "read") => {
     if (!selectedId || passphrase.length < 8) { onError("请选择 WebDAV 配置并输入至少 8 位同步口令"); return; }
-    if (options.includeCredentials && !confirm("Keychain 凭据会在本机加密后上传，服务端只看到密文。确认继续？")) return;
+    if (options.includeCredentials && !confirm(`${platform.credentialStoreName}凭据会在本机加密后上传，服务端只看到密文。确认继续？`)) return;
     try { setResult(null); setProgress(null); setTask(direction === "write" ? await api.startWebDavWrite(selectedId, passphrase, options) : await api.startWebDavRead(selectedId, passphrase)); setPassphrase(""); } catch (error) { onError(errorMessage(error)); }
   };
 
@@ -69,7 +71,7 @@ export function WebDavSyncSettings({ onError }: { onError: (message: string) => 
     </div>
     <label><span>同步口令（至少 8 位；默认不保存）</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} autoComplete="new-password" /></label>
     <div className="webdav-startup"><label className="check-row"><input type="checkbox" checked={syncOnStartup} onChange={(event) => setSyncOnStartup(event.target.checked)} /><span>启动时自动导入（需保存独立同步口令）</span></label>{syncOnStartup && <label><span>启动同步口令</span><input type="password" value={startupPassphrase} onChange={(event) => setStartupPassphrase(event.target.value)} placeholder="留空保持已保存口令" /></label>}<small>{syncOnStartup ? "CNshell 启动后只导入远端加密包；未保存口令时不会联网。" : "默认关闭启动同步。"}</small></div>
-    <div className="sync-toggles"><label className="check-row"><input type="checkbox" checked={options.includeHosts} onChange={(event) => setOptions({ ...options, includeHosts: event.target.checked })} /><span>同步主机资料</span></label><label className="check-row"><input type="checkbox" checked={options.includePrivateKeyPaths} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includePrivateKeyPaths: event.target.checked })} /><span>同步私钥路径</span></label><label className="check-row"><input type="checkbox" checked={options.includeCredentials} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includeCredentials: event.target.checked })} /><span>同步 Keychain 凭据</span></label></div>
+    <div className="sync-toggles"><label className="check-row"><input type="checkbox" checked={options.includeHosts} onChange={(event) => setOptions({ ...options, includeHosts: event.target.checked })} /><span>同步主机资料</span></label><label className="check-row"><input type="checkbox" checked={options.includePrivateKeyPaths} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includePrivateKeyPaths: event.target.checked })} /><span>同步私钥路径</span></label><label className="check-row"><input type="checkbox" checked={options.includeCredentials} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includeCredentials: event.target.checked })} /><span>同步{platform.credentialStoreName}凭据</span></label></div>
     <div className="backup-actions"><button className="button secondary" onClick={() => void save()}><Save size={14} /> 保存配置</button><button className="button secondary" disabled={!selectedId || !!task && !["completed", "failed", "cancelled"].includes(task.status)} onClick={() => void run("write")}><Play size={14} /> 上传</button><button className="button secondary" disabled={!selectedId || !!task && !["completed", "failed", "cancelled"].includes(task.status)} onClick={() => void run("read")}><KeyRound size={14} /> 下载导入</button><IconButton icon={Trash2} label="删除 WebDAV 配置" disabled={!selectedId} onClick={() => void remove()} /></div>
     {task && <p className="muted-copy" aria-live="polite">任务状态：{task.status}{task.error ? ` · ${task.error}` : ""}</p>}
     {progress && <p className="muted-copy" aria-live="polite">{progress.phase}{progress.totalBytes ? ` · ${progress.transferredBytes}/${progress.totalBytes} bytes` : ""}</p>}

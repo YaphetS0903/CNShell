@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
 import type { ConnectionProfile, ProtocolCapability } from "../../types";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export function ProtocolSettings({
   connections,
@@ -17,6 +18,7 @@ export function ProtocolSettings({
   connections: ConnectionProfile[];
   onError: (message: string) => void;
 }) {
+  const platform = usePlatformCapabilities();
   const [capabilities, setCapabilities] = useState<ProtocolCapability[]>([]);
   const [selected, setSelected] = useState("");
   const [agentForwarding, setAgentForwarding] = useState(false);
@@ -113,7 +115,7 @@ export function ProtocolSettings({
     if (
       enabled &&
       !confirm(
-        "X11 转发允许远端图形程序访问本机 XQuartz。CNshell 会隔离授权 cookie，但仍只应对完全可信的服务器启用。\n\n确认启用？",
+        `X11 转发允许远端图形程序访问本机${platform.operatingSystem === "windows" ? " X Server" : " XQuartz"}。CNshell 会隔离授权 cookie，但仍只应对完全可信的服务器启用。\n\n确认启用？`,
       )
     )
       return;

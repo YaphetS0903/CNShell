@@ -16,8 +16,10 @@ import { AiSettings } from "./AiSettings";
 import { PluginSettings } from "./PluginSettings";
 import { TeamSettings } from "./TeamSettings";
 import { TerminalPreferencesFields } from "./TerminalPreferencesFields";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 export default function SettingsModal() {
+  const platform = usePlatformCapabilities();
   const {
     settingsOpen,
     setSettingsOpen,
@@ -35,7 +37,7 @@ export default function SettingsModal() {
   const change = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) =>
     setDraft((current) => ({ ...current, [key]: value }));
   const clearHistory = async () => {
-    if (!confirm("清空这台 Mac 上的全部命令历史？此操作无法撤销。")) return;
+    if (!confirm(`清空这台${platform.displayName}电脑上的全部命令历史？此操作无法撤销。`)) return;
     try {
       await api.clearHistory();
     } catch (error) {

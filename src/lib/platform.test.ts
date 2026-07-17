@@ -8,4 +8,9 @@ describe("platform shortcuts", () => {
     expect(primaryShortcutPressed({ metaKey: false, ctrlKey: true }, "windows")).toBe(true);
     expect(primaryShortcutPressed({ metaKey: true, ctrlKey: false }, "windows")).toBe(false);
   });
+
+  it("uses the host modifier in browser preview", () => {
+    const hostUsesCommand = /Mac/i.test(navigator.platform);
+    expect(primaryShortcutPressed({ metaKey: hostUsesCommand, ctrlKey: !hostUsesCommand }, "browser")).toBe(true);
+  });
 });

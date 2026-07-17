@@ -33,7 +33,7 @@ describe("EncryptedSyncSettings Touch ID vault", () => {
 
     await user.click(screen.getByRole("button", {name:"选择"}));
     await user.type(screen.getByLabelText("同步口令（至少 8 位；默认不保存）"), "vault-password");
-    await user.click(await screen.findByRole("button", {name:/用 Touch ID 保存当前口令/}));
+    await user.click(await screen.findByRole("button", {name:/保存当前口令/}));
 
     expect(save).toHaveBeenCalledWith("/Users/test/Sync", "vault-password");
     expect(screen.getByLabelText("同步口令（至少 8 位；默认不保存）")).toHaveValue("");
@@ -47,7 +47,11 @@ describe("EncryptedSyncSettings Touch ID vault", () => {
     render(<EncryptedSyncSettings onError={vi.fn()}/>);
 
     await user.click(screen.getByRole("button", {name:"选择"}));
-    await user.click(await screen.findByRole("button", {name:"用 Touch ID 生成"}));
+    await screen.findByText("已保存同步口令");
+    const biometricGenerate = screen.getAllByRole("button", {name:/生成/})
+      .find((button) => !button.hasAttribute("disabled"));
+    expect(biometricGenerate).toBeDefined();
+    await user.click(biometricGenerate!);
 
     await waitFor(() => expect(sync).toHaveBeenCalledWith("/Users/test/Sync", {includeHosts:true,includePrivateKeyPaths:false,includeCredentials:false}));
     expect(await screen.findByText("已处理 2 个连接")).toBeInTheDocument();

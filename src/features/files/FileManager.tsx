@@ -10,12 +10,14 @@ import { waitForTask } from "../../lib/background-task";
 import { virtualWindow } from "../../lib/runtime-metrics";
 import { workspaceRuntime } from "../../lib/workspace-runtime";
 import { RemoteDirectoryTree } from "./RemoteDirectoryTree";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 const TextEditor=lazy(()=>import("./TextEditor").then((module)=>({default:module.TextEditor})));
 
 type SortKey = "name"|"size"|"modifiedAt";
 
 export function FileManager({ session }: { session: TerminalSession }) {
+  const platform=usePlatformCapabilities();
   const restored=workspaceRuntime.remoteFileBrowserBySession.get(session.id);const { settings, setError, setPanel } = useAppStore(); const [path,setPath]=useState(restored?.path??"/");const [draftPath,setDraftPath]=useState(restored?.path??"/");const [files,setFiles]=useState<RemoteFile[]>([]);const [loading,setLoading]=useState(false);const [selected,setSelected]=useState<RemoteFile|null>(null);const [sort,setSort]=useState<{key:SortKey;asc:boolean}>({key:"name",asc:true});const [editor,setEditor]=useState<string|null>(null);const[dragging,setDragging]=useState(false);const[scrollTop,setScrollTop]=useState(0);const[viewportHeight,setViewportHeight]=useState(260);const[background,setBackground]=useState<{id:string;label:string}|null>(null);const[contextMenu,setContextMenu]=useState<{x:number;y:number}|null>(null);const[actionsOpen,setActionsOpen]=useState(false);const bodyRef=useRef<HTMLDivElement>(null);const actionsRef=useRef<HTMLDivElement>(null);const rememberBrowser=useCallback((patch:Partial<{path:string;expandedPaths:string[]}>)=>{const current=workspaceRuntime.remoteFileBrowserBySession.get(session.id)??{path:"/",expandedPaths:["/"]};workspaceRuntime.remoteFileBrowserBySession.set(session.id,{...current,...patch});},[session.id]);const rememberExpanded=useCallback((expandedPaths:string[])=>rememberBrowser({expandedPaths}),[rememberBrowser]);
   const load=useCallback(async()=>{setLoading(true);try{const result=await api.listFiles(session.id,path,settings.showHiddenFiles);setFiles(result);setDraftPath(path);setSelected(null);setScrollTop(0);if(bodyRef.current)bodyRef.current.scrollTop=0;window.dispatchEvent(new Event("cnshell-refresh-directory-tree"));}catch(reason){setError(errorMessage(reason));}finally{setLoading(false);}},[path,session.id,setError,settings.showHiddenFiles]);
   useEffect(()=>{void load();},[load]);
@@ -42,9 +44,9 @@ export function FileManager({ session }: { session: TerminalSession }) {
   const runBackground=async(label:string,start:()=>ReturnType<typeof api.startArchiveRemote>)=>{if(background){setError("已有文件后台任务正在运行");return;}try{const task=await start();setBackground({id:task.id,label});await waitForTask(task);await load();}catch(reason){if((reason as DOMException).name!=="AbortError")setError(errorMessage(reason));}finally{setBackground(null);}};
   const archive=async(extract:boolean)=>{if(!selected)return;await runBackground(extract?"正在解压…":"正在压缩…",()=>api.startArchiveRemote(session.id,selected.path,extract));};
   const openLocally=async(application?:string)=>{if(!selected)return;await runBackground("正在准备本地预览…",()=>api.startOpenRemoteLocally(session.id,selected.path,application));};
-  const openWith=async()=>{const application=await open({multiple:false,directory:true,defaultPath:"/Applications",title:"选择用于打开文件的 macOS 应用"});if(application)await openLocally(application);};
+  const openWith=async()=>{const windows=platform.operatingSystem==="windows";const application=await open({multiple:false,directory:!windows,defaultPath:windows?undefined:"/Applications",title:`选择用于打开文件的${platform.displayName}应用`,...(windows?{filters:[{name:"Windows 应用",extensions:["exe","com","bat","cmd"]}]}:{})});if(application)await openLocally(application);};
   const uploadPaths=async(paths:string[])=>{const destinations=await Promise.all(paths.map(async(source)=>({source,destination:await api.joinRemotePath(path,source.split("/").at(-1)!)})));const hasConflict=destinations.some(({destination})=>files.some((item)=>item.path===destination));const policy=hasConflict?chooseConflictPolicy("拖入项目中存在远端同名文件，此选择将应用到本批全部冲突。 "):"ask";for(const item of destinations)await api.enqueueTransfer({sessionId:session.id,direction:"upload",...item,conflictPolicy:policy});setPanel("transfers");};
-  const drop=async(event:React.DragEvent)=>{event.preventDefault();setDragging(false);const paths=Array.from(event.dataTransfer.files).map((file)=>(file as File&{path?:string}).path).filter((value):value is string=>Boolean(value));if(!paths.length){setError("macOS WebView 未提供拖入文件路径，请使用上传按钮");return;}try{await uploadPaths(paths);}catch(error){setError(errorMessage(error));}};
+  const drop=async(event:React.DragEvent)=>{event.preventDefault();setDragging(false);const paths=Array.from(event.dataTransfer.files).map((file)=>(file as File&{path?:string}).path).filter((value):value is string=>Boolean(value));if(!paths.length){setError(`${platform.displayName} WebView 未提供拖入文件路径，请使用上传按钮`);return;}try{await uploadPaths(paths);}catch(error){setError(errorMessage(error));}};
   return <div className="file-manager">
     <div className="file-toolbar">
       <IconButton icon={ArrowLeft} label="上级目录" onClick={parent} disabled={path==="/"}/>

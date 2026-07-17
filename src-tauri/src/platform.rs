@@ -134,9 +134,10 @@ fn biometric_name() -> &'static str {
 
 #[cfg(target_os = "macos")]
 fn biometric_capability() -> PlatformFeatureCapability {
+    let supported = crate::touch_id::supported();
     feature(
-        crate::touch_id::supported(),
-        if crate::touch_id::supported() {
+        supported,
+        if supported {
             "Touch ID 可用于保护加密同步口令"
         } else {
             "当前 Mac 未提供可用的 Touch ID"
@@ -146,7 +147,15 @@ fn biometric_capability() -> PlatformFeatureCapability {
 
 #[cfg(target_os = "windows")]
 fn biometric_capability() -> PlatformFeatureCapability {
-    feature(false, "Windows Hello 同步口令保护正在适配")
+    let supported = crate::touch_id::supported();
+    feature(
+        supported,
+        if supported {
+            "Windows Hello 可用于保护加密同步口令"
+        } else {
+            "当前设备未提供可用的 Windows Hello"
+        },
+    )
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -157,10 +166,7 @@ fn biometric_capability() -> PlatformFeatureCapability {
 #[cfg(target_os = "windows")]
 pub fn ssh_agent_available() -> bool {
     use std::os::windows::ffi::OsStrExt as _;
-    use windows_sys::Win32::{
-        Storage::FileSystem::WaitNamedPipeW,
-        UI::WindowsAndMessaging::FindWindowA,
-    };
+    use windows_sys::Win32::{System::Pipes::WaitNamedPipeW, UI::WindowsAndMessaging::FindWindowA};
 
     if std::env::var_os("SSH_AUTH_SOCK").is_some() {
         return true;

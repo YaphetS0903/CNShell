@@ -760,7 +760,7 @@ fn find_process_window(pid: u32) -> AppResult<windows_sys::Win32::Foundation::HW
 
 #[cfg(target_os = "windows")]
 struct ManagedProcessGuard {
-    job: windows_sys::Win32::Foundation::HANDLE,
+    job: usize,
 }
 
 #[cfg(target_os = "windows")]
@@ -803,7 +803,7 @@ impl ManagedProcessGuard {
                 "无法管理 FreeRDP 子进程：{error}"
             )));
         }
-        Ok(Self { job })
+        Ok(Self { job: job as usize })
     }
 }
 
@@ -811,7 +811,9 @@ impl ManagedProcessGuard {
 impl Drop for ManagedProcessGuard {
     fn drop(&mut self) {
         unsafe {
-            windows_sys::Win32::Foundation::CloseHandle(self.job);
+            windows_sys::Win32::Foundation::CloseHandle(
+                self.job as windows_sys::Win32::Foundation::HANDLE,
+            );
         }
     }
 }

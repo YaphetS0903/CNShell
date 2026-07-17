@@ -29,9 +29,11 @@ export function primaryShortcutPressed(
 ): boolean {
   const detected =
     operatingSystem ??
-    (typeof document !== "undefined" ? document.documentElement.dataset.platform : undefined) ??
-    (typeof navigator !== "undefined" && /Mac/i.test(navigator.platform) ? "macos" : "windows");
-  return detected === "macos" ? event.metaKey : event.ctrlKey;
+    (typeof document !== "undefined" ? document.documentElement.dataset.platform : undefined);
+  if (detected === "macos") return event.metaKey;
+  if (detected === "windows") return event.ctrlKey;
+  const browserRunsOnMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+  return browserRunsOnMac ? event.metaKey : event.ctrlKey;
 }
 
 export function loadPlatformCapabilities(): Promise<PlatformCapabilities> {

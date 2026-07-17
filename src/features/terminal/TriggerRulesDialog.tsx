@@ -13,6 +13,7 @@ import {
   type TriggerRule,
   validateTriggerPattern,
 } from "./terminal-triggers";
+import { usePlatformCapabilities } from "../../lib/platform";
 
 const emptyRule = (): TriggerRule => ({
   id: crypto.randomUUID(),
@@ -37,6 +38,7 @@ export function TriggerRulesDialog({
   onClose: () => void;
   onError: (message: string) => void;
 }) {
+  const platform = usePlatformCapabilities();
   const [config, setConfig] = useState<TriggerConfig>(loadTriggerConfig);
   const [editing, setEditing] = useState<TriggerRule | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +49,7 @@ export function TriggerRulesDialog({
   };
   const toggleNotifications = async (enabled: boolean) => {
     if (enabled && !(await ensureNotificationPermission())) {
-      onError("macOS 通知权限未授权，请在系统设置中允许 CNshell 通知");
+      onError(`${platform.displayName} 通知权限未授权，请在系统设置中允许 CNshell 通知`);
       return;
     }
     commit({ ...config, notificationsEnabled: enabled });
@@ -105,7 +107,7 @@ export function TriggerRulesDialog({
                 void toggleNotifications(event.target.checked)
               }
             />
-            <span>允许此功能发送 macOS 通知</span>
+            <span>允许此功能发送{platform.displayName}通知</span>
           </label>
           <label className="check-row">
             <input
