@@ -544,7 +544,12 @@ mod tests {
             folder_id: None,
             protocol: "serial".into(),
             name: "Console cable".into(),
-            host: "/dev/cu.usbserial-test".into(),
+            host: if cfg!(target_os = "windows") {
+                "COM7"
+            } else {
+                "/dev/cu.usbserial-test"
+            }
+            .into(),
             port: 115_200,
             username: "serial".into(),
             auth_type: "none".into(),

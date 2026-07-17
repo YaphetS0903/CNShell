@@ -1556,9 +1556,11 @@ impl CollaborationManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
+    use crate::team_share;
     use crate::{
         models::{CreateTeamWorkspaceInput, SaveTeamMemberInput},
-        team, team_share,
+        team,
     };
     use tempfile::tempdir;
 

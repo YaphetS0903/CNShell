@@ -319,9 +319,16 @@ mod tests {
             manifest: crate::models::PythonAutomationManifest {
                 connection_id: "server".into(),
                 permissions: permissions.iter().map(|value| (*value).into()).collect(),
-                allowed_local_paths: vec!["/tmp/release.tar.gz".into()],
+                allowed_local_paths: vec![allowed_local_path()],
             },
         }
+    }
+
+    fn allowed_local_path() -> String {
+        std::env::temp_dir()
+            .join("cnshell-automation-release.tar.gz")
+            .to_string_lossy()
+            .into_owned()
     }
 
     #[test]
@@ -351,16 +358,21 @@ mod tests {
 
     #[test]
     fn transfers_require_exact_manifest_paths() {
+        let allowed = allowed_local_path();
         assert!(
             compile(&request(
-                "cnshell.upload('/tmp/release.tar.gz', '/tmp/release.tar.gz')",
+                &format!("cnshell.upload({allowed:?}, '/tmp/release.tar.gz')"),
                 &["transferUpload"],
             ))
             .is_ok()
         );
+        let denied = std::env::temp_dir()
+            .join("cnshell-automation-denied.txt")
+            .to_string_lossy()
+            .into_owned();
         assert!(
             compile(&request(
-                "cnshell.upload('/etc/passwd', '/tmp/passwd')",
+                &format!("cnshell.upload({denied:?}, '/tmp/passwd')"),
                 &["transferUpload"],
             ))
             .is_err()

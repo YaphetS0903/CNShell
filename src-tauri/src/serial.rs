@@ -886,17 +886,23 @@ mod tests {
 
     #[test]
     fn modem_transfer_requests_are_path_and_mode_bounded() {
+        let first = std::env::temp_dir()
+            .join("cnshell-modem-a")
+            .to_string_lossy()
+            .into_owned();
+        let second = std::env::temp_dir()
+            .join("cnshell-modem-b")
+            .to_string_lossy()
+            .into_owned();
         assert!(
-            validate_transfer_request("ymodem", "upload", &["/tmp/a".into(), "/tmp/b".into()])
-                .is_ok()
+            validate_transfer_request("ymodem", "upload", &[first.clone(), second.clone()]).is_ok()
         );
-        assert!(validate_transfer_request("xmodem1k", "download", &["/tmp/a".into()]).is_ok());
         assert!(
-            validate_transfer_request("xmodem", "upload", &["/tmp/a".into(), "/tmp/b".into()])
-                .is_err()
+            validate_transfer_request("xmodem1k", "download", std::slice::from_ref(&first)).is_ok()
         );
+        assert!(validate_transfer_request("xmodem", "upload", &[first.clone(), second]).is_err());
         assert!(validate_transfer_request("ymodem", "download", &["relative".into()]).is_err());
-        assert!(validate_transfer_request("unknown", "upload", &["/tmp/a".into()]).is_err());
+        assert!(validate_transfer_request("unknown", "upload", &[first]).is_err());
     }
 
     #[test]

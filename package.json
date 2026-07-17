@@ -16,6 +16,7 @@
     "test:e2e": "playwright test",
     "test:protocol": "./scripts/protocol-test.sh",
     "test:pty-fixture": "./scripts/pty-fixture-test.sh",
+    "test:windows-installer": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1",
     "test:soak": "./scripts/soak-test.sh",
     "test:relay": "cargo test --manifest-path services/team-relay/Cargo.toml",
     "test:relay-ops": "./services/team-relay/scripts/ops-test.sh",

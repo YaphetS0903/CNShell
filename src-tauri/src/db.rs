@@ -1028,7 +1028,12 @@ mod tests {
             folder_id: None,
             protocol: "serial".into(),
             name: "USB UART".into(),
-            host: "/dev/cu.usbserial-A".into(),
+            host: if cfg!(target_os = "windows") {
+                "COM7"
+            } else {
+                "/dev/cu.usbserial-A"
+            }
+            .into(),
             port: 115200,
             username: "serial".into(),
             auth_type: "none".into(),

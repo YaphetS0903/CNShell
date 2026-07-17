@@ -3,10 +3,15 @@ use crate::models::TouchIdSyncStatus;
 use sha2::{Digest, Sha256};
 
 const SERVICE: &str = "com.cnshell.desktop.touch-id-sync";
+#[cfg(target_os = "macos")]
 const ERR_SEC_USER_CANCELED: i32 = -128;
+#[cfg(target_os = "macos")]
 const ERR_SEC_NOT_AVAILABLE: i32 = -25291;
+#[cfg(target_os = "macos")]
 const ERR_SEC_AUTH_FAILED: i32 = -25293;
+#[cfg(target_os = "macos")]
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+#[cfg(target_os = "macos")]
 const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
 
 fn account_for_folder(folder: &str) -> AppResult<String> {

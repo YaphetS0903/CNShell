@@ -498,8 +498,15 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(20));
         }
-        forward.join().unwrap().unwrap();
-        reverse.join().unwrap().unwrap();
+        for result in [forward.join().unwrap(), reverse.join().unwrap()] {
+            if let Err(error) = result {
+                assert_eq!(
+                    error.kind(),
+                    io::ErrorKind::BrokenPipe,
+                    "unexpected G-Kermit bridge error: {error}"
+                );
+            }
+        }
         assert!(sender_status.unwrap().success());
         assert!(receiver_status.unwrap().success());
         assert_eq!(fs::read(receive_dir.join("interop.bin")).unwrap(), bytes);

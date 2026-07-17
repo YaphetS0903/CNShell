@@ -555,7 +555,9 @@ fn cleanup_after_process_exit(
 mod tests {
     use super::*;
     use crate::models::ConnectionProtocolOptions;
-    use std::{collections::BTreeMap, path::Path};
+    use std::collections::BTreeMap;
+    #[cfg(target_os = "macos")]
+    use std::path::Path;
 
     fn profile(id: &str) -> ConnectionProfile {
         ConnectionProfile {

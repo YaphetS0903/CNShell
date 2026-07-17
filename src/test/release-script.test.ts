@@ -193,6 +193,10 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
+  const windowsPackageWorkflow = readFileSync(
+    resolve(".github/workflows/windows-package.yml"),
+    "utf8",
+  );
   const dependabot = readFileSync(
     resolve(".github/dependabot.yml"),
     "utf8",
@@ -243,7 +247,7 @@ describe("relay container smoke", () => {
     const uploadArtifact =
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1";
 
-    for (const contents of [workflow, releaseWorkflow]) {
+    for (const contents of [workflow, releaseWorkflow, windowsPackageWorkflow]) {
       const actionLines = contents
         .split(/\r?\n/)
         .filter((line) => /^\s*- uses:/.test(line));
@@ -269,12 +273,40 @@ describe("relay container smoke", () => {
       workflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
     expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(1);
-    for (const contents of [workflow, releaseWorkflow]) {
+    expect(windowsPackageWorkflow.match(/persist-credentials: false/g)).toHaveLength(
+      windowsPackageWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
+    );
+    for (const contents of [workflow, releaseWorkflow, windowsPackageWorkflow]) {
       expect(contents).toMatch(/^permissions:\n {2}contents: read$/m);
     }
     expect(releaseWorkflow).toContain(uploadArtifact);
     expect(dependabot).toContain("package-ecosystem: github-actions");
     expect(dependabot).toContain("interval: monthly");
+  });
+
+  it("builds both Windows architectures and runs the x64 NSIS lifecycle", () => {
+    const installerTest = readFileSync(
+      resolve("scripts/test-windows-installer.ps1"),
+      "utf8",
+    );
+    const peVerifier = readFileSync(
+      resolve("scripts/verify-windows-pe.ps1"),
+      "utf8",
+    );
+
+    expect(windowsPackageWorkflow).toContain("x86_64-pc-windows-msvc");
+    expect(windowsPackageWorkflow).toContain("aarch64-pc-windows-msvc");
+    expect(windowsPackageWorkflow).toContain("npm run build:freerdp");
+    expect(windowsPackageWorkflow).toContain("test-windows-installer.ps1");
+    expect(windowsPackageWorkflow).toContain("verify-windows-pe.ps1");
+    expect(installerTest).toContain('if ($env:CI -ne "true")');
+    expect(installerTest).toContain("CNshell in-place upgrade removed user data");
+    expect(installerTest).toContain("CNshell uninstall removed user data without explicit consent");
+    expect(installerTest).toContain("created a desktop shortcut without an explicit user choice");
+    expect(installerTest).toContain("start menu shortcut was not created");
+    expect(installerTest).toContain("Assert-CNshellStarts");
+    expect(peVerifier).toContain("0x8664");
+    expect(peVerifier).toContain("0xAA64");
   });
 
   it("checks container isolation, persistence, loopback binding, and graceful stop", () => {

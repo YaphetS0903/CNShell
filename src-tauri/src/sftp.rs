@@ -51,6 +51,47 @@ pub(crate) fn remote_path(path: &str) -> AppResult<PathBuf> {
 fn validate_remote_path(path: &str) -> AppResult<()> {
     remote_path(path).map(|_| ())
 }
+
+fn remote_parent_path(path: &str) -> AppResult<PathBuf> {
+    if path.starts_with(RAW_PATH_PREFIX) {
+        let decoded = remote_path(path)?;
+        return Ok(decoded.parent().unwrap_or(Path::new("/")).to_path_buf());
+    }
+    validate_remote_path(path)?;
+    let trimmed = if path.len() > 1 {
+        path.trim_end_matches('/')
+    } else {
+        path
+    };
+    let separator = trimmed.rfind('/').unwrap_or(0);
+    Ok(PathBuf::from(if separator == 0 {
+        "/"
+    } else {
+        &trimmed[..separator]
+    }))
+}
+
+fn remote_child_path(parent: &str, name: &str) -> AppResult<PathBuf> {
+    if parent.starts_with(RAW_PATH_PREFIX) {
+        let mut decoded = remote_path(parent)?;
+        decoded.push(name);
+        return Ok(decoded);
+    }
+    validate_remote_path(parent)?;
+    Ok(PathBuf::from(if parent == "/" {
+        format!("/{name}")
+    } else {
+        format!("{}/{name}", parent.trim_end_matches('/'))
+    }))
+}
+
+fn remote_utf8_name(path: &str) -> Option<&str> {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .filter(|name| !name.is_empty())
+}
+
 pub fn join_path(parent: &str, name: &str) -> AppResult<String> {
     if name.is_empty()
         || name.len() > 4096
@@ -60,9 +101,7 @@ pub fn join_path(parent: &str, name: &str) -> AppResult<String> {
     {
         return Err(AppError::Validation("远端文件名无效".into()));
     }
-    let mut path = remote_path(parent)?;
-    path.push(name);
-    Ok(wire_path(&path))
+    Ok(wire_path(&remote_child_path(parent, name)?))
 }
 #[cfg(unix)]
 pub(crate) fn wire_path(path: &Path) -> String {
@@ -458,18 +497,15 @@ pub async fn archive(
         let result = (|| {
             let mut channel = transport.connected().session.channel_session()?;
             let command = if extract {
-                let parent = Path::new(&path).parent().unwrap_or(Path::new("/"));
+                let parent = remote_parent_path(&path)?;
                 format!(
                     "tar -xzf {} -C {}",
                     shell_quote(&path),
                     shell_quote(&parent.to_string_lossy())
                 )
             } else {
-                let source = Path::new(&path);
-                let parent = source.parent().unwrap_or(Path::new("/"));
-                let name = source
-                    .file_name()
-                    .and_then(|value| value.to_str())
+                let parent = remote_parent_path(&path)?;
+                let name = remote_utf8_name(&path)
                     .ok_or_else(|| AppError::Validation("远端路径无法打包".into()))?;
                 format!(
                     "tar -czf {} -C {} {}",
@@ -642,7 +678,7 @@ pub async fn transfer_directory(
                             let original = final_destination.clone();
                             let mut index = 1;
                             while sftp.lstat(Path::new(&final_destination)).is_ok() {
-                                final_destination = renamed_path(&original, index);
+                                final_destination = renamed_remote_path(&original, index);
                                 index += 1;
                             }
                         }
@@ -650,12 +686,13 @@ pub async fn transfer_directory(
                         _ => unreachable!(),
                     }
                 }
-                let parent = Path::new(&final_destination)
-                    .parent()
-                    .unwrap_or(Path::new("/"));
-                let remote_archive = parent.join(format!(".cnshell-directory-{identifier}.tar.gz"));
-                let remote_staging = parent.join(format!(".cnshell-directory-{identifier}"));
-                let remote_backup = parent.join(format!(".cnshell-directory-backup-{identifier}"));
+                let parent = wire_path(&remote_parent_path(&final_destination)?);
+                let remote_archive =
+                    remote_child_path(&parent, &format!(".cnshell-directory-{identifier}.tar.gz"))?;
+                let remote_staging =
+                    remote_child_path(&parent, &format!(".cnshell-directory-{identifier}"))?;
+                let remote_backup =
+                    remote_child_path(&parent, &format!(".cnshell-directory-backup-{identifier}"))?;
                 let transfer_result = (|| {
                     let mut local = std::fs::File::open(&local_archive)?;
                     let mut remote = sftp.open_mode(
@@ -737,9 +774,11 @@ pub async fn transfer_directory(
                 if !sftp.lstat(&source_path)?.is_dir() {
                     return Err(AppError::Validation("下载源必须是远端文件夹".into()));
                 }
-                let remote_parent = source_path.parent().unwrap_or(Path::new("/"));
-                let remote_archive =
-                    remote_parent.join(format!(".cnshell-directory-{identifier}.tar.gz"));
+                let remote_parent = wire_path(&remote_parent_path(&source)?);
+                let remote_archive = remote_child_path(
+                    &remote_parent,
+                    &format!(".cnshell-directory-{identifier}.tar.gz"),
+                )?;
                 drop(sftp);
                 let archive_result = run_remote_command(
                     &transport.connected().session,
@@ -855,23 +894,35 @@ fn renamed_path(path: &str, index: u32) -> String {
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("file");
+    parent
+        .join(renamed_filename(filename, index))
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn renamed_remote_path(path: &str, index: u32) -> String {
+    match path.rfind('/') {
+        Some(separator) => format!(
+            "{}{}",
+            &path[..=separator],
+            renamed_filename(&path[separator + 1..], index)
+        ),
+        None => renamed_filename(path, index),
+    }
+}
+
+fn renamed_filename(filename: &str, index: u32) -> String {
     let compound = [".tar.gz", ".tar.bz2", ".tar.xz"]
         .into_iter()
         .find(|extension| filename.ends_with(extension));
     let (name, extension) = if let Some(extension) = compound {
         (&filename[..filename.len() - extension.len()], extension)
-    } else if let Some(extension) = source.extension().and_then(|value| value.to_str()) {
-        (
-            &filename[..filename.len() - extension.len() - 1],
-            &filename[filename.len() - extension.len() - 1..],
-        )
+    } else if let Some(position) = filename.rfind('.').filter(|position| *position > 0) {
+        (&filename[..position], &filename[position..])
     } else {
         (filename, "")
     };
-    parent
-        .join(format!("{name} ({index}){extension}"))
-        .to_string_lossy()
-        .into_owned()
+    format!("{name} ({index}){extension}")
 }
 
 fn download_to_path<R, W, Open, Sync, Pulse>(
@@ -1160,7 +1211,7 @@ pub async fn enqueue(
                     work_task.transferred_bytes=transferred;let _=app_clone.emit("transfer-progress",work_task.clone());Ok(())
                 })?;
             } else {
-                if sftp.stat(Path::new(&work_task.destination)).is_ok(){match work_task.conflict_policy.as_str(){"skip"=>{work_task.status="completed".into();return Ok(work_task);},"rename"=>{let original=work_task.destination.clone();let mut index=1;while sftp.stat(Path::new(&work_task.destination)).is_ok(){work_task.destination=renamed_path(&original,index);index+=1;}},"overwrite"=>{},_=>return Err(AppError::Validation("远端目标已存在，请选择覆盖、跳过或重命名".into()))}}
+                if sftp.stat(Path::new(&work_task.destination)).is_ok(){match work_task.conflict_policy.as_str(){"skip"=>{work_task.status="completed".into();return Ok(work_task);},"rename"=>{let original=work_task.destination.clone();let mut index=1;while sftp.stat(Path::new(&work_task.destination)).is_ok(){work_task.destination=renamed_remote_path(&original,index);index+=1;}},"overwrite"=>{},_=>return Err(AppError::Validation("远端目标已存在，请选择覆盖、跳过或重命名".into()))}}
                 let mut local=std::fs::File::open(&work_task.source)?; work_task.total_bytes=local.metadata()?.len() as i64;
                 let temporary=PathBuf::from(format!("{}.cnshell-part-{}",work_task.destination,work_task.id));
                 let upload=(||->AppResult<()>{
@@ -1221,11 +1272,21 @@ mod tests {
     }
     #[test]
     fn conflict_rename_preserves_extension() {
-        assert_eq!(renamed_path("/tmp/file.txt", 2), "/tmp/file (2).txt");
+        let local = std::env::temp_dir().join("file.txt");
+        let expected = std::env::temp_dir().join("file (2).txt");
         assert_eq!(
-            renamed_path("/tmp/archive.tar.gz", 1),
+            renamed_path(local.to_str().unwrap(), 2),
+            expected.to_string_lossy()
+        );
+        assert_eq!(
+            renamed_remote_path("/tmp/archive.tar.gz", 1),
             "/tmp/archive (1).tar.gz"
         );
+        assert_eq!(
+            renamed_remote_path("/var/log/file.txt", 2),
+            "/var/log/file (2).txt"
+        );
+        assert!(!renamed_remote_path("/var/log/file.txt", 2).contains('\\'));
     }
     #[test]
     fn text_editor_limit_uses_utf8_bytes() {
@@ -1238,8 +1299,20 @@ mod tests {
         assert!(validate_remote_path("/tmp/file").is_ok());
         assert!(validate_remote_path("relative").is_err());
         assert!(validate_remote_path(&format!("/{}", "x".repeat(16 * 1024))).is_err());
-        assert!(validate_local_path("/tmp/file").is_ok());
+        assert!(validate_local_path(std::env::temp_dir().join("file").to_str().unwrap()).is_ok());
         assert!(validate_local_path("relative").is_err());
+        assert_eq!(
+            join_path("/var/log", "system.log").unwrap(),
+            "/var/log/system.log"
+        );
+        assert_eq!(
+            wire_path(&remote_child_path("/var/log", ".cnshell-part").unwrap()),
+            "/var/log/.cnshell-part"
+        );
+        assert_eq!(
+            wire_path(&remote_parent_path("/var/log/system.log").unwrap()),
+            "/var/log"
+        );
     }
     #[cfg(target_os = "macos")]
     #[test]

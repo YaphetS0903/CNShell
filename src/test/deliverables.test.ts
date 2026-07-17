@@ -18,7 +18,10 @@ const requiredDeliverables = [
   "src-tauri/resources/kermit/THIRD_PARTY_NOTICES.md",
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
+  ".github/workflows/windows-package.yml",
   "scripts/external-acceptance-preflight.sh",
+  "scripts/test-windows-installer.ps1",
+  "scripts/verify-windows-pe.ps1",
 ];
 
 describe("PLAN deliverables", () => {

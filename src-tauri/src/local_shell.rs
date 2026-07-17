@@ -265,8 +265,126 @@ fn local_line_ending() -> &'static [u8] {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "windows")]
+    use super::*;
+
     #[test]
     fn local_shell_is_a_distinct_session_type() {
         assert_eq!("local", "local");
+    }
+
+    #[cfg(target_os = "windows")]
+    fn spawn_conpty_fixture() -> (
+        Box<dyn Child + Send + Sync>,
+        Box<dyn MasterPty + Send>,
+        Box<dyn Write + Send>,
+        std::sync::mpsc::Receiver<Vec<u8>>,
+    ) {
+        let pty = native_pty_system()
+            .openpty(PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("ConPTY should open");
+        let mut reader = pty
+            .master
+            .try_clone_reader()
+            .expect("ConPTY reader should clone");
+        let writer = pty.master.take_writer().expect("ConPTY writer should open");
+        let (shell, arguments) = shell_command().expect("a Windows shell should be available");
+        let mut command = CommandBuilder::new(shell);
+        for argument in arguments {
+            command.arg(argument);
+        }
+        command.env("TERM", "xterm-256color");
+        let child = pty
+            .slave
+            .spawn_command(command)
+            .expect("Windows shell should start inside ConPTY");
+        drop(pty.slave);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buffer = [0_u8; 4096];
+            loop {
+                match reader.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(size) if sender.send(buffer[..size].to_vec()).is_err() => break,
+                    Ok(_) => {}
+                    Err(error) if error.kind() == ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+        });
+        (child, pty.master, writer, receiver)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn expect_output(receiver: &std::sync::mpsc::Receiver<Vec<u8>>, marker: &str) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+        let mut output = Vec::new();
+        while std::time::Instant::now() < deadline {
+            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+            match receiver.recv_timeout(remaining) {
+                Ok(chunk) => {
+                    output.extend_from_slice(&chunk);
+                    assert!(
+                        output.len() <= 1024 * 1024,
+                        "ConPTY fixture output is unbounded"
+                    );
+                    if String::from_utf8_lossy(&output).contains(marker) {
+                        return;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        panic!(
+            "ConPTY did not emit {marker:?}; output was {:?}",
+            String::from_utf8_lossy(&output)
+        );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn conpty_accepts_input_resize_close_and_reopen() {
+        let (mut first_child, first_master, mut first_writer, first_output) =
+            spawn_conpty_fixture();
+        first_master
+            .resize(PtySize {
+                rows: 40,
+                cols: 120,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .expect("ConPTY should resize");
+        first_writer
+            .write_all(b"echo CNSHELL_CONPTY_FIRST\r\n")
+            .expect("ConPTY should accept input");
+        first_writer.flush().expect("ConPTY input should flush");
+        expect_output(&first_output, "CNSHELL_CONPTY_FIRST");
+        first_child.kill().expect("ConPTY child should close");
+        first_child.wait().expect("closed ConPTY child should reap");
+        drop(first_writer);
+        drop(first_master);
+
+        let (mut second_child, second_master, mut second_writer, second_output) =
+            spawn_conpty_fixture();
+        second_writer
+            .write_all(b"echo CNSHELL_CONPTY_REOPENED\r\n")
+            .expect("reopened ConPTY should accept input");
+        second_writer
+            .flush()
+            .expect("reopened ConPTY input should flush");
+        expect_output(&second_output, "CNSHELL_CONPTY_REOPENED");
+        second_child
+            .kill()
+            .expect("reopened ConPTY child should close");
+        second_child
+            .wait()
+            .expect("reopened ConPTY child should reap");
+        drop(second_writer);
+        drop(second_master);
     }
 }

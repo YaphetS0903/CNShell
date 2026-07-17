@@ -13,6 +13,9 @@ playwright-report/
 !.env.example
 src-tauri/tauri.release.json
 src-tauri/resources/freerdp/sdl-freerdp
+src-tauri/resources/freerdp/sdl-freerdp.exe
 src-tauri/resources/freerdp/licenses/
 src-tauri/resources/mosh/mosh-client
+src-tauri/resources/mosh/mosh-client.exe
 src-tauri/resources/kermit/gkermit
+src-tauri/resources/kermit/gkermit.exe

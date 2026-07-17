@@ -1045,6 +1045,7 @@ pub async fn apply_share(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(target_os = "macos")]
     use crate::models::CreateTeamWorkspaceInput;
 
     #[test]

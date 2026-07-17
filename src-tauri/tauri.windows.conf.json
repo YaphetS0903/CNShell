@@ -22,7 +22,8 @@
         "installerIcon": "icons/icon.ico",
         "languages": ["SimpChinese", "English"],
         "displayLanguageSelector": false,
-        "startMenuFolder": "CNshell"
+        "startMenuFolder": "CNshell",
+        "installerHooks": "windows/installer-hooks.nsh"
       }
     }
   }
