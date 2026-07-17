@@ -1,6 +1,6 @@
 # CNshell 后续功能开发总规划
 
-> 文档状态：v2.6 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，正式 updater 验签、回滚兼容和发布供应链固定已完成；正式发布、生产部署与外部真机验收待补）
+> 文档状态：v2.7 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，正式 updater 验签、回滚兼容和发布供应链固定已完成并通过远端 CI；正式发布、生产部署与外部真机验收待补）
 >
 > 制定日期：2026-07-14
 >
@@ -56,6 +56,7 @@
 - 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和候选版空 endpoint 已完成。发布脚本会让刚构建的 CNshell 可执行文件使用与 Tauri 客户端相同的 Base64/minisign 规则，实际验证 universal 归档、`.sig` 与 release 配置公钥匹配，验证通过后才生成同时覆盖 Apple Silicon/Intel 的 HTTPS `latest.json`；无效公钥、篡改归档、不安全 endpoint 和签名错配均会阻断。真实 Developer ID、公证、正式 endpoint 部署、更新与回滚、干净 Mac 和跨版本/Intel 验收仍需外部凭据或设备，不声明通过。
 - 数据库迁移已建立正式回滚兼容基线：后续 migration 必须保持增量和向后兼容，旧版本可忽略不认识的更高 migration 并读取原有数据，但仍严格验证所有已知 migration 的 checksum；自动化测试覆盖未来增量 schema 回退读取、迁移前备份和已知 migration 篡改拒绝。该代码证据不替代正式 updater 安装失败与人工回滚验收。
 - GitHub Actions run `29523263973`（CI #74）已通过 updater 真实验签、数据库回滚兼容及当时完整短时门禁；它早于本次 workflow 固定提交，不作为新 Action SHA 的远端执行证据。
+- GitHub Actions run `29527312962`（CI #81）已在固定 Actions 7.x、Node 20.20.2 和 Rust 1.96.0 下完成四个 job：前端/Rust/Clippy/audit、Relay Docker 与生产配置 smoke、WebKit/PT Y、universal App 均通过。成功 job 日志确认 `GITHUB_TOKEN` 只有 `Contents: read`、checkout 使用 `persist-credentials: false`，并显式安装 Clippy；该证据不包含需要发行 secrets 的 Developer ID/公证流程。
 
 ### 范围
 
