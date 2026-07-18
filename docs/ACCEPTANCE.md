@@ -210,7 +210,7 @@
 | 完整短时门禁 | 本轮 `npm run check` 的 IPC 一致性、ESLint、TypeScript/Vite production build与前端 51 个文件、162 项测试通过；当时 Rust 206 项通过，随后新增真实 `Last reply` 检测回归并单独通过 Mosh 9 项测试，最终 Rust 门禁明确跳过 `live_ssh_soak` 后再次通过。终端 ResizeObserver 继续验证 fit 后把尺寸发送给同一 Mosh session 并在卸载时清理。Relay 2 项单元测试与 1 项真实 loopback 集成测试、Relay Clippy 和默认不使用系统 `age` 的运维演练继续通过。此前同版本代码另有一次完整门禁显式注入经 Sigsum 验证的官方 `age v1.3.1`，真实加密备份/恢复分支通过；遵照用户要求未重复 soak、1 GB 或长时测试 |
 | universal 候选 CI | GitHub Actions run `29467617374` 四个 job 全部通过；干净 macOS 15 arm64 runner 从源码生成 universal App，并验证主程序、FreeRDP、Mosh、G-Kermit 均含 arm64/x86_64、启用 Hardened Runtime、最低 macOS 13，且 G-Kermit 许可证与固定哈希对应源码随包存在。该 ad-hoc 候选证据不等同 Developer ID、公证或 Intel 真机运行 |
 | 外部验收预检 | 新增只读 `npm run preflight:external`：统一检查发布凭据是否存在、系统架构、XQuartz、FIDO2 Agent 身份数量、实体串口数量及 RDP/Mosh/WebDAV/Relay 资料标记；默认不联网、不触发生物识别、不打开设备，只输出脱敏状态。可原子生成 `0600` Markdown 报告，`READY` 明确不等同场景通过 |
-| 外部边界 | Developer ID/公证/updater、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、正式 DNS/可信证书/邮件与告警投递、生产加密异地恢复和双设备跨网络协作仍未验证 |
+| 外部边界 | Developer ID/公证/正式稳定更新服务、不同 macOS/Intel/Windows/Linux 真机、XQuartz/FIDO2/Serial 硬件、Mosh 网络切换、真实 WebDAV 多设备、正式 DNS/可信证书/邮件与告警投递、生产加密异地恢复和双设备跨网络协作仍未验证 |
 
 | 命令 | 结果（2026-07-12） |
 | --- | --- |
@@ -233,6 +233,7 @@
 | --- | --- |
 | 平台核心 | GitHub Core CI run `29636049087` 已通过前端/Rust、WebKit/PTY、relay、Windows x64 测试、Windows ARM64 `cargo check --all-targets` 与 macOS universal smoke；Windows x64 共执行 205 项 Rust 测试，Credential Manager 的连接秘密和路径记录真往返均通过 |
 | ARM64 sidecar 与安装包 | Windows Packaging run `29636049096` 的 ARM64 job 已从固定源码构建 G-Kermit、Mosh 1.4.0、FreeRDP 3.28.0，完成 ARM64 PE 校验、应用构建、NSIS 生成和 Artifact 上传。该证据是交叉构建与包结构证据，不等同 ARM64 原生运行 |
+| 未签名跨平台 Beta 发布 | GitHub Actions run [`29647070362`](https://github.com/YaphetS0903/CNShell/actions/runs/29647070362) 的 macOS universal、Windows x64 Beta、Windows ARM64 Preview 和发布汇总四个 job 全部成功；公开 [`v0.2.0-beta.1` Pre-release](https://github.com/YaphetS0903/CNShell/releases/tag/v0.2.0-beta.1) 指向提交 `ad7d718`，包含 18 个工作流附件及 GitHub 自动生成的 2 个源码包。工作流实际验证三平台 updater 签名，x64 另完成 NSIS 安装/启动/覆盖升级/卸载/重装；`SHA256SUMS.txt` 覆盖除自身外的 17 个附件。Release 与 `main` 上 raw Beta endpoint 的 `latest.json` SHA-256 均为 `310a52176abc6aef907c05a538559bf407a1ea4d6780c07326f523dfcb53e48e`，清单覆盖 macOS arm64/x86_64 和 Windows x64/ARM64。该证据不等同 Developer ID、公证、Authenticode 或 Windows/ARM64 真机体验验收 |
 | G-Kermit x64 | 同一 Packaging run 的 x64 job 已构建 G-Kermit 并通过两个独立 helper 的 12,345 字节外部协议管道互传 |
 | Mosh Windows 诊断 | Mosh x64 已成功编译并通过 PE；第一次自测被 PowerShell 将上游正常 `stderr` 状态行误判为异常。随后 ARM64 复用缓存时暴露 `read`/`write` 补丁会重复应用；提交 `6eb5b43` 改为每次从校验归档重新展开 Mosh，并补齐幂等检测，后续 ARM64 Mosh 已重新通过。最终双架构结果仍以目标提交为准 |
 | RDP Win32 联动 | `src-tauri/src/rdp.rs` 已补齐窗口模式下的 `SetWindowPos` 动态位置联动，同时保留全屏和用户手动移动边界；15 项 RDP 定向测试通过，Windows 专属编译由最终 Core CI/Packaging 验证 |
@@ -280,7 +281,7 @@
 
 ## 5. 结论
 
-当前代码达到可自动化打包的 **v0.2.0-beta.1 跨平台候选版**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收。正式对外发布仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证和正式更新通道配置。
+当前代码已发布为 **v0.2.0-beta.1 未签名跨平台 Pre-release**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收，Beta updater 签名、四平台清单和公开下载入口已由发布工作流验证。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 
