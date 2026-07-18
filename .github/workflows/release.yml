@@ -211,25 +211,23 @@ jobs:
           ./scripts/verify-windows-pe.ps1 $app $architecture
           $bundle = "src-tauri/target/$target/release/bundle/nsis"
           $installers = @(Get-ChildItem $bundle -Filter "*-setup.exe" -File)
-          $archives = @(Get-ChildItem $bundle -Filter "*.nsis.zip" -File)
-          if ($installers.Count -ne 1 -or $archives.Count -ne 1) {
-            throw "Expected one NSIS installer and one updater archive"
+          if ($installers.Count -ne 1) {
+            throw "Expected one NSIS installer"
           }
-          $signature = "$($archives[0].FullName).sig"
+          $signature = "$($installers[0].FullName).sig"
           if (-not (Test-Path -LiteralPath $signature -PathType Leaf)) {
             throw "Windows updater signature is missing"
           }
           if ("${{ matrix.runtime }}" -eq "true") {
-            & $app --verify-updater-signature $archives[0].FullName $signature src-tauri/tauri.release.json
+            & $app --verify-updater-signature $installers[0].FullName $signature src-tauri/tauri.release.json
             if ($LASTEXITCODE -ne 0) { throw "Windows updater signature verification failed" }
             ./scripts/test-windows-installer.ps1 $installers[0].FullName
           }
           $version = node -p "require('./package.json').version"
           $output = New-Item -ItemType Directory -Force "release-output"
-          Copy-Item $installers[0].FullName (Join-Path $output "CNshell_${version}_${architecture}-setup.exe")
-          $stagedArchive = Join-Path $output "CNshell_${version}_${architecture}.nsis.zip"
-          Copy-Item $archives[0].FullName $stagedArchive
-          Copy-Item $signature "$stagedArchive.sig"
+          $stagedInstaller = Join-Path $output "CNshell_${version}_${architecture}-setup.exe"
+          Copy-Item $installers[0].FullName $stagedInstaller
+          Copy-Item $signature "$stagedInstaller.sig"
           if ("${{ matrix.runtime }}" -eq "true") {
             Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
             Copy-Item src-tauri/resources/freerdp/source/freerdp-3.28.0.tar.gz $output
@@ -300,8 +298,8 @@ jobs:
           if ($macArchives.Count -ne 1 -or $macSignatures.Count -ne 1 -or $dmgs.Count -ne 1) {
             throw "macOS release artifacts are incomplete or ambiguous"
           }
-          $windowsX64 = Get-Item "release-input/CNshell_${version}_x64.nsis.zip"
-          $windowsArm64 = Get-Item "release-input/CNshell_${version}_arm64.nsis.zip"
+          $windowsX64 = Get-Item "release-input/CNshell_${version}_x64-setup.exe"
+          $windowsArm64 = Get-Item "release-input/CNshell_${version}_arm64-setup.exe"
           $verifier = Get-Item "release-input/cnshell-windows-x64-verifier.exe"
           foreach ($path in @(
             $macArchives[0].FullName,
@@ -311,9 +309,7 @@ jobs:
             "$($windowsX64.FullName).sig",
             $windowsArm64.FullName,
             "$($windowsArm64.FullName).sig",
-            $verifier.FullName,
-            "release-input/CNshell_${version}_x64-setup.exe",
-            "release-input/CNshell_${version}_arm64-setup.exe"
+            $verifier.FullName
           )) {
             if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item $path).Length -eq 0) {
               throw "Release artifact is missing or empty: $path"
@@ -333,11 +329,9 @@ jobs:
           Copy-Item $macSignatures[0].FullName $output
           foreach ($name in @(
             "CNshell_${version}_x64-setup.exe",
+            "CNshell_${version}_x64-setup.exe.sig",
             "CNshell_${version}_arm64-setup.exe",
-            "CNshell_${version}_x64.nsis.zip",
-            "CNshell_${version}_x64.nsis.zip.sig",
-            "CNshell_${version}_arm64.nsis.zip",
-            "CNshell_${version}_arm64.nsis.zip.sig"
+            "CNshell_${version}_arm64-setup.exe.sig"
           )) {
             Copy-Item "release-input/$name" $output
           }
@@ -365,8 +359,8 @@ jobs:
           }
           $releaseBase = "$($env:UPDATER_DOWNLOAD_BASE_URL.TrimEnd('/'))/$tag"
           $macArchive = Get-Item (Join-Path $output $macArchives[0].Name)
-          $x64Archive = Get-Item (Join-Path $output "CNshell_${version}_x64.nsis.zip")
-          $arm64Archive = Get-Item (Join-Path $output "CNshell_${version}_arm64.nsis.zip")
+          $x64Archive = Get-Item (Join-Path $output "CNshell_${version}_x64-setup.exe")
+          $arm64Archive = Get-Item (Join-Path $output "CNshell_${version}_arm64-setup.exe")
           & node scripts/generate-updater-manifest.mjs `
             --platform darwin-aarch64 $macArchive.FullName "$($macArchive.FullName).sig" "$releaseBase/$($macArchive.Name)" `
             --platform darwin-x86_64 $macArchive.FullName "$($macArchive.FullName).sig" "$releaseBase/$($macArchive.Name)" `

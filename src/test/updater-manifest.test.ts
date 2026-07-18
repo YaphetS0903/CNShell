@@ -30,7 +30,10 @@ describe("static updater manifest", () => {
       ],
       {
         cwd: process.cwd(),
-        env: { ...process.env, CNSHELL_RELEASE_PUB_DATE: "2026-07-16T00:00:00Z" },
+        env: {
+          ...process.env,
+          CNSHELL_RELEASE_PUB_DATE: "2026-07-16T00:00:00Z",
+        },
       },
     );
 
@@ -80,8 +83,8 @@ describe("static updater manifest", () => {
   it("requires and routes all four desktop targets in multi-platform mode", () => {
     const directory = mkdtempSync(join(tmpdir(), "cnshell-updater-"));
     const mac = join(directory, "CNshell_universal.app.tar.gz");
-    const windowsX64 = join(directory, "CNshell_x64.nsis.zip");
-    const windowsArm64 = join(directory, "CNshell_arm64.nsis.zip");
+    const windowsX64 = join(directory, "CNshell_x64-setup.exe");
+    const windowsArm64 = join(directory, "CNshell_arm64-setup.exe");
     for (const archive of [mac, windowsX64, windowsArm64]) {
       writeFileSync(archive, `signed archive ${archive}`);
       writeFileSync(`${archive}.sig`, `signature ${archive}\n`);
@@ -92,15 +95,35 @@ describe("static updater manifest", () => {
       process.execPath,
       [
         "scripts/generate-updater-manifest.mjs",
-        "--platform", "darwin-aarch64", mac, `${mac}.sig`, `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
-        "--platform", "darwin-x86_64", mac, `${mac}.sig`, `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
-        "--platform", "windows-x86_64", windowsX64, `${windowsX64}.sig`, `https://updates.example/v${currentVersion}/CNshell_x64.nsis.zip`,
-        "--platform", "windows-aarch64", windowsArm64, `${windowsArm64}.sig`, `https://updates.example/v${currentVersion}/CNshell_arm64.nsis.zip`,
-        "--output", output,
+        "--platform",
+        "darwin-aarch64",
+        mac,
+        `${mac}.sig`,
+        `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
+        "--platform",
+        "darwin-x86_64",
+        mac,
+        `${mac}.sig`,
+        `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
+        "--platform",
+        "windows-x86_64",
+        windowsX64,
+        `${windowsX64}.sig`,
+        `https://updates.example/v${currentVersion}/CNshell_x64-setup.exe`,
+        "--platform",
+        "windows-aarch64",
+        windowsArm64,
+        `${windowsArm64}.sig`,
+        `https://updates.example/v${currentVersion}/CNshell_arm64-setup.exe`,
+        "--output",
+        output,
       ],
       {
         cwd: process.cwd(),
-        env: { ...process.env, CNSHELL_RELEASE_PUB_DATE: "2026-07-16T00:00:00Z" },
+        env: {
+          ...process.env,
+          CNSHELL_RELEASE_PUB_DATE: "2026-07-16T00:00:00Z",
+        },
       },
     );
 
@@ -116,7 +139,11 @@ describe("static updater manifest", () => {
     expect(manifest.platforms["darwin-aarch64"]).toEqual(
       manifest.platforms["darwin-x86_64"],
     );
-    expect(manifest.platforms["windows-x86_64"].url).toContain("CNshell_x64.nsis.zip");
-    expect(manifest.platforms["windows-aarch64"].url).toContain("CNshell_arm64.nsis.zip");
+    expect(manifest.platforms["windows-x86_64"].url).toContain(
+      "CNshell_x64-setup.exe",
+    );
+    expect(manifest.platforms["windows-aarch64"].url).toContain(
+      "CNshell_arm64-setup.exe",
+    );
   });
 });

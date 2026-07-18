@@ -24,11 +24,11 @@ Windows：
 3. 运行当前用户 NSIS 安装器。安装器创建开始菜单入口，不会在未明确选择时写桌面快捷方式；WebView2 缺失时使用随包 bootstrapper 安装。
 4. 首个未做 Authenticode 的 Beta 可能显示 SmartScreen 信誉提示。只在哈希与本仓库 Release 一致时继续；不要关闭 SmartScreen 或全局降低系统安全设置。
 
-Tauri updater 的 minisign 签名会验证更新归档，但不能替代 Developer ID、Apple 公证或 Windows Authenticode。x64 包在真机扩大验收期间标记为 Beta，ARM64 包在完成原生设备验收前标记为 Preview。
+Tauri updater 的 minisign 签名会验证更新包，但不能替代 Developer ID、Apple 公证或 Windows Authenticode。x64 包在真机扩大验收期间标记为 Beta，ARM64 包在完成原生设备验收前标记为 Preview。
 
 ## 升级
 
-`v0.2.0-beta.1` 使用独立 Beta updater endpoint；CNshell 只接受由内置公钥验证通过的更新归档，验证失败会保留当前版本。macOS 与 Windows 使用同一份四平台版本清单：
+`v0.2.0-beta.1` 使用独立 Beta updater endpoint；CNshell 只接受由内置公钥验证通过的更新包，验证失败会保留当前版本。macOS 与 Windows 使用同一份四平台版本清单：
 
 在“设置 → 软件更新”可手动检查。CNshell 会先展示目标版本和发布说明，只有用户确认后才下载并安装；不会静默安装。未来正式发布仍需 Developer ID、公证和 Authenticode，并继续沿用兼容的 updater 签名信任链。
 

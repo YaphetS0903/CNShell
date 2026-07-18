@@ -228,21 +228,19 @@ jobs:
           ./scripts/verify-windows-pe.ps1 $app $architecture
           $bundle = "src-tauri/target/$target/release/bundle/nsis"
           $installers = @(Get-ChildItem $bundle -Filter "*-setup.exe" -File)
-          $archives = @(Get-ChildItem $bundle -Filter "*.nsis.zip" -File)
-          if ($installers.Count -ne 1 -or $archives.Count -ne 1) { throw "Expected one NSIS installer and one updater archive" }
-          $signature = "$($archives[0].FullName).sig"
+          if ($installers.Count -ne 1) { throw "Expected one NSIS installer" }
+          $signature = "$($installers[0].FullName).sig"
           if (-not (Test-Path -LiteralPath $signature -PathType Leaf)) { throw "Windows updater signature is missing" }
           if ("${{ matrix.runtime }}" -eq "true") {
-            & $app --verify-updater-signature $archives[0].FullName $signature src-tauri/tauri.beta.json
+            & $app --verify-updater-signature $installers[0].FullName $signature src-tauri/tauri.beta.json
             if ($LASTEXITCODE -ne 0) { throw "Windows updater signature verification failed" }
             $env:CI = "true"
             ./scripts/test-windows-installer.ps1 $installers[0].FullName
           }
           $output = New-Item -ItemType Directory -Force "release-output"
-          Copy-Item $installers[0].FullName (Join-Path $output "CNshell_${version}_${architecture}-setup.exe")
-          $stagedArchive = Join-Path $output "CNshell_${version}_${architecture}.nsis.zip"
-          Copy-Item $archives[0].FullName $stagedArchive
-          Copy-Item $signature "$stagedArchive.sig"
+          $stagedInstaller = Join-Path $output "CNshell_${version}_${architecture}-setup.exe"
+          Copy-Item $installers[0].FullName $stagedInstaller
+          Copy-Item $signature "$stagedInstaller.sig"
           if ("${{ matrix.runtime }}" -eq "true") {
             Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
             Copy-Item src-tauri/resources/freerdp/source/freerdp-3.28.0.tar.gz $output
@@ -301,11 +299,9 @@ jobs:
             "CNshell_${version}_universal.app.tar.gz",
             "CNshell_${version}_universal.app.tar.gz.sig",
             "CNshell_${version}_x64-setup.exe",
-            "CNshell_${version}_x64.nsis.zip",
-            "CNshell_${version}_x64.nsis.zip.sig",
+            "CNshell_${version}_x64-setup.exe.sig",
             "CNshell_${version}_arm64-setup.exe",
-            "CNshell_${version}_arm64.nsis.zip",
-            "CNshell_${version}_arm64.nsis.zip.sig",
+            "CNshell_${version}_arm64-setup.exe.sig",
             "cnshell-windows-x64-verifier.exe",
             "freerdp-3.28.0.tar.gz",
             "freerdp-cnshell-windows-port-source.zip",
@@ -320,8 +316,8 @@ jobs:
           $verifier = "release-input/cnshell-windows-x64-verifier.exe"
           foreach ($archive in @(
             "release-input/CNshell_${version}_universal.app.tar.gz",
-            "release-input/CNshell_${version}_x64.nsis.zip",
-            "release-input/CNshell_${version}_arm64.nsis.zip"
+            "release-input/CNshell_${version}_x64-setup.exe",
+            "release-input/CNshell_${version}_arm64-setup.exe"
           )) {
             & $verifier --verify-updater-signature $archive "$archive.sig" src-tauri/tauri.beta.json
             if ($LASTEXITCODE -ne 0) { throw "Cross-platform Beta updater verification failed: $archive" }
@@ -335,8 +331,8 @@ jobs:
           & node scripts/generate-updater-manifest.mjs `
             --platform darwin-aarch64 "release-output/CNshell_${version}_universal.app.tar.gz" "release-output/CNshell_${version}_universal.app.tar.gz.sig" "$releaseBase/CNshell_${version}_universal.app.tar.gz" `
             --platform darwin-x86_64 "release-output/CNshell_${version}_universal.app.tar.gz" "release-output/CNshell_${version}_universal.app.tar.gz.sig" "$releaseBase/CNshell_${version}_universal.app.tar.gz" `
-            --platform windows-x86_64 "release-output/CNshell_${version}_x64.nsis.zip" "release-output/CNshell_${version}_x64.nsis.zip.sig" "$releaseBase/CNshell_${version}_x64.nsis.zip" `
-            --platform windows-aarch64 "release-output/CNshell_${version}_arm64.nsis.zip" "release-output/CNshell_${version}_arm64.nsis.zip.sig" "$releaseBase/CNshell_${version}_arm64.nsis.zip" `
+            --platform windows-x86_64 "release-output/CNshell_${version}_x64-setup.exe" "release-output/CNshell_${version}_x64-setup.exe.sig" "$releaseBase/CNshell_${version}_x64-setup.exe" `
+            --platform windows-aarch64 "release-output/CNshell_${version}_arm64-setup.exe" "release-output/CNshell_${version}_arm64-setup.exe.sig" "$releaseBase/CNshell_${version}_arm64-setup.exe" `
             --output "release-output/latest.json"
           if ($LASTEXITCODE -ne 0) { throw "Four-platform Beta updater manifest generation failed" }
           $hashLines = Get-ChildItem $output -File | Sort-Object Name | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }

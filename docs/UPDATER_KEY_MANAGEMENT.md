@@ -1,6 +1,6 @@
 # Updater 签名密钥管理
 
-CNshell 的 Tauri updater 使用独立 minisign 密钥验证更新归档。它不依赖 Apple Developer Program 或 Windows Authenticode，因此当前未签名 Beta 也必须完成 updater 签名。该签名只保护更新归档的来源与完整性，不能替代 Developer ID、Apple 公证、Authenticode、Gatekeeper 或 SmartScreen。
+CNshell 的 Tauri updater 使用独立 minisign 密钥验证更新包。它不依赖 Apple Developer Program 或 Windows Authenticode，因此当前未签名 Beta 也必须完成 updater 签名。该签名只保护更新包的来源与完整性，不能替代 Developer ID、Apple 公证、Authenticode、Gatekeeper 或 SmartScreen。
 
 ## 当前公钥
 

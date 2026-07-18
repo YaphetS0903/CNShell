@@ -7,7 +7,7 @@
 CNshell 是面向 macOS 与 Windows 的 SSH、SFTP、Linux 监控和 RDP 工作区。它将远程终端、文件管理、服务器状态与连接资料集中在一个原生桌面应用中。
 
 > [!WARNING]
-> `v0.2.0-beta.1` 是未做商业代码签名的跨平台预发布版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode，x64 为 Beta、ARM64 为 Preview。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。updater minisign 只验证更新归档，不能替代操作系统代码签名。
+> `v0.2.0-beta.1` 是未做商业代码签名的跨平台预发布版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode，x64 为 Beta、ARM64 为 Preview。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。updater minisign 只验证更新包，不能替代操作系统代码签名。
 
 ## 下载
 

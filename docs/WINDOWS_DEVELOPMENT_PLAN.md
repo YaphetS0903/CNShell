@@ -61,7 +61,7 @@
 | Windows Packaging x64 | 构建并运行 G-Kermit、Mosh 加密 UDP 回环、FreeRDP `/version`、应用 PE、NSIS；静默安装后检查三类 sidecar、许可证与对应源码，并验证无默认桌面快捷方式、用户已有快捷方式升级保留、WebView2、SQLite、Credential Manager、原生关闭、覆盖升级、卸载和重装 |
 | Windows Packaging ARM64 | 固定源码构建三类 sidecar，检查 ARM64 PE，构建应用与 NSIS，上传 Preview artifact；没有 x64 runner 上伪运行 ARM64 二进制 |
 | 最低系统 | `src-tauri/windows/installer-hooks.nsh` 使用 `${AtLeastBuild} 19045` 阻止旧系统安装 |
-| Updater | macOS、Windows x64、Windows ARM64 分别生成 updater 归档和 `.sig`，统一 `latest.json` 覆盖 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` |
+| Updater | macOS 生成 updater 归档，Windows x64/ARM64 直接使用 NSIS 安装器；三者均生成 `.sig`，统一 `latest.json` 覆盖 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` |
 | Release | 手动 `Signed Cross-platform Release Candidate` workflow 使用受保护 `release` environment，只创建 Draft Release；最终公开由发布负责人确认 |
 | 许可证与源码 | FreeRDP/Mosh/G-Kermit 许可证、固定源码归档及 Windows 适配源码随应用和 Release 分发；Release 分别提供 FreeRDP/Mosh/G-Kermit Windows 适配源码包，Mosh 包含独立加密 UDP 自测脚本 |
 
@@ -70,7 +70,7 @@
 - `CNshell_<version>_universal.dmg`
 - `CNshell_<version>_x64-setup.exe`
 - `CNshell_<version>_arm64-setup.exe`
-- macOS `.app.tar.gz`、Windows x64/ARM64 `.nsis.zip` 及各自 `.sig`
+- macOS `.app.tar.gz` 与 `.sig`、Windows x64/ARM64 `-setup.exe.sig`
 - `latest.json`、`SHA256SUMS.txt`、第三方许可证与对应源码附件
 
 ## 六、完成标准审计
