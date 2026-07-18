@@ -1,12 +1,12 @@
-# CNshell v0.2.0-beta.1 跨平台 Beta
+# CNshell v0.2.0-beta.2 跨平台 Beta
 
 这是供真实设备测试的未签名预发布版，不是已完成商业代码签名的正式版本。
 
 ## 下载选择
 
-- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.1_universal.dmg`
-- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.1_x64-setup.exe`，状态为 **Beta**
-- Windows 11 ARM64：`CNshell_0.2.0-beta.1_arm64-setup.exe`，状态为 **Preview**
+- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.2_universal.dmg`
+- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.2_x64-setup.exe`，状态为 **Beta**
+- Windows 11 ARM64：`CNshell_0.2.0-beta.2_arm64-setup.exe`，状态为 **Preview**
 
 安装前必须从本 Release 下载 `SHA256SUMS.txt` 并核对 SHA-256。不要从第三方分发站、网盘或聊天附件安装 CNshell。
 
@@ -17,6 +17,8 @@ macOS 包采用 ad-hoc 签名，没有 Developer ID 和 Apple 公证，Gatekeepe
 Windows 安装包尚未做 Authenticode，SmartScreen 可能显示“未知发布者”或信誉提示。只有安装包来自本 Release 且 SHA-256 完全一致时才继续；不要关闭 SmartScreen、Defender 或全局降低系统安全设置。
 
 Tauri updater 更新包使用独立 minisign 密钥签名，应用会校验 `.sig`；这项签名用于更新完整性，不能替代 Developer ID、Apple 公证或 Windows Authenticode。
+
+本次 Beta.2 重点验证从 `v0.2.0-beta.1` 经应用内“软件更新”升级后，版本、连接资料与系统凭据保持正确。
 
 ## 希望重点验证
 
