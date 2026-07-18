@@ -10,6 +10,7 @@ endif()
 
 find_package(OpenSSL REQUIRED)
 find_package(Protobuf CONFIG REQUIRED)
+find_package(ZLIB REQUIRED)
 
 set(MOSH_SRC "${MOSH_SOURCE_DIR}/src")
 
@@ -74,6 +75,7 @@ target_compile_options(mosh-client PRIVATE
 target_link_libraries(mosh-client PRIVATE
   OpenSSL::Crypto
   protobuf::libprotobuf
+  ZLIB::ZLIB
   ws2_32
   bcrypt
 )

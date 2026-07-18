@@ -195,6 +195,7 @@ foreach ($path in @(
   "include\config.h",
   "include\err.h",
   "include\mosh-windows-prefix.h",
+  "include\pwd.h",
   "include\select.h",
   "include\sys\socket.h",
   "include\unistd.h"
@@ -232,8 +233,8 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to checkout pinned vcpkg commit" }
 & (Join-Path $Vcpkg "bootstrap-vcpkg.bat") -disableMetrics
 if ($LASTEXITCODE -ne 0) { throw "Unable to bootstrap vcpkg" }
 $VcpkgExe = Join-Path $Vcpkg "vcpkg.exe"
-& $VcpkgExe install "openssl:$Triplet" --clean-after-build
-if ($LASTEXITCODE -ne 0) { throw "Unable to build pinned Windows OpenSSL" }
+& $VcpkgExe install "openssl:$Triplet" "zlib:$Triplet" --clean-after-build
+if ($LASTEXITCODE -ne 0) { throw "Unable to build pinned Windows OpenSSL and zlib" }
 
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Build
 $Generator = Get-VisualStudioGenerator $Architecture
@@ -264,6 +265,7 @@ Copy-Item -Force $Helper.FullName (Join-Path $Output "mosh-client.exe")
 Copy-Item -Force (Join-Path $MoshSource "COPYING") (Join-Path $Output "licenses\Mosh-GPL-3.0-or-later.txt")
 Copy-Item -Force (Join-Path $ProtobufSource "LICENSE") (Join-Path $Output "licenses\Protobuf-BSD-3-Clause.txt")
 Copy-Item -Force (Join-Path $Vcpkg "installed\$Triplet\share\openssl\copyright") (Join-Path $Output "licenses\OpenSSL-Apache-2.0.txt")
+Copy-Item -Force (Join-Path $Vcpkg "installed\$Triplet\share\zlib\copyright") (Join-Path $Output "licenses\Zlib-Zlib.txt")
 Copy-Item -Force $MoshArchive (Join-Path $Output "source\mosh-$MoshVersion.tar.gz")
 Copy-Item -Force $ProtobufArchive (Join-Path $Output "source\protobuf-all-$ProtobufVersion.tar.gz")
 $WindowsPortDestination = Join-Path $Output "source\windows-port"
@@ -278,6 +280,7 @@ $Notice = @"
 - Mosh ${MoshVersion}: GPL-3.0-or-later. Corresponding source: source/mosh-$MoshVersion.tar.gz (SHA-256: $MoshSha256).
 - Protocol Buffers ${ProtobufVersion}: BSD-3-Clause. Source: source/protobuf-all-$ProtobufVersion.tar.gz (SHA-256: $ProtobufSha256).
 - OpenSSL is statically built by pinned vcpkg commit $VcpkgCommit; its Apache-2.0 license is included.
+- zlib is statically built by the same pinned vcpkg commit; its zlib license is included.
 - CNshell's native WinSock/ConPTY adapter source is in source/windows-port/.
 - The helper does not require WSL, MSYS2, Homebrew, or an external Mosh client installation.
 "@

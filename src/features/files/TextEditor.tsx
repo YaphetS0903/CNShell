@@ -6,21 +6,24 @@ import { parse as parseYaml,stringify as stringifyYaml } from "yaml";
 import { api } from "../../lib/api";
 import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
+import { usePlatformCapabilities } from "../../lib/platform";
 import { IconButton } from "../../components/IconButton";
 import { RemoteCodeEditor,type CodeEditorActions } from "./RemoteCodeEditor";
+import { externalApplicationDialogOptions } from "./external-application";
 import type { ExternalEditSession } from "../../types";
 import "./TextEditor.css";
 
 type Conflict={base:string;local:string;remote:string;remoteModifiedAt:number|null};
 
 export function TextEditor({ sessionId, path, onClose }: { sessionId: string; path: string; onClose: () => void }) {
+  const platform=usePlatformCapabilities();
   const [content,setContent]=useState("");const[base,setBase]=useState("");const[modifiedAt,setModifiedAt]=useState<number|null>(null);const[loading,setLoading]=useState(true);const[saving,setSaving]=useState(false);const[error,setError]=useState<string|null>(null);const[saved,setSaved]=useState(false);const[conflict,setConflict]=useState<Conflict|null>(null);const[externalEdit,setExternalEdit]=useState<ExternalEditSession|null>(null);const editorRef=useRef<CodeEditorActions>(null);
   useEffect(()=>{api.openText(sessionId,path).then((file)=>{setContent(file.content);setBase(file.content);setModifiedAt(file.modifiedAt);}).catch((reason)=>setError(errorMessage(reason))).finally(()=>setLoading(false));},[path,sessionId]);
   const persist=async(expected=modifiedAt,value=content)=>{setSaving(true);setError(null);setSaved(false);try{await api.saveText(sessionId,path,value,expected);const current=await api.openText(sessionId,path);setContent(current.content);setBase(current.content);setModifiedAt(current.modifiedAt);setConflict(null);setSaved(true);return true;}catch(reason){const message=errorMessage(reason);if(message.includes("已被其他程序修改")){try{const remote=await api.openText(sessionId,path);setContent(value);setConflict({base,local:value,remote:remote.content,remoteModifiedAt:remote.modifiedAt});}catch(refreshError){setError(errorMessage(refreshError));}}else setError(message);return false;}finally{setSaving(false);}};
   const format=()=>{try{const lower=path.toLowerCase();if(lower.endsWith(".json")||lower.endsWith(".jsonc"))setContent(`${JSON.stringify(JSON.parse(content),null,2)}\n`);else if(/\.(ya?ml)$/.test(lower))setContent(stringifyYaml(parseYaml(content)));else{setError("当前文件类型不支持自动格式化");return;}setError(null);}catch(reason){setError(`格式化失败：${errorMessage(reason)}`);}};
   const overwrite=()=>{if(!conflict||!confirm("远端内容会被当前本地版本覆盖。确认继续？"))return;setContent(conflict.local);void persist(conflict.remoteModifiedAt);};
   const startExternal=async(application?:string)=>{try{setExternalEdit(await api.startExternalEdit(sessionId,path,application));}catch(reason){setError(errorMessage(reason));}};
-  const chooseExternal=async()=>{const application=await open({multiple:false,directory:true,defaultPath:"/Applications",title:"选择外部文本编辑器"});if(application)await startExternal(application);};
+  const chooseExternal=async()=>{const application=await open(externalApplicationDialogOptions(platform,`选择${platform.displayName}外部文本编辑器`));if(application)await startExternal(application);};
   const importExternal=async()=>{if(!externalEdit)return;setSaving(true);try{const snapshot=await api.readExternalEdit(externalEdit.id);const success=await persist(snapshot.expectedModifiedAt,snapshot.content);if(success){await api.discardExternalEdit(externalEdit.id);setExternalEdit(null);}}catch(reason){setError(errorMessage(reason));setSaving(false);}};
   const discardExternal=async()=>{if(!externalEdit)return;try{await api.discardExternalEdit(externalEdit.id);}catch{/* stale temporary files are cleaned on next launch */}setExternalEdit(null);};
   const close=()=>{if(externalEdit&&!confirm("外部编辑副本尚未回传，关闭将放弃该副本。继续？"))return;if(externalEdit)void api.discardExternalEdit(externalEdit.id);onClose();};
