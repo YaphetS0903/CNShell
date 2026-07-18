@@ -131,7 +131,9 @@ function Replace-PinnedText([string]$Path, [string]$Before, [string]$After) {
 function Build-Protobuf([string]$TargetArchitecture, [string]$Prefix, [bool]$BuildProtoc) {
   $library = Join-Path $Prefix "lib\libprotobuf.lib"
   $protoc = Join-Path $Prefix "bin\protoc.exe"
+  $runtimeMarker = Join-Path $Prefix ".cnshell-msvc-static-runtime"
   if ((Test-Path -LiteralPath $library -PathType Leaf) -and
+      (Test-Path -LiteralPath $runtimeMarker -PathType Leaf) -and
       ((-not $BuildProtoc) -or (Test-Path -LiteralPath $protoc -PathType Leaf))) {
     return
   }
@@ -153,10 +155,17 @@ function Build-Protobuf([string]$TargetArchitecture, [string]$Prefix, [bool]$Bui
     -Dprotobuf_BUILD_SHARED_LIBS=OFF `
     -Dprotobuf_WITH_ZLIB=OFF `
     -Dprotobuf_MSVC_STATIC_RUNTIME=ON `
+    -DCMAKE_POLICY_DEFAULT_CMP0091=NEW `
+    -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded `
     "-Dprotobuf_BUILD_PROTOC_BINARIES=$protocOption"
   if ($LASTEXITCODE -ne 0) { throw "Unable to configure Protobuf $TargetArchitecture" }
   & cmake.exe --build $protobufBuild --config Release --target install --parallel
   if ($LASTEXITCODE -ne 0) { throw "Unable to build Protobuf $TargetArchitecture" }
+  if (-not (Test-Path -LiteralPath $library -PathType Leaf) -or
+      ($BuildProtoc -and -not (Test-Path -LiteralPath $protoc -PathType Leaf))) {
+    throw "Protobuf $TargetArchitecture install is incomplete"
+  }
+  [System.IO.File]::WriteAllText($runtimeMarker, "protobuf $ProtobufVersion /MT")
 }
 
 Get-CheckedFile `

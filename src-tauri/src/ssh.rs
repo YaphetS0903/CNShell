@@ -2124,6 +2124,28 @@ mod tests {
     fn credential_reference_never_contains_secret() {
         assert_eq!(credential_ref("abc"), "connection:abc");
     }
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_credential_manager_round_trips_connection_secret() {
+        let id = format!("windows-credential-test-{}", Uuid::new_v4());
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = delete_credential(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(id.clone());
+        assert_eq!(
+            save_credential(&id, "CNshell-Windows-秘密").unwrap(),
+            credential_ref(&id)
+        );
+        assert_eq!(
+            load_credential(&id).unwrap().as_deref(),
+            Some("CNshell-Windows-秘密")
+        );
+        delete_credential(&id).unwrap();
+        assert!(load_credential(&id).unwrap().is_none());
+    }
     #[test]
     fn host_algorithm_names_are_stable() {
         assert_eq!(host_key_algorithm(HostKeyType::Ed25519), "ssh-ed25519");

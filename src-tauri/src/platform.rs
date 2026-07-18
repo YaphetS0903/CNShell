@@ -211,28 +211,30 @@ fn open_local_path_impl(path: &Path, application: Option<&str>) -> AppResult<()>
 
 #[cfg(target_os = "windows")]
 fn open_local_path_impl(path: &Path, application: Option<&str>) -> AppResult<()> {
-    if let Some(application) = application {
-        std::process::Command::new(application)
-            .arg(path)
-            .spawn()
-            .map_err(|error| AppError::Unavailable(format!("无法打开本地文件：{error}")))?;
-        return Ok(());
-    }
     use std::os::windows::ffi::OsStrExt as _;
     use std::ptr::{null, null_mut};
     use windows_sys::Win32::UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL};
     let operation = "open\0".encode_utf16().collect::<Vec<_>>();
-    let target = path
-        .as_os_str()
+    let target_os = application
+        .map(std::ffi::OsStr::new)
+        .unwrap_or_else(|| path.as_os_str());
+    let target = target_os
         .encode_wide()
         .chain(std::iter::once(0))
         .collect::<Vec<_>>();
+    let parameters = application.map(|_| {
+        let value = format!("\"{}\"", path.to_string_lossy());
+        value
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>()
+    });
     let result = unsafe {
         ShellExecuteW(
             null_mut(),
             operation.as_ptr(),
             target.as_ptr(),
-            null(),
+            parameters.as_ref().map_or(null(), |value| value.as_ptr()),
             null(),
             SW_SHOWNORMAL,
         )
@@ -273,7 +275,7 @@ pub(crate) fn validate_application_path(application: &str) -> AppResult<()> {
             .and_then(|value| value.to_str())
             .unwrap_or("")
             .to_ascii_lowercase();
-        if !path.is_file() || !["exe", "com", "bat", "cmd"].contains(&extension.as_str()) {
+        if !path.is_file() || !["exe", "com"].contains(&extension.as_str()) {
             return Err(AppError::Validation(
                 "外部编辑器必须选择已安装的 Windows 程序".into(),
             ));

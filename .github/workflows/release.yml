@@ -142,7 +142,7 @@ jobs:
             src-tauri/target/mosh-sidecar-windows/sources
             src-tauri/target/mosh-sidecar-windows/protobuf-${{ matrix.architecture }}
             src-tauri/target/mosh-sidecar-windows/protobuf-host-x64
-          key: windows-sidecars-v3-freerdp-3.28.0-mosh-1.4.0-protobuf-21.12-vcpkg-908da3a-${{ matrix.architecture }}
+          key: windows-sidecars-v4-freerdp-3.28.0-mosh-1.4.0-protobuf-21.12-mt-vcpkg-908da3a-${{ matrix.architecture }}
       - run: npm ci
       - name: Prepare public updater configuration
         shell: pwsh

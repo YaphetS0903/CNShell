@@ -393,10 +393,18 @@ describe("relay container smoke", () => {
     expect(windowsMoshBuilder).not.toContain("MSYS2 build gate");
     expect(windowsMoshBuilder).toContain("Mosh ${MoshVersion}:");
     expect(windowsMoshBuilder).toContain("Protocol Buffers ${ProtobufVersion}:");
+    expect(windowsMoshBuilder).toContain('"zlib:$Triplet"');
+    expect(windowsMoshBuilder).toContain("CMAKE_POLICY_DEFAULT_CMP0091=NEW");
+    expect(windowsMoshBuilder).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
+    expect(windowsMoshBuilder).toContain(".cnshell-msvc-static-runtime");
     expect(windowsMoshBuilder).toContain("Replace-PinnedText");
     expect(windowsMoshBuilder).toContain('L"Crypto exception: %hs"');
     expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/swrite.cc"');
     expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/timestamp.cc"');
+    expect(windowsMoshCmake).toContain("find_package(ZLIB REQUIRED)");
+    expect(windowsMoshCmake).toContain("ZLIB::ZLIB");
+    expect(windowsPackageWorkflow).toContain("windows-sidecars-v4-");
+    expect(releaseWorkflow).toContain("windows-sidecars-v4-");
     expect(windowsMoshPrefix).toContain("#define __attribute(value)");
     expect(windowsMoshPrefix).toContain("cnshell_read");
     expect(windowsMoshPrefix).toContain("cnshell_write");

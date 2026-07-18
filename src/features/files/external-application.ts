@@ -10,7 +10,7 @@ export function externalApplicationDialogOptions(platform: ApplicationPlatform, 
     defaultPath: windows ? undefined : "/Applications",
     title,
     ...(windows
-      ? { filters: [{ name: "Windows 应用", extensions: ["exe", "com", "bat", "cmd"] }] }
+      ? { filters: [{ name: "Windows 应用", extensions: ["exe", "com"] }] }
       : {}),
   };
 }

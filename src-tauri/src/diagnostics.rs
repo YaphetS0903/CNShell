@@ -32,7 +32,7 @@ struct DiagnosticReport {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct SecuritySummary {
-    credentials_in_keychain: bool,
+    credentials_in_system_store: bool,
     strict_host_key_default: bool,
     telemetry_enabled: bool,
     contains_hosts_or_commands: bool,
@@ -60,7 +60,7 @@ pub async fn export(db: &Database, path: &str) -> AppResult<()> {
         transfer_status_counts: statuses,
         rdp_available: rdp::preflight().available,
         security: SecuritySummary {
-            credentials_in_keychain: true,
+            credentials_in_system_store: true,
             strict_host_key_default: true,
             telemetry_enabled: false,
             contains_hosts_or_commands: false,
@@ -121,7 +121,7 @@ mod tests {
             transfer_status_counts: Default::default(),
             rdp_available: false,
             security: SecuritySummary {
-                credentials_in_keychain: true,
+                credentials_in_system_store: true,
                 strict_host_key_default: true,
                 telemetry_enabled: false,
                 contains_hosts_or_commands: false,

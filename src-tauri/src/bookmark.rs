@@ -38,7 +38,7 @@ fn save_value(reference: &str, path: &Path, label: &str) -> AppResult<()> {
     keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&encoded)
-        .map_err(|error| AppError::Storage(format!("{label} Bookmark 保存失败：{error}")))
+        .map_err(|error| AppError::Storage(format!("{label}路径授权保存失败：{error}")))
 }
 
 pub fn save_rdp_drive(connection_id: &str, path: &Path) -> AppResult<()> {
@@ -52,7 +52,7 @@ pub fn save_rdp_drive(connection_id: &str, path: &Path) -> AppResult<()> {
     keyring::Entry::new(KEYCHAIN_SERVICE, &reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&encoded)
-        .map_err(|error| AppError::Storage(format!("RDP 映射目录 Bookmark 保存失败：{error}")))
+        .map_err(|error| AppError::Storage(format!("RDP 映射目录路径授权保存失败：{error}")))
 }
 
 pub fn load(connection_id: &str) -> AppResult<Option<String>> {
@@ -74,7 +74,7 @@ fn load_value(reference: &str, label: &str) -> AppResult<Option<String>> {
         Ok(value) => Ok(Some(value)),
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(AppError::Storage(format!(
-            "{label} Bookmark 读取失败：{error}"
+            "{label}路径授权读取失败：{error}"
         ))),
     }
 }
@@ -133,7 +133,7 @@ fn copy_value(source: &str, destination: &str, label: &str) -> AppResult<()> {
     keyring::Entry::new(KEYCHAIN_SERVICE, destination)
         .map_err(|error| AppError::Storage(error.to_string()))?
         .set_password(&value)
-        .map_err(|error| AppError::Storage(format!("{label} Bookmark 复制失败：{error}")))
+        .map_err(|error| AppError::Storage(format!("{label}路径授权复制失败：{error}")))
 }
 
 pub fn delete(connection_id: &str) -> AppResult<()> {
@@ -154,7 +154,7 @@ fn delete_value(reference: &str, label: &str) -> AppResult<()> {
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(AppError::Storage(format!(
-            "{label} Bookmark 清理失败：{error}"
+            "{label}路径授权清理失败：{error}"
         ))),
     }
 }
@@ -163,6 +163,7 @@ pub struct PrivateKeyAccess {
     path: PathBuf,
     #[cfg(target_os = "macos")]
     url: Option<objc2::rc::Retained<objc2_foundation::NSURL>>,
+    #[cfg(target_os = "macos")]
     scoped: bool,
 }
 
@@ -230,12 +231,13 @@ fn access_value(
             path: fallback.to_path_buf(),
             #[cfg(target_os = "macos")]
             url: None,
+            #[cfg(target_os = "macos")]
             scoped: false,
         });
     };
     let bytes = STANDARD
         .decode(encoded)
-        .map_err(|_| AppError::Storage(format!("{label} Bookmark 数据损坏，请重新选择")))?;
+        .map_err(|_| AppError::Storage(format!("{label}路径授权数据损坏，请重新选择")))?;
     resolve(&bytes, label)
 }
 
@@ -252,7 +254,7 @@ fn create(path: &Path, label: &str, read_only: bool) -> AppResult<Vec<u8>> {
         options, None, None,
     )
     .map(|data| data.to_vec())
-    .map_err(|error| AppError::Storage(format!("无法创建{label}安全 Bookmark：{error}")))
+    .map_err(|error| AppError::Storage(format!("无法创建{label}安全路径授权：{error}")))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -273,18 +275,16 @@ fn resolve(bytes: &[u8], label: &str) -> AppResult<PrivateKeyAccess> {
             &data, options, None, &mut stale,
         )
     }
-    .map_err(|error| {
-        AppError::Storage(format!("{label} Bookmark 无法解析，请重新选择：{error}"))
-    })?;
+    .map_err(|error| AppError::Storage(format!("{label}路径授权无法解析，请重新选择：{error}")))?;
     if bool::from(stale) {
         return Err(AppError::Storage(format!(
-            "{label} Bookmark 已过期，请重新选择"
+            "{label}路径授权已过期，请重新选择"
         )));
     }
     let path = url
         .path()
         .map(|path| PathBuf::from(path.to_string()))
-        .ok_or_else(|| AppError::Storage(format!("{label} Bookmark 没有有效路径，请重新选择")))?;
+        .ok_or_else(|| AppError::Storage(format!("{label}路径授权没有有效路径，请重新选择")))?;
     let scoped = unsafe { url.startAccessingSecurityScopedResource() };
     Ok(PrivateKeyAccess {
         path,
@@ -296,10 +296,9 @@ fn resolve(bytes: &[u8], label: &str) -> AppResult<PrivateKeyAccess> {
 #[cfg(not(target_os = "macos"))]
 fn resolve(bytes: &[u8], label: &str) -> AppResult<PrivateKeyAccess> {
     let path = String::from_utf8(bytes.to_vec())
-        .map_err(|_| AppError::Storage(format!("{label} Bookmark 数据损坏")))?;
+        .map_err(|_| AppError::Storage(format!("{label}路径授权数据损坏")))?;
     Ok(PrivateKeyAccess {
         path: PathBuf::from(path),
-        scoped: false,
     })
 }
 
@@ -364,6 +363,31 @@ mod tests {
         assert_eq!(
             std::fs::read(access.path()).unwrap(),
             b"keychain-bookmark-fixture"
+        );
+        delete(&id).unwrap();
+        assert!(load(&id).unwrap().is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_credential_manager_path_record_keeps_file_accessible() {
+        let id = format!("windows-path-test-{}", uuid::Uuid::new_v4());
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = delete(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(id.clone());
+        let directory = tempfile::tempdir().unwrap();
+        let key = directory.path().join("CNshell 中文 key");
+        std::fs::write(&key, b"windows-credential-path-fixture").unwrap();
+        save(&id, &key).unwrap();
+        assert!(load(&id).unwrap().is_some());
+        let access = access(&id, Path::new(r"C:\unused\fallback")).unwrap();
+        assert_eq!(
+            std::fs::read(access.path()).unwrap(),
+            b"windows-credential-path-fixture"
         );
         delete(&id).unwrap();
         assert!(load(&id).unwrap().is_none());
