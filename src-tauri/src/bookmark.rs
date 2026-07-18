@@ -193,7 +193,7 @@ impl Drop for PrivateKeyAccess {
 }
 
 pub fn access(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
-    access_value(load(connection_id)?, fallback, "私钥")
+    access_value(load(connection_id)?, fallback, "私钥", false)
 }
 
 pub fn access_certificate(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
@@ -201,11 +201,17 @@ pub fn access_certificate(connection_id: &str, fallback: &Path) -> AppResult<Pri
         load_certificate(connection_id)?,
         fallback,
         "SSH Certificate",
+        false,
     )
 }
 
 pub fn access_rdp_drive(connection_id: &str, fallback: &Path) -> AppResult<PrivateKeyAccess> {
-    access_value(load_rdp_drive(connection_id)?, fallback, "RDP 映射目录")
+    access_value(
+        load_rdp_drive(connection_id)?,
+        fallback,
+        "RDP 映射目录",
+        true,
+    )
 }
 
 pub fn access_selected_directory(path: &Path) -> AppResult<PrivateKeyAccess> {
@@ -233,8 +239,10 @@ fn access_value(
     encoded: Option<String>,
     fallback: &Path,
     label: &str,
+    directory: bool,
 ) -> AppResult<PrivateKeyAccess> {
     let Some(encoded) = encoded else {
+        validate_access_path(fallback, label, directory)?;
         return Ok(PrivateKeyAccess {
             path: fallback.to_path_buf(),
             #[cfg(target_os = "macos")]
@@ -246,7 +254,23 @@ fn access_value(
     let bytes = STANDARD
         .decode(encoded)
         .map_err(|_| AppError::Storage(format!("{label}路径授权数据损坏，请重新选择")))?;
-    resolve(&bytes, label)
+    let access = resolve(&bytes, label)?;
+    validate_access_path(access.path(), label, directory)?;
+    Ok(access)
+}
+
+fn validate_access_path(path: &Path, label: &str, directory: bool) -> AppResult<()> {
+    let valid_kind = if directory {
+        path.is_dir()
+    } else {
+        path.is_file()
+    };
+    if !path.is_absolute() || !valid_kind {
+        return Err(AppError::Validation(format!(
+            "{label}路径在本机无效，请编辑连接并重新选择"
+        )));
+    }
+    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -418,5 +442,23 @@ mod tests {
     fn bookmark_rejects_missing_or_relative_private_keys() {
         assert!(save("missing", Path::new("relative-key")).is_err());
         assert!(save("missing", Path::new("/definitely/missing/cnshell-key")).is_err());
+    }
+
+    #[test]
+    fn invalid_imported_paths_require_an_explicit_reselection() {
+        let directory = tempfile::tempdir().unwrap();
+        let file = directory.path().join("key");
+        std::fs::write(&file, b"key").unwrap();
+        validate_access_path(&file, "私钥", false).unwrap();
+        validate_access_path(directory.path(), "RDP 映射目录", true).unwrap();
+
+        for (path, directory) in [
+            (Path::new("relative-key"), false),
+            (Path::new("/definitely/missing/cnshell-key"), false),
+            (&file, true),
+        ] {
+            let error = validate_access_path(path, "导入路径", directory).unwrap_err();
+            assert!(error.to_string().contains("编辑连接并重新选择"));
+        }
     }
 }
