@@ -4,7 +4,7 @@
 >
 > 目标：在同一套 Tauri 2 + React + Rust 工程中提供 macOS、Windows x64 和 Windows ARM64 版本，并通过同一个 GitHub Release 发布。
 >
-> 当前工程状态：Windows 功能代码与打包链已实现；`v0.2.0-beta.1` 目标提交 `3826715` 的 Core CI `29638753518` 与 Windows Packaging `29638753524` 已全部通过。没有真机或发行凭据的项目仍按外部验收边界记录，不以交叉编译代替真机结论。
+> 当前工程状态：Windows 功能代码与打包链已实现；`v0.2.0-beta.1` 目标提交 `47b48c0` 的 Core CI `29640190967` 与 Windows Packaging `29640190971` 已全部通过。没有真机或发行凭据的项目仍按外部验收边界记录，不以交叉编译代替真机结论。
 
 ## 一、状态定义
 
@@ -58,7 +58,7 @@
 | 门禁 | 实现 |
 | --- | --- |
 | Core CI | macOS 前端/Rust、WebKit E2E、PTY、relay；Windows x64 完整 Rust 测试与 Windows ARM64 `cargo check --all-targets` |
-| Windows Packaging x64 | 构建并运行 G-Kermit、Mosh 加密 UDP 回环、FreeRDP `/version`、应用 PE、NSIS；静默安装、WebView2、SQLite、Credential Manager、原生关闭、覆盖升级、卸载、重装 |
+| Windows Packaging x64 | 构建并运行 G-Kermit、Mosh 加密 UDP 回环、FreeRDP `/version`、应用 PE、NSIS；静默安装后检查三类 sidecar、许可证与对应源码，并验证无默认桌面快捷方式、用户已有快捷方式升级保留、WebView2、SQLite、Credential Manager、原生关闭、覆盖升级、卸载和重装 |
 | Windows Packaging ARM64 | 固定源码构建三类 sidecar，检查 ARM64 PE，构建应用与 NSIS，上传 Preview artifact；没有 x64 runner 上伪运行 ARM64 二进制 |
 | 最低系统 | `src-tauri/windows/installer-hooks.nsh` 使用 `${AtLeastBuild} 19045` 阻止旧系统安装 |
 | Updater | macOS、Windows x64、Windows ARM64 分别生成 updater 归档和 `.sig`，统一 `latest.json` 覆盖 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` |
@@ -77,7 +77,7 @@
 
 | 标准 | 当前证据 | 结论 |
 | --- | --- | --- |
-| macOS universal、Windows x64、Windows ARM64 从干净 CI 构建 | Core CI `29638753518` 与 Windows Packaging `29638753524` 均通过；Windows ARM64 是交叉构建/PE/NSIS 证据 | 通过；ARM64 原生运行仍待真机 |
+| macOS universal、Windows x64、Windows ARM64 从干净 CI 构建 | 提交 `47b48c0` 的 Core CI `29640190967` 与 Windows Packaging `29640190971` 均通过；Windows ARM64 是交叉构建/PE/NSIS 证据 | 通过；ARM64 原生运行仍待真机 |
 | Windows 编译不包含 Unix socket/AppKit 路径 | 平台模块均使用 `cfg` 隔离；Windows x64 测试和 ARM64 `cargo check --all-targets` 通过 | 通过 |
 | Windows x64 启动无白屏、原生关闭有效、ConPTY 可重开 | Windows x64 Rust 208 项测试包含 ConPTY 输入/resize/关闭/重开；NSIS 生命周期启动真实 WebView2 并接受原生关闭 | CI 通过；不同 Windows 真机仍待验 |
 | SSH/SFTP/监控/Zmodem/RDP/Credential Manager 安全边界 | 跨平台协议测试、Windows Credential Manager 真往返、RDP stdin/Job Object/参数测试 | 代码与 CI 通过；真实 RDP 待验 |
