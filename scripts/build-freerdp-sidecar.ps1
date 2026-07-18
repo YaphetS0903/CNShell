@@ -14,7 +14,7 @@ if ($Architecture -notin @("x64", "arm64")) {
 $FreeRdpVersion = "3.28.0"
 $FreeRdpSha256 = "2d6e37cd726163c37c2070a9aa38a4624feb6b2d414f4d9dbecd60600e971142"
 $VcpkgCommit = "908da3a305a0a8028d9602ab241b433652b3df69"
-$Triplet = if ($Architecture -eq "arm64") { "arm64-windows-static-md" } else { "x64-windows-static-md" }
+$Triplet = if ($Architecture -eq "arm64") { "arm64-windows-static" } else { "x64-windows-static" }
 $Archive = Join-Path $Downloads "freerdp-$FreeRdpVersion.tar.gz"
 $Source = Join-Path $Sources "freerdp"
 $Build = Join-Path $Work "build-$Architecture"

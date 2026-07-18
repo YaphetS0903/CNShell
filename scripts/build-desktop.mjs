@@ -14,9 +14,13 @@ if (process.env.CNSHELL_SIDECARS_PREBUILT === "1") {
   if (process.platform !== "win32") {
     throw new Error("CNSHELL_SIDECARS_PREBUILT is restricted to Windows packaging jobs");
   }
-  const helper = resolve("src-tauri", "resources", "freerdp", "sdl-freerdp.exe");
-  if (!existsSync(helper) || !statSync(helper).isFile() || statSync(helper).size === 0) {
-    throw new Error(`Prebuilt Windows FreeRDP helper is missing or empty: ${helper}`);
+  for (const helper of [
+    resolve("src-tauri", "resources", "freerdp", "sdl-freerdp.exe"),
+    resolve("src-tauri", "resources", "kermit", "gkermit.exe"),
+  ]) {
+    if (!existsSync(helper) || !statSync(helper).isFile() || statSync(helper).size === 0) {
+      throw new Error(`Prebuilt Windows helper is missing or empty: ${helper}`);
+    }
   }
 } else {
   for (const sidecar of ["freerdp", "mosh", "kermit"]) {

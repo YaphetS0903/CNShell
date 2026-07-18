@@ -132,7 +132,7 @@ where
     let mut command = Command::new(&helper);
     command
         .env_clear()
-        .args(["-X", "-i", "-q", "-S", "-b", "5"])
+        .args(["-X", "-i", "-P", "-q", "-S", "-b", "5"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -464,7 +464,7 @@ mod tests {
             .collect::<Vec<_>>();
         fs::write(&source, &bytes).unwrap();
         let mut receiver = Command::new(&helper)
-            .args(["-X", "-r", "-i", "-q", "-S", "-b", "2"])
+            .args(["-X", "-r", "-i", "-P", "-q", "-S", "-b", "2"])
             .current_dir(&receive_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -472,7 +472,7 @@ mod tests {
             .spawn()
             .unwrap();
         let mut sender = Command::new(&helper)
-            .args(["-X", "-i", "-q", "-S", "-b", "2", "-s"])
+            .args(["-X", "-i", "-P", "-q", "-S", "-b", "2", "-s"])
             .arg(&source)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())

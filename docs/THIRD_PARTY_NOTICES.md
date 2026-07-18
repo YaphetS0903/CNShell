@@ -23,3 +23,6 @@ CNshell 随应用分发以下开源组件的目标代码。完整许可证文本
 G-Kermit 的完整对应源码归档随应用位于
 `Contents/Resources/kermit/source/gku201.tar.gz`，其 SHA-256 为
 `19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd`。
+Windows 版本使用的 GPL 外部协议适配层与构建脚本位于
+`kermit/source/windows-port`，并在 GitHub Release 中单独提供
+`gkermit-windows-port-source.zip`。

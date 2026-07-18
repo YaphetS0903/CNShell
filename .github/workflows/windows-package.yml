@@ -10,6 +10,8 @@ on:
       - "scripts/build-desktop.mjs"
       - "scripts/build-sidecar.mjs"
       - "scripts/build-freerdp-sidecar.ps1"
+      - "scripts/build-kermit-sidecar.ps1"
+      - "scripts/kermit-windows/**"
       - "scripts/patches/**"
       - "scripts/test-windows-installer.ps1"
       - "scripts/verify-windows-pe.ps1"
@@ -63,7 +65,7 @@ jobs:
             src-tauri/target/freerdp-sidecar-windows/downloads
             src-tauri/target/freerdp-sidecar-windows/sources
             src-tauri/target/freerdp-sidecar-windows/vcpkg
-          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-v1
+          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-static-v2
       - run: npm ci
       - name: Parse Windows packaging scripts
         shell: powershell
@@ -71,6 +73,7 @@ jobs:
           $failed = $false
           foreach ($path in @(
             "scripts/build-freerdp-sidecar.ps1",
+            "scripts/build-kermit-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
             "scripts/verify-windows-pe.ps1"
           )) {
@@ -85,6 +88,15 @@ jobs:
             }
           }
           if ($failed) { throw "PowerShell packaging script parse failed" }
+      - name: Build pinned Windows G-Kermit
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:kermit
+      - name: Verify G-Kermit x64 interoperability
+        if: matrix.runtime
+        shell: powershell
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode
       - name: Build pinned Windows FreeRDP
         shell: powershell
         env:

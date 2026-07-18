@@ -138,7 +138,7 @@ jobs:
             src-tauri/target/freerdp-sidecar-windows/downloads
             src-tauri/target/freerdp-sidecar-windows/sources
             src-tauri/target/freerdp-sidecar-windows/vcpkg
-          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-v1
+          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-static-v2
       - run: npm ci
       - name: Prepare public updater configuration
         shell: pwsh
@@ -160,6 +160,15 @@ jobs:
         env:
           CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
         run: npm run build:freerdp
+      - name: Build pinned Windows G-Kermit
+        shell: pwsh
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:kermit
+      - name: Verify G-Kermit x64 interoperability
+        if: matrix.runtime
+        shell: pwsh
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode
       - name: Verify FreeRDP architecture and x64 runtime
         shell: pwsh
         run: |
@@ -306,6 +315,10 @@ jobs:
           Copy-Item docs/THIRD_PARTY_NOTICES.md (Join-Path $output "THIRD_PARTY_NOTICES.md")
           Copy-Item docs/RELEASE.md (Join-Path $output "RELEASE.md")
           Copy-Item src-tauri/resources/kermit/source/gku201.tar.gz $output
+          Compress-Archive -CompressionLevel Optimal -Path `
+            scripts/kermit-windows, `
+            scripts/build-kermit-sidecar.ps1 `
+            -DestinationPath (Join-Path $output "gkermit-windows-port-source.zip")
           $base = [Uri]$env:UPDATER_DOWNLOAD_BASE_URL
           if ($base.Scheme -ne "https" -or -not [string]::IsNullOrEmpty($base.UserInfo) -or -not [string]::IsNullOrEmpty($base.Fragment)) {
             throw "UPDATER_DOWNLOAD_BASE_URL must be a credential-free HTTPS URL"

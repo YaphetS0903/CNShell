@@ -201,6 +201,14 @@ describe("relay container smoke", () => {
     resolve("scripts/build-freerdp-sidecar.ps1"),
     "utf8",
   );
+  const windowsKermitBuilder = readFileSync(
+    resolve("scripts/build-kermit-sidecar.ps1"),
+    "utf8",
+  );
+  const windowsKermitIo = readFileSync(
+    resolve("scripts/kermit-windows/gkermit-windows-io.c"),
+    "utf8",
+  );
   const dependabot = readFileSync(
     resolve(".github/dependabot.yml"),
     "utf8",
@@ -316,7 +324,21 @@ describe("relay container smoke", () => {
     expect(peVerifier).toContain("0xAA64");
     expect(windowsFreeRdpBuilder).toContain("Get-VisualStudioGenerator");
     expect(windowsFreeRdpBuilder).toContain("vswhere.exe");
+    expect(windowsFreeRdpBuilder).toContain('"x64-windows-static"');
+    expect(windowsFreeRdpBuilder).toContain('"arm64-windows-static"');
+    expect(windowsFreeRdpBuilder).not.toContain("windows-static-md");
     expect(windowsFreeRdpBuilder).not.toContain('-G "Visual Studio 17 2022"');
+    expect(windowsPackageWorkflow).toContain("npm run build:kermit");
+    expect(windowsPackageWorkflow).toContain(
+      "kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode",
+    );
+    expect(windowsKermitBuilder).toContain(
+      "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd",
+    );
+    expect(windowsKermitBuilder).toContain("verify-windows-pe.ps1");
+    expect(windowsKermitBuilder).not.toContain("has not completed");
+    expect(windowsKermitIo).toContain("PeekNamedPipe");
+    expect(windowsKermitIo).toContain("MultiByteToWideChar");
   });
 
   it("assembles a protected four-platform draft release", () => {
@@ -325,6 +347,7 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("windows-x86_64");
     expect(releaseWorkflow).toContain("windows-aarch64");
     expect(releaseWorkflow).toContain("SHA256SUMS.txt");
+    expect(releaseWorkflow).toContain("gkermit-windows-port-source.zip");
     expect(releaseWorkflow).toContain("gh release create");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("contents: write");
