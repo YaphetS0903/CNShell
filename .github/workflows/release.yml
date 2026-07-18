@@ -387,6 +387,8 @@ jobs:
             gh release upload $tag @files --clobber
           } else {
             $files = @(Get-ChildItem release-output -File | ForEach-Object { $_.FullName })
-            gh release create $tag @files --draft --target $env:GITHUB_SHA --title "CNshell $tag" --generate-notes
+            $releaseFlags = @()
+            if ($tag.Contains("-")) { $releaseFlags += "--prerelease" }
+            gh release create $tag @files @releaseFlags --draft --target $env:GITHUB_SHA --title "CNshell $tag" --generate-notes
           }
           if ($LASTEXITCODE -ne 0) { throw "Draft Release publication failed" }

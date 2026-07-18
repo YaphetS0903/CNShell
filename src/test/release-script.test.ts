@@ -458,6 +458,8 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("mosh-1.4.0.tar.gz");
     expect(releaseWorkflow).toContain("protobuf-all-21.12.tar.gz");
     expect(releaseWorkflow).toContain("gh release create");
+    expect(releaseWorkflow).toContain('$tag.Contains("-")');
+    expect(releaseWorkflow).toContain('"--prerelease"');
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("contents: write");
     expect(releaseWorkflow).toContain("Refusing to overwrite an existing public release");

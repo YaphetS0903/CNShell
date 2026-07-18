@@ -4,6 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+const currentVersion = (
+  JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf8")) as {
+    version: string;
+  }
+).version;
+
 describe("static updater manifest", () => {
   it("routes one signed universal archive to both macOS architectures", () => {
     const directory = mkdtempSync(join(tmpdir(), "cnshell-updater-"));
@@ -19,7 +25,7 @@ describe("static updater manifest", () => {
         "scripts/generate-updater-manifest.mjs",
         archive,
         signature,
-        "https://updates.example/v0.1.1/CNshell.app.tar.gz",
+        `https://updates.example/v${currentVersion}/CNshell.app.tar.gz`,
         output,
       ],
       {
@@ -34,7 +40,7 @@ describe("static updater manifest", () => {
       pub_date: string;
       platforms: Record<string, { url: string; signature: string }>;
     };
-    expect(manifest.version).toBe("0.1.1");
+    expect(manifest.version).toBe(currentVersion);
     expect(manifest.notes).toContain("### 新增");
     expect(manifest.pub_date).toBe("2026-07-16T00:00:00.000Z");
     expect(Object.keys(manifest.platforms).sort()).toEqual([
@@ -63,7 +69,7 @@ describe("static updater manifest", () => {
           "scripts/generate-updater-manifest.mjs",
           archive,
           signature,
-          "http://updates.example/v0.1.1/CNshell.app.tar.gz",
+          `http://updates.example/v${currentVersion}/CNshell.app.tar.gz`,
           join(directory, "latest.json"),
         ],
         { cwd: process.cwd(), stdio: "ignore" },
@@ -86,10 +92,10 @@ describe("static updater manifest", () => {
       process.execPath,
       [
         "scripts/generate-updater-manifest.mjs",
-        "--platform", "darwin-aarch64", mac, `${mac}.sig`, "https://updates.example/v0.1.1/CNshell_universal.app.tar.gz",
-        "--platform", "darwin-x86_64", mac, `${mac}.sig`, "https://updates.example/v0.1.1/CNshell_universal.app.tar.gz",
-        "--platform", "windows-x86_64", windowsX64, `${windowsX64}.sig`, "https://updates.example/v0.1.1/CNshell_x64.nsis.zip",
-        "--platform", "windows-aarch64", windowsArm64, `${windowsArm64}.sig`, "https://updates.example/v0.1.1/CNshell_arm64.nsis.zip",
+        "--platform", "darwin-aarch64", mac, `${mac}.sig`, `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
+        "--platform", "darwin-x86_64", mac, `${mac}.sig`, `https://updates.example/v${currentVersion}/CNshell_universal.app.tar.gz`,
+        "--platform", "windows-x86_64", windowsX64, `${windowsX64}.sig`, `https://updates.example/v${currentVersion}/CNshell_x64.nsis.zip`,
+        "--platform", "windows-aarch64", windowsArm64, `${windowsArm64}.sig`, `https://updates.example/v${currentVersion}/CNshell_arm64.nsis.zip`,
         "--output", output,
       ],
       {

@@ -2,6 +2,39 @@
 
 本项目采用语义化版本号。当前版本仍是本机候选版；正式签名、公证与更新通道完成前不标记为公开正式发布。
 
+## 0.2.0-beta.1（跨平台测试候选版）
+
+### 新增
+
+- 新增 Windows 10 22H2/Windows 11 客户端，使用原生标题栏、WebView2 和当前用户 NSIS 安装；同时生成 x64 Beta 与 ARM64 Preview。
+- Windows 密码、私钥口令、代理密码、AI Key、WebDAV 密码和团队令牌接入 Windows Credential Manager；连接秘密与路径记录已在 Windows x64 CI 完成真实往返。
+- Windows 本地 Shell 使用 ConPTY，依次选择 PowerShell 7、Windows PowerShell 和 cmd；自动化覆盖输入、resize、关闭与重开。
+- Windows 文件路径支持盘符、UNC、Unicode、目录拖放/传输和外部编辑器；超出 Credential Manager blob 上限的合法长路径安全退回 profile 绝对路径。
+- Windows 原生构建并随包分发 FreeRDP 3.28.0、Mosh 1.4.0 和 G-Kermit 2.01 x64/ARM64 sidecar，不依赖 Homebrew、WSL、MSYS2 或用户手动安装运行库。
+- Windows RDP 新增 Win32 聚焦、隐藏、恢复、窗口位置联动和 Job Object 生命周期；连接参数与密码继续只通过 helper stdin 传递。
+- Windows Mosh 使用 WinSock/ConPTY 适配官方客户端核心，并以真实加密 UDP 双向回环验证 x64 运行；对应源码、构建脚本、自测脚本和许可证随包分发。
+- Windows G-Kermit 使用受限外部管道模式，x64 CI 完成两个 helper 的二进制互传；ARM64 通过 PE 架构门禁。
+- Windows Hello 使用 Microsoft Platform Crypto Provider 的高保护 CNG 密钥封装加密同步口令；Windows X11 支持 VcXsrv/Xming TCP `DISPLAY`；OpenSSH Agent/Pageant 与 FIDO2 身份检测完成平台适配。
+- GitHub Release 工作流可在同一 Draft Release 生成 macOS universal、Windows x64 和 Windows ARM64 安装包、四平台 updater 清单、SHA-256、许可证及对应源码附件。
+
+### 调整
+
+- Windows 安装器拒绝低于 build 19045 的系统，创建开始菜单入口且不在干净账户默认创建桌面快捷方式。
+- 跨平台导入保留路径失效的连接，并在使用私钥、SSH Certificate 或 RDP 映射目录时明确要求编辑连接后重新选择。
+- 预发布版本由发布 workflow 自动标记为 GitHub prerelease；当前公开的 `v0.1.1` macOS 候选版不会被覆盖。
+
+### 修复
+
+- 修复 Windows Mosh 构建缓存重复应用 `read`/`write` 源码补丁，导致 `cnshell_cnshell_read`/`write` 编译失败。
+- 修复 PowerShell 把 Mosh 加密 UDP 自测写入 stderr 的正常状态行误判为构建异常；自测现在分别校验 stdout、stderr 与真实退出码。
+- 修复 Windows 上传、拖放、目录下载和传输列表错误使用完整 `C:\\...` 本地路径作为远端文件名。
+
+### 已知限制
+
+- Windows 10/11 x64、Windows 11 ARM64、真实 Windows RDP、Windows Hello、实体 FIDO2、VcXsrv/Xming、实体串口、中文 IME、DPI、高对比、Narrator、睡眠唤醒和真实网络切换仍需对应真机验收；ARM64 保持 Preview。
+- Windows Beta 尚未配置 Authenticode；正式发布仍要求 Tauri updater 签名、HTTPS endpoint、SHA-256 和 SmartScreen 说明。
+- macOS Developer ID、公证与正式 updater 仍需要 Apple Developer Program 会员和发行凭据。
+
 ## 0.1.1（测试候选版）
 
 ### 新增
