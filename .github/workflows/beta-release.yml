@@ -1,0 +1,387 @@
+name: Unsigned Cross-platform Beta
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+-beta.*"
+
+concurrency:
+  group: beta-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  macos:
+    name: macOS universal ad-hoc Beta
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.96.0
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          key: macos-beta
+      - run: npm ci
+      - name: Validate Beta version and updater secret availability
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          [[ "$version" == *-beta.* ]]
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$version" ]]
+          fi
+          test -n "$TAURI_SIGNING_PRIVATE_KEY"
+          test -n "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"
+          node -e 'const c=require("./src-tauri/tauri.beta.json"); if(c.plugins.updater.pubkey.length<80||c.plugins.updater.endpoints.length!==1)process.exit(1)'
+      - run: npm run lint
+      - run: npm test -- --run src/test/deliverables.test.ts src/test/release-script.test.ts src/test/updater-manifest.test.ts
+      - run: npm run build:mosh
+      - name: Build updater-signed ad-hoc universal App and DMG
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --config src-tauri/tauri.beta.json --target universal-apple-darwin --bundles app,dmg
+      - name: Verify and stage macOS Beta
+        run: |
+          set -euo pipefail
+          version="$(node -p 'require("./package.json").version')"
+          bundle="src-tauri/target/universal-apple-darwin/release/bundle"
+          app="$bundle/macos/CNshell.app"
+          plist="$app/Contents/Info.plist"
+          executable_name="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")"
+          executable="$app/Contents/MacOS/$executable_name"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")" = 13.0
+          test -n "$(/usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$plist")"
+          for binary in \
+            "$executable" \
+            "$app/Contents/Resources/freerdp/sdl-freerdp" \
+            "$app/Contents/Resources/mosh/mosh-client" \
+            "$app/Contents/Resources/kermit/gkermit"; do
+            test -x "$binary"
+            architectures="$(lipo -archs "$binary")"
+            [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]]
+            codesign --verify --strict --verbose=2 "$binary"
+            codesign -dv --verbose=4 "$binary" 2>&1 | grep -F 'Signature=adhoc' >/dev/null
+            codesign -dv --verbose=4 "$binary" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
+          done
+          codesign --verify --deep --strict --verbose=2 "$app"
+          rdp_preflight="$(env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin HOME="$HOME" "$executable" --rdp-preflight)"
+          printf '%s\n' "$rdp_preflight" | grep -F '"available":true' >/dev/null
+          env TERM=xterm-256color "$app/Contents/Resources/mosh/mosh-client" -c >/dev/null
+          "$app/Contents/Resources/kermit/gkermit" -h 2>&1 | grep -F 'G-Kermit 2.01' >/dev/null
+          dmgs=("$bundle"/dmg/*.dmg)
+          archives=()
+          signatures=()
+          while IFS= read -r path; do archives+=("$path"); done < <(find "$bundle" -type f -name '*.app.tar.gz' -print)
+          while IFS= read -r path; do signatures+=("$path"); done < <(find "$bundle" -type f -name '*.app.tar.gz.sig' -print)
+          [[ ${#dmgs[@]} -eq 1 && ${#archives[@]} -eq 1 && ${#signatures[@]} -eq 1 ]]
+          hdiutil verify "${dmgs[0]}"
+          "$executable" --verify-updater-signature "${archives[0]}" "${signatures[0]}" src-tauri/tauri.beta.json
+          output="release-output"
+          mkdir -p "$output"
+          cp "${dmgs[0]}" "$output/CNshell_${version}_universal.dmg"
+          cp "${archives[0]}" "$output/CNshell_${version}_universal.app.tar.gz"
+          cp "${signatures[0]}" "$output/CNshell_${version}_universal.app.tar.gz.sig"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cnshell-macos-unsigned-beta
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows ${{ matrix.label }} unsigned Beta
+    runs-on: windows-2025
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64 Beta
+            architecture: x64
+            target: x86_64-pc-windows-msvc
+            runtime: true
+          - label: ARM64 Preview
+            architecture: arm64
+            target: aarch64-pc-windows-msvc
+            runtime: false
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.96.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          key: windows-beta-${{ matrix.architecture }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            src-tauri/target/freerdp-sidecar-windows/downloads
+            src-tauri/target/freerdp-sidecar-windows/sources
+            src-tauri/target/freerdp-sidecar-windows/vcpkg
+            src-tauri/target/mosh-sidecar-windows/downloads
+            src-tauri/target/mosh-sidecar-windows/sources
+            src-tauri/target/mosh-sidecar-windows/protobuf-${{ matrix.architecture }}
+            src-tauri/target/mosh-sidecar-windows/protobuf-host-x64
+          key: windows-sidecars-v4-freerdp-3.28.0-mosh-1.4.0-protobuf-21.12-mt-vcpkg-908da3a-${{ matrix.architecture }}
+      - run: npm ci
+      - name: Validate Beta version, updater secrets, and PowerShell scripts
+        shell: powershell
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          if (-not $version.Contains("-beta.")) { throw "Package version is not a Beta" }
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw "Git tag does not match package version"
+          }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY)) { throw "TAURI_SIGNING_PRIVATE_KEY is missing" }
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD)) { throw "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is missing" }
+          $failed = $false
+          foreach ($path in @(
+            "scripts/build-freerdp-sidecar.ps1",
+            "scripts/build-mosh-sidecar.ps1",
+            "scripts/test-mosh-windows.ps1",
+            "scripts/build-kermit-sidecar.ps1",
+            "scripts/test-windows-installer.ps1",
+            "scripts/verify-windows-pe.ps1"
+          )) {
+            $tokens = $null
+            $errors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path), [ref]$tokens, [ref]$errors)
+            if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error "$path`: $($_.Message)" }; $failed = $true }
+          }
+          if ($failed) { throw "PowerShell Beta script parse failed" }
+      - name: Build pinned Windows G-Kermit
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:kermit
+      - name: Verify G-Kermit x64 interoperability
+        if: matrix.runtime
+        shell: powershell
+        run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode
+      - name: Build pinned native Windows Mosh
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:mosh
+      - name: Verify Mosh architecture and x64 encrypted UDP loopback
+        shell: powershell
+        run: |
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mosh/mosh-client.exe ${{ matrix.architecture }}
+          if ("${{ matrix.runtime }}" -eq "true") { ./scripts/test-mosh-windows.ps1 src-tauri/resources/mosh/mosh-client.exe }
+      - name: Build pinned Windows FreeRDP
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:freerdp
+      - name: Verify FreeRDP architecture and x64 runtime
+        shell: powershell
+        run: |
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/freerdp/sdl-freerdp.exe ${{ matrix.architecture }}
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & src-tauri/resources/freerdp/sdl-freerdp.exe /version
+            if ($LASTEXITCODE -ne 0) { throw "FreeRDP x64 runtime smoke failed" }
+          }
+      - name: Build updater-signed unsigned NSIS Beta
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+          CNSHELL_SIDECARS_PREBUILT: "1"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --config src-tauri/tauri.beta.json --target ${{ matrix.target }} --bundles nsis
+      - name: Verify and stage Windows Beta
+        shell: powershell
+        run: |
+          $version = node -p "require('./package.json').version"
+          $target = "${{ matrix.target }}"
+          $architecture = "${{ matrix.architecture }}"
+          $app = "src-tauri/target/$target/release/cnshell.exe"
+          ./scripts/verify-windows-pe.ps1 $app $architecture
+          $bundle = "src-tauri/target/$target/release/bundle/nsis"
+          $installers = @(Get-ChildItem $bundle -Filter "*-setup.exe" -File)
+          $archives = @(Get-ChildItem $bundle -Filter "*.nsis.zip" -File)
+          if ($installers.Count -ne 1 -or $archives.Count -ne 1) { throw "Expected one NSIS installer and one updater archive" }
+          $signature = "$($archives[0].FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature -PathType Leaf)) { throw "Windows updater signature is missing" }
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & $app --verify-updater-signature $archives[0].FullName $signature src-tauri/tauri.beta.json
+            if ($LASTEXITCODE -ne 0) { throw "Windows updater signature verification failed" }
+            $env:CI = "true"
+            ./scripts/test-windows-installer.ps1 $installers[0].FullName
+          }
+          $output = New-Item -ItemType Directory -Force "release-output"
+          Copy-Item $installers[0].FullName (Join-Path $output "CNshell_${version}_${architecture}-setup.exe")
+          $stagedArchive = Join-Path $output "CNshell_${version}_${architecture}.nsis.zip"
+          Copy-Item $archives[0].FullName $stagedArchive
+          Copy-Item $signature "$stagedArchive.sig"
+          if ("${{ matrix.runtime }}" -eq "true") {
+            Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
+            Copy-Item src-tauri/resources/freerdp/source/freerdp-3.28.0.tar.gz $output
+            Compress-Archive -CompressionLevel Optimal -Path `
+              scripts/build-freerdp-sidecar.ps1, `
+              scripts/patches/freerdp-sdl-user-close.patch, `
+              scripts/patches/freerdp-sdl-state-marker.patch `
+              -DestinationPath (Join-Path $output "freerdp-cnshell-windows-port-source.zip")
+            Copy-Item src-tauri/resources/mosh/source/mosh-1.4.0.tar.gz $output
+            Copy-Item src-tauri/resources/mosh/source/protobuf-all-21.12.tar.gz $output
+            Compress-Archive -CompressionLevel Optimal -Path `
+              scripts/mosh-windows, `
+              scripts/build-mosh-sidecar.ps1, `
+              scripts/test-mosh-windows.ps1 `
+              -DestinationPath (Join-Path $output "mosh-windows-port-source.zip")
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cnshell-windows-${{ matrix.architecture }}-unsigned-beta
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 14
+
+  publish:
+    name: Publish unsigned cross-platform Pre-release
+    needs: [macos, windows]
+    runs-on: windows-2025
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: cnshell-*-unsigned-beta
+          path: release-input
+          merge-multiple: true
+      - run: npm ci
+      - name: Verify signatures and assemble Beta assets
+        id: assemble
+        shell: pwsh
+        run: |
+          $version = node -p "require('./package.json').version"
+          if (-not $version.Contains("-beta.")) { throw "Package version is not a Beta" }
+          $tag = "v$version"
+          if ($env:GITHUB_REF_TYPE -eq "tag" -and $env:GITHUB_REF_NAME -ne $tag) { throw "Git tag does not match package version" }
+          $output = New-Item -ItemType Directory -Force "release-output"
+          $expectedInput = @(
+            "CNshell_${version}_universal.dmg",
+            "CNshell_${version}_universal.app.tar.gz",
+            "CNshell_${version}_universal.app.tar.gz.sig",
+            "CNshell_${version}_x64-setup.exe",
+            "CNshell_${version}_x64.nsis.zip",
+            "CNshell_${version}_x64.nsis.zip.sig",
+            "CNshell_${version}_arm64-setup.exe",
+            "CNshell_${version}_arm64.nsis.zip",
+            "CNshell_${version}_arm64.nsis.zip.sig",
+            "cnshell-windows-x64-verifier.exe",
+            "freerdp-3.28.0.tar.gz",
+            "freerdp-cnshell-windows-port-source.zip",
+            "mosh-1.4.0.tar.gz",
+            "protobuf-all-21.12.tar.gz",
+            "mosh-windows-port-source.zip"
+          )
+          foreach ($name in $expectedInput) {
+            $path = "release-input/$name"
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item $path).Length -eq 0) { throw "Beta input is missing or empty: $name" }
+          }
+          $verifier = "release-input/cnshell-windows-x64-verifier.exe"
+          foreach ($archive in @(
+            "release-input/CNshell_${version}_universal.app.tar.gz",
+            "release-input/CNshell_${version}_x64.nsis.zip",
+            "release-input/CNshell_${version}_arm64.nsis.zip"
+          )) {
+            & $verifier --verify-updater-signature $archive "$archive.sig" src-tauri/tauri.beta.json
+            if ($LASTEXITCODE -ne 0) { throw "Cross-platform Beta updater verification failed: $archive" }
+          }
+          foreach ($name in $expectedInput | Where-Object { $_ -ne "cnshell-windows-x64-verifier.exe" }) { Copy-Item "release-input/$name" $output }
+          Copy-Item docs/THIRD_PARTY_NOTICES.md (Join-Path $output "THIRD_PARTY_NOTICES.md")
+          Copy-Item docs/BETA_TESTING.md (Join-Path $output "BETA_TESTING.md")
+          Copy-Item src-tauri/resources/kermit/source/gku201.tar.gz $output
+          Compress-Archive -CompressionLevel Optimal -Path scripts/kermit-windows, scripts/build-kermit-sidecar.ps1 -DestinationPath (Join-Path $output "gkermit-windows-port-source.zip")
+          $releaseBase = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$tag"
+          & node scripts/generate-updater-manifest.mjs `
+            --platform darwin-aarch64 "release-output/CNshell_${version}_universal.app.tar.gz" "release-output/CNshell_${version}_universal.app.tar.gz.sig" "$releaseBase/CNshell_${version}_universal.app.tar.gz" `
+            --platform darwin-x86_64 "release-output/CNshell_${version}_universal.app.tar.gz" "release-output/CNshell_${version}_universal.app.tar.gz.sig" "$releaseBase/CNshell_${version}_universal.app.tar.gz" `
+            --platform windows-x86_64 "release-output/CNshell_${version}_x64.nsis.zip" "release-output/CNshell_${version}_x64.nsis.zip.sig" "$releaseBase/CNshell_${version}_x64.nsis.zip" `
+            --platform windows-aarch64 "release-output/CNshell_${version}_arm64.nsis.zip" "release-output/CNshell_${version}_arm64.nsis.zip.sig" "$releaseBase/CNshell_${version}_arm64.nsis.zip" `
+            --output "release-output/latest.json"
+          if ($LASTEXITCODE -ne 0) { throw "Four-platform Beta updater manifest generation failed" }
+          $hashLines = Get-ChildItem $output -File | Sort-Object Name | ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
+          [System.IO.File]::WriteAllLines((Join-Path $output "SHA256SUMS.txt"), $hashLines)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Create verified Draft, publish Beta channel, then expose Pre-release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.assemble.outputs.tag }}"
+          $title = "CNshell $tag - Unsigned Cross-platform Beta"
+          $existing = gh release view $tag --json isDraft --jq .isDraft 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            if (($existing -join "").Trim() -ne "true") { throw "Refusing to overwrite an existing public release: $tag" }
+            $files = @(Get-ChildItem release-output -File | ForEach-Object { $_.FullName })
+            gh release upload $tag @files --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Uploading assets to the existing Draft Beta failed" }
+            gh release edit $tag --title $title --notes-file docs/BETA_TESTING.md
+            if ($LASTEXITCODE -ne 0) { throw "Updating the existing Draft Beta failed" }
+          } else {
+            $files = @(Get-ChildItem release-output -File | ForEach-Object { $_.FullName })
+            gh release create $tag @files --draft --prerelease --target $env:GITHUB_SHA --title $title --notes-file docs/BETA_TESTING.md
+            if ($LASTEXITCODE -ne 0) { throw "Draft Beta creation failed" }
+          }
+          $expected = @(Get-ChildItem release-output -File | ForEach-Object { $_.Name } | Sort-Object)
+          $actual = @(gh release view $tag --json assets --jq '.assets[].name' | Sort-Object)
+          if ($LASTEXITCODE -ne 0) { throw "Reading Draft Beta assets failed" }
+          $difference = @(Compare-Object $expected $actual)
+          if ($difference.Count -ne 0) { $difference | Format-Table | Out-String | Write-Error; throw "Draft Beta assets do not match release-output" }
+          $manifest = [Convert]::ToBase64String([System.IO.File]::ReadAllBytes("release-output/latest.json"))
+          $apiPath = "repos/$env:GITHUB_REPOSITORY/contents/updates/beta/latest.json"
+          $existingSha = gh api $apiPath --jq .sha 2>$null
+          $arguments = @("api", "--method", "PUT", $apiPath, "-f", "message=chore: update beta channel to $tag", "-f", "content=$manifest", "-f", "branch=main")
+          if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($existingSha -join "").Trim())) { $arguments += @("-f", "sha=$(($existingSha -join '').Trim())") }
+          & gh @arguments --silent
+          if ($LASTEXITCODE -ne 0) { throw "Publishing updates/beta/latest.json failed" }
+          $remoteManifest = gh api $apiPath --jq .content
+          if ($LASTEXITCODE -ne 0) { throw "Reading the published Beta updater manifest failed" }
+          $remoteBytes = [Convert]::FromBase64String(($remoteManifest -join "").Replace("`n", ""))
+          $localHash = (Get-FileHash "release-output/latest.json" -Algorithm SHA256).Hash
+          $remoteHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($remoteBytes))
+          if ($localHash -ne $remoteHash) { throw "Published Beta updater manifest does not match release asset" }
+          gh release edit $tag --draft=false --prerelease --title $title --notes-file docs/BETA_TESTING.md
+          if ($LASTEXITCODE -ne 0) { throw "Publishing GitHub Pre-release failed" }
+          $state = gh release view $tag --json isDraft,isPrerelease --jq '[.isDraft,.isPrerelease] | @tsv'
+          if ($LASTEXITCODE -ne 0) { throw "Reading the published GitHub Pre-release state failed" }
+          if (($state -join "").Trim() -ne "false`ttrue") { throw "GitHub release is not a public Pre-release" }

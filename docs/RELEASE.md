@@ -8,6 +8,28 @@
 - Intel 构建目标：`rustup target add x86_64-apple-darwin`
 - Windows x64/ARM64 使用 GitHub `windows-2025` runner、MSVC、CMake、vcpkg 与 NSIS；首个 Beta 可以没有 Authenticode 证书，但不能省略 updater 签名和 SHA-256。
 
+## 未签名跨平台 Beta
+
+在尚未取得 Apple Developer Program 付费会员和 Windows 代码签名服务时，使用 `.github/workflows/beta-release.yml` 发布 `v0.2.0-beta.1`。该流程不读取 Apple 证书、公证或 Authenticode 凭据，只需要仓库 Actions Secrets：
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+
+macOS universal App/DMG 使用 ad-hoc 签名；Windows x64 Beta 与 ARM64 Preview 使用未签名 NSIS。两个平台仍必须生成 Tauri updater 归档及 `.sig`。Windows x64 CNshell 会再次验证 macOS universal、Windows x64 和 Windows ARM64 三个 updater 归档，随后生成包含 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` 的 `latest.json`。
+
+工作流先创建或更新 Draft Release，并拒绝覆盖同版本的公开 Release。只有附件集合、三份 updater 签名、`SHA256SUMS.txt`、第三方说明、FreeRDP/Mosh/Protocol Buffers/G-Kermit 对应源码，以及远端 `updates/beta/latest.json` 内容全部验证通过后，才把 Release 切换为公开 Pre-release。Beta updater endpoint 固定为 `https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/beta/latest.json`。
+
+Release 说明必须明确：macOS 没有 Developer ID/公证，只能在核对仓库来源和哈希后通过 Finder 右键“打开”，不能关闭 Gatekeeper；Windows 没有 Authenticode，SmartScreen 可能显示未知发布者，不能关闭 SmartScreen。updater minisign 不能替代任何操作系统代码签名。
+
+标签必须与 `package.json` 版本完全一致：
+
+```bash
+git tag v0.2.0-beta.1
+git push origin v0.2.0-beta.1
+```
+
+Updater 密钥的本机 Keychain 位置、GitHub Secret 名称、公钥指纹和禁止直接轮换的规则见 `docs/UPDATER_KEY_MANAGEMENT.md`。未来 Developer ID/公证/Authenticode 正式发布必须复用同一 updater 密钥，避免已安装 Beta 失去更新路径。
+
 从 `src-tauri/tauri.release.example.json` 创建不入库的 `src-tauri/tauri.release.json`，写入正式 updater HTTPS endpoint 与 public key，禁止保留 `.example` 或 `REPLACE_` 占位符。开发用 `tauri.conf.json` 保持空 endpoint，避免候选包误连正式更新服务。
 
 ```bash

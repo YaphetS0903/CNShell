@@ -32,7 +32,7 @@
 ### 已知限制
 
 - Windows 10/11 x64、Windows 11 ARM64、真实 Windows RDP、Windows Hello、实体 FIDO2、VcXsrv/Xming、实体串口、中文 IME、DPI、高对比、Narrator、睡眠唤醒和真实网络切换仍需对应真机验收；ARM64 保持 Preview。
-- Windows Beta 尚未配置 Authenticode；正式发布仍要求 Tauri updater 签名、HTTPS endpoint、SHA-256 和 SmartScreen 说明。
+- Windows Beta 尚未配置 Authenticode；当前预发布已配置独立 Tauri updater 签名、HTTPS Beta endpoint、SHA-256 和 SmartScreen 说明，但 updater minisign 不能替代 Authenticode。
 - macOS Developer ID、公证与正式 updater 仍需要 Apple Developer Program 会员和发行凭据。
 
 ## 0.1.1（测试候选版）

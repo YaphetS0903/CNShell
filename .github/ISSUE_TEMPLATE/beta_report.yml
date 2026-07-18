@@ -1,0 +1,101 @@
+name: Beta 真机反馈
+description: 报告 CNshell 跨平台 Beta 的安装、连接、RDP、中文输入或显示问题
+title: "[Beta] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢参与 CNshell Beta 测试。请勿提交密码、私钥、令牌、完整主机地址或未检查的诊断文件。
+
+  - type: dropdown
+    id: system
+    attributes:
+      label: 操作系统
+      options:
+        - Windows 10 22H2 x64
+        - Windows 11 x64
+        - Windows 11 ARM64
+        - macOS Ventura 13
+        - macOS Sonoma 14
+        - macOS Sequoia 15
+        - 其他
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: CNshell 版本
+      placeholder: 例如 0.2.0-beta.1
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: 主要问题范围
+      options:
+        - 安装、启动或卸载
+        - SSH 终端或自动重连
+        - SFTP、上传下载或远程编辑
+        - Windows RDP
+        - 中文输入、剪贴板或快捷键
+        - DPI、缩放、高对比或 Narrator/VoiceOver
+        - Windows Hello、FIDO2、X11 或 Serial
+        - Mosh 网络切换
+        - 其他
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: 安装包验证
+      options:
+        - label: 我从本仓库 GitHub Release 下载了安装包
+          required: true
+        - label: 我已使用 `SHA256SUMS.txt` 核对安装包 SHA-256
+          required: true
+        - label: 我没有关闭 Gatekeeper、SmartScreen 或其他系统安全功能
+          required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请从启动 CNshell 开始，写出能稳定复现问题的最短步骤。
+      placeholder: |
+        1. 打开……
+        2. 创建……
+        3. 观察到……
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果与实际结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 真机环境
+      description: 可填写系统 build、CPU 架构、显示缩放、输入法、RDP 服务端版本和网络切换方式。不要填写公网 IP 或账号。
+    validations:
+      required: true
+
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 已检查的脱敏诊断或截图
+      description: 只附上已经自行检查且确认不含主机、账号、路径、命令、令牌或其他秘密的内容。
+
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我确认本反馈不包含密码、私钥、令牌或其他秘密
+          required: true

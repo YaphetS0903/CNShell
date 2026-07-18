@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -22,6 +23,22 @@ describe("release script gates", () => {
   );
   const releaseWorkflow = readFileSync(
     resolve(".github/workflows/release.yml"),
+    "utf8",
+  );
+  const betaReleaseWorkflow = readFileSync(
+    resolve(".github/workflows/beta-release.yml"),
+    "utf8",
+  );
+  const betaConfigContents = readFileSync(
+    resolve("src-tauri/tauri.beta.json"),
+    "utf8",
+  );
+  const betaConfig = JSON.parse(betaConfigContents) as {
+    plugins: { updater: { endpoints: string[]; pubkey: string } };
+  };
+  const betaTesting = readFileSync(resolve("docs/BETA_TESTING.md"), "utf8");
+  const betaReport = readFileSync(
+    resolve(".github/ISSUE_TEMPLATE/beta_report.yml"),
     "utf8",
   );
   const packageJson = JSON.parse(
@@ -66,9 +83,7 @@ describe("release script gates", () => {
     expect(script).toContain(
       'env TERM=xterm-256color "$MOSH_CLIENT" -c >/dev/null',
     );
-    expect(workflow).toContain(
-      'env TERM=xterm-256color "$mosh" -c >/dev/null',
-    );
+    expect(workflow).toContain('env TERM=xterm-256color "$mosh" -c >/dev/null');
   });
 
   it("keeps optional host JSON libraries out of universal FreeRDP builds", () => {
@@ -85,6 +100,85 @@ describe("release script gates", () => {
     expect(releaseWorkflow).toContain("security delete-keychain");
     expect(releaseWorkflow).toContain("UPDATER_DOWNLOAD_BASE_URL");
     expect(releaseWorkflow).toContain("bundle/latest.json");
+  });
+
+  it("keeps the unsigned Beta independent of Apple credentials while signing updater artifacts", () => {
+    expect(betaReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_BASE64");
+    expect(betaReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_PASSWORD");
+    expect(betaReleaseWorkflow).not.toContain("APPLE_API_ISSUER");
+    expect(betaReleaseWorkflow).not.toContain("APPLE_API_KEY_CONTENT");
+    expect(betaReleaseWorkflow).toContain('APPLE_SIGNING_IDENTITY: "-"');
+    expect(betaReleaseWorkflow).toContain("secrets.TAURI_SIGNING_PRIVATE_KEY");
+    expect(betaReleaseWorkflow).toContain(
+      "secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+    );
+    expect(betaReleaseWorkflow).toContain("--verify-updater-signature");
+  });
+
+  it("publishes a verified four-platform Beta without overwriting a public release", () => {
+    for (const platform of [
+      "darwin-aarch64",
+      "darwin-x86_64",
+      "windows-x86_64",
+      "windows-aarch64",
+    ]) {
+      expect(betaReleaseWorkflow).toContain(platform);
+    }
+    for (const artifact of [
+      "SHA256SUMS.txt",
+      "freerdp-3.28.0.tar.gz",
+      "freerdp-cnshell-windows-port-source.zip",
+      "mosh-1.4.0.tar.gz",
+      "protobuf-all-21.12.tar.gz",
+      "mosh-windows-port-source.zip",
+      "gku201.tar.gz",
+      "gkermit-windows-port-source.zip",
+    ]) {
+      expect(betaReleaseWorkflow).toContain(artifact);
+    }
+    expect(betaReleaseWorkflow).toContain("gh release create");
+    expect(betaReleaseWorkflow).toContain("--draft --prerelease");
+    expect(betaReleaseWorkflow).toContain(
+      "Refusing to overwrite an existing public release",
+    );
+    expect(betaReleaseWorkflow).toContain("updates/beta/latest.json");
+    const createDraft = betaReleaseWorkflow.indexOf("gh release create");
+    const publishPreRelease = betaReleaseWorkflow.indexOf(
+      "--draft=false --prerelease",
+    );
+    expect(createDraft).toBeGreaterThan(0);
+    expect(publishPreRelease).toBeGreaterThan(createDraft);
+    expect(betaReleaseWorkflow.indexOf("remoteHash")).toBeLessThan(
+      publishPreRelease,
+    );
+  });
+
+  it("pins the Beta updater endpoint and public key", () => {
+    expect(betaConfig.plugins.updater.endpoints).toEqual([
+      "https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/beta/latest.json",
+    ]);
+    expect(betaConfig.plugins.updater.pubkey).toHaveLength(152);
+    expect(
+      createHash("sha256")
+        .update(betaConfig.plugins.updater.pubkey)
+        .digest("hex"),
+    ).toBe("ffa2a9cc94b85eec6df771fcc6fffd5bd51933b83061d216d45582995b45331d");
+  });
+
+  it("documents unsigned Beta warnings and the real-device feedback matrix", () => {
+    expect(betaTesting).toContain("Gatekeeper");
+    expect(betaTesting).toContain("SmartScreen");
+    expect(betaTesting).toContain("不要关闭 Gatekeeper");
+    expect(betaTesting).toContain("不要关闭 SmartScreen");
+    expect(betaTesting).toContain("不能替代 Developer ID");
+    expect(betaTesting).toContain("Windows 10 22H2");
+    expect(betaTesting).toContain("Windows 11 ARM64");
+    expect(betaTesting).toContain("中文 IME");
+    expect(betaTesting).toContain("100%/125%/150%/200% DPI");
+    expect(betaReport).toContain("Windows 10 22H2 x64");
+    expect(betaReport).toContain("Windows 11 ARM64");
+    expect(betaReport).toContain("中文输入");
+    expect(betaReport).toContain("DPI");
   });
 
   it("removes release credentials before running the artifact upload action", () => {
@@ -117,15 +211,9 @@ describe("release script gates", () => {
     }
     expect(signingScript).toContain("--options runtime --timestamp");
     expect(signingScript).toContain("--options runtime --sign -");
-    expect(script).toContain(
-      'verify_developer_id_signature "$FREERDP_HELPER"',
-    );
-    expect(script).toContain(
-      'verify_developer_id_signature "$MOSH_CLIENT"',
-    );
-    expect(script).toContain(
-      'verify_developer_id_signature "$KERMIT_HELPER"',
-    );
+    expect(script).toContain('verify_developer_id_signature "$FREERDP_HELPER"');
+    expect(script).toContain('verify_developer_id_signature "$MOSH_CLIENT"');
+    expect(script).toContain('verify_developer_id_signature "$KERMIT_HELPER"');
   });
 
   it("uses only system text tools in macOS packaging and release gates", () => {
@@ -193,6 +281,10 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
+  const betaReleaseWorkflow = readFileSync(
+    resolve(".github/workflows/beta-release.yml"),
+    "utf8",
+  );
   const windowsPackageWorkflow = readFileSync(
     resolve(".github/workflows/windows-package.yml"),
     "utf8",
@@ -245,10 +337,7 @@ describe("relay container smoke", () => {
     resolve("scripts/kermit-windows/gkermit-windows-compat.h"),
     "utf8",
   );
-  const dependabot = readFileSync(
-    resolve(".github/dependabot.yml"),
-    "utf8",
-  );
+  const dependabot = readFileSync(resolve(".github/dependabot.yml"), "utf8");
   const playwrightConfig = readFileSync(
     resolve("playwright.config.ts"),
     "utf8",
@@ -295,7 +384,12 @@ describe("relay container smoke", () => {
     const uploadArtifact =
       "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1";
 
-    for (const contents of [workflow, releaseWorkflow, windowsPackageWorkflow]) {
+    for (const contents of [
+      workflow,
+      releaseWorkflow,
+      windowsPackageWorkflow,
+      betaReleaseWorkflow,
+    ]) {
       const actionLines = contents
         .split(/\r?\n/)
         .filter((line) => /^\s*- uses:/.test(line));
@@ -315,7 +409,9 @@ describe("relay container smoke", () => {
         expect(["20.20.2", "1.96.0"]).toContain(match[1]);
       }
     }
-    expect(workflow.match(/components: clippy/g)?.length ?? 0).toBeGreaterThanOrEqual(1);
+    expect(
+      workflow.match(/components: clippy/g)?.length ?? 0,
+    ).toBeGreaterThanOrEqual(1);
     expect(releaseWorkflow.match(/components: clippy/g)).toHaveLength(1);
     expect(workflow.match(/persist-credentials: false/g)).toHaveLength(
       workflow.match(/actions\/checkout@/g)?.length ?? 0,
@@ -323,13 +419,26 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(
       releaseWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
-    expect(windowsPackageWorkflow.match(/persist-credentials: false/g)).toHaveLength(
+    expect(
+      windowsPackageWorkflow.match(/persist-credentials: false/g),
+    ).toHaveLength(
       windowsPackageWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
-    for (const contents of [workflow, releaseWorkflow, windowsPackageWorkflow]) {
+    expect(
+      betaReleaseWorkflow.match(/persist-credentials: false/g),
+    ).toHaveLength(
+      betaReleaseWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
+    );
+    for (const contents of [
+      workflow,
+      releaseWorkflow,
+      windowsPackageWorkflow,
+      betaReleaseWorkflow,
+    ]) {
       expect(contents).toMatch(/^permissions:\n {2}contents: read$/m);
     }
     expect(releaseWorkflow).toContain(uploadArtifact);
+    expect(betaReleaseWorkflow).toContain(uploadArtifact);
     expect(dependabot).toContain("package-ecosystem: github-actions");
     expect(dependabot).toContain("interval: monthly");
   });
@@ -351,15 +460,25 @@ describe("relay container smoke", () => {
     expect(windowsPackageWorkflow).toContain("test-windows-installer.ps1");
     expect(windowsPackageWorkflow).toContain("verify-windows-pe.ps1");
     expect(installerTest).toContain('if ($env:CI -ne "true")');
-    expect(installerTest).toContain('Join-Path $DataDirectory "cnshell.sqlite"');
-    expect(installerTest).toContain("Installed CNshell did not start a WebView2 renderer");
-    expect(installerTest).toContain("did not accept a native window close request");
+    expect(installerTest).toContain(
+      'Join-Path $DataDirectory "cnshell.sqlite"',
+    );
+    expect(installerTest).toContain(
+      "Installed CNshell did not start a WebView2 renderer",
+    );
+    expect(installerTest).toContain(
+      "did not accept a native window close request",
+    );
     expect(installerTest).toContain("cmdkey.exe");
     expect(installerTest).toContain("Assert-UserData");
     expect(installerTest).toContain("Assert-TestCredential");
     expect(installerTest).toContain("Remove-TestCredential");
-    expect(installerTest).toContain("created a desktop shortcut without an explicit user choice");
-    expect(installerTest).toContain("removed the user's existing desktop shortcut during upgrade");
+    expect(installerTest).toContain(
+      "created a desktop shortcut without an explicit user choice",
+    );
+    expect(installerTest).toContain(
+      "removed the user's existing desktop shortcut during upgrade",
+    );
     expect(installerTest).toContain("New-ExistingDesktopShortcut");
     expect(installerTest).toContain("start menu shortcut was not created");
     expect(installerTest).toContain("Assert-BundledResources");
@@ -408,7 +527,9 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("test-mosh-windows.ps1");
     expect(releaseWorkflow).toContain("mosh-windows-port-source.zip");
     expect(windowsMoshBuilder).toContain("test-mosh-windows.ps1");
-    expect(windowsMoshBuilder).toContain('WindowsPortDestination "test-mosh-windows.ps1"');
+    expect(windowsMoshBuilder).toContain(
+      'WindowsPortDestination "test-mosh-windows.ps1"',
+    );
     expect(windowsMoshTest).toContain("RedirectStandardOutput");
     expect(windowsMoshTest).toContain("RedirectStandardError");
     expect(windowsMoshTest).toContain("$process.ExitCode");
@@ -423,10 +544,14 @@ describe("relay container smoke", () => {
     expect(windowsMoshBuilder).not.toContain("has not completed");
     expect(windowsMoshBuilder).not.toContain("MSYS2 build gate");
     expect(windowsMoshBuilder).toContain("Mosh ${MoshVersion}:");
-    expect(windowsMoshBuilder).toContain("Protocol Buffers ${ProtobufVersion}:");
+    expect(windowsMoshBuilder).toContain(
+      "Protocol Buffers ${ProtobufVersion}:",
+    );
     expect(windowsMoshBuilder).toContain('"zlib:$Triplet"');
     expect(windowsMoshBuilder).toContain("CMAKE_POLICY_DEFAULT_CMP0091=NEW");
-    expect(windowsMoshBuilder).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
+    expect(windowsMoshBuilder).toContain(
+      "CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded",
+    );
     expect(windowsMoshBuilder).toContain(".cnshell-msvc-static-runtime");
     expect(windowsMoshBuilder).toContain("Replace-PinnedText");
     expect(windowsMoshBuilder).toContain("withoutPatchedTarget");
@@ -467,7 +592,9 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("SHA256SUMS.txt");
     expect(releaseWorkflow).toContain("gkermit-windows-port-source.zip");
     expect(releaseWorkflow).toContain("freerdp-3.28.0.tar.gz");
-    expect(releaseWorkflow).toContain("freerdp-cnshell-windows-port-source.zip");
+    expect(releaseWorkflow).toContain(
+      "freerdp-cnshell-windows-port-source.zip",
+    );
     expect(releaseWorkflow).toContain("mosh-windows-port-source.zip");
     expect(releaseWorkflow).toContain("mosh-1.4.0.tar.gz");
     expect(releaseWorkflow).toContain("protobuf-all-21.12.tar.gz");
@@ -476,7 +603,9 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain('"--prerelease"');
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("contents: write");
-    expect(releaseWorkflow).toContain("Refusing to overwrite an existing public release");
+    expect(releaseWorkflow).toContain(
+      "Refusing to overwrite an existing public release",
+    );
   });
 
   it("checks container isolation, persistence, loopback binding, and graceful stop", () => {

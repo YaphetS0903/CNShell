@@ -13,12 +13,17 @@ const requiredDeliverables = [
   "docs/ACCEPTANCE.md",
   "docs/EXTERNAL_ACCEPTANCE.md",
   "docs/THIRD_PARTY_NOTICES.md",
+  "docs/BETA_TESTING.md",
+  "docs/UPDATER_KEY_MANAGEMENT.md",
   "src-tauri/resources/licenses/serialport-MPL-2.0.txt",
   "src-tauri/resources/kermit/licenses/G-Kermit-GPL-2.0.txt",
   "src-tauri/resources/kermit/THIRD_PARTY_NOTICES.md",
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
+  ".github/workflows/beta-release.yml",
   ".github/workflows/windows-package.yml",
+  ".github/ISSUE_TEMPLATE/beta_report.yml",
+  "src-tauri/tauri.beta.json",
   "scripts/external-acceptance-preflight.sh",
   "scripts/test-windows-installer.ps1",
   "scripts/verify-windows-pe.ps1",
@@ -27,17 +32,25 @@ const requiredDeliverables = [
 describe("PLAN deliverables", () => {
   it.each(requiredDeliverables)("includes %s", (path) => {
     expect(existsSync(resolve(path))).toBe(true);
-    expect(readFileSync(resolve(path), "utf8").trim().length).toBeGreaterThan(40);
+    expect(readFileSync(resolve(path), "utf8").trim().length).toBeGreaterThan(
+      40,
+    );
   });
 
   it("keeps package, Tauri, Cargo, and changelog versions aligned", () => {
-    const packageVersion = JSON.parse(readFileSync(resolve("package.json"), "utf8")).version;
-    const tauriVersion = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8")).version;
+    const packageVersion = JSON.parse(
+      readFileSync(resolve("package.json"), "utf8"),
+    ).version;
+    const tauriVersion = JSON.parse(
+      readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8"),
+    ).version;
     const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf8");
     const changelog = readFileSync(resolve("CHANGELOG.md"), "utf8");
 
     expect(tauriVersion).toBe(packageVersion);
-    expect(cargo).toMatch(new RegExp(`^version = "${packageVersion.replaceAll(".", "\\.")}"$`, "m"));
+    expect(cargo).toMatch(
+      new RegExp(`^version = "${packageVersion.replaceAll(".", "\\.")}"$`, "m"),
+    );
     expect(changelog).toContain(`## ${packageVersion}`);
   });
 
@@ -52,13 +65,20 @@ describe("PLAN deliverables", () => {
   });
 
   it("pins and verifies the bundled G-Kermit binary, GPL license, and source", () => {
-    const build = readFileSync(resolve("scripts/build-kermit-sidecar.sh"), "utf8");
+    const build = readFileSync(
+      resolve("scripts/build-kermit-sidecar.sh"),
+      "utf8",
+    );
     const release = readFileSync(resolve("scripts/release.sh"), "utf8");
 
-    expect(build).toContain("19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd");
+    expect(build).toContain(
+      "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd",
+    );
     expect(build).toContain("G-Kermit-GPL-2.0.txt");
     expect(build).toContain("source/$ARCHIVE");
-    expect(release).toContain("G-Kermit helper 不是 arm64 + x86_64 universal binary");
+    expect(release).toContain(
+      "G-Kermit helper 不是 arm64 + x86_64 universal binary",
+    );
     expect(release).toContain("G-Kermit 对应源码缺失");
   });
 

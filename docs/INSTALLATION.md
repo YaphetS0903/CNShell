@@ -10,12 +10,12 @@
 
 macOS：
 
-1. 打开 `CNshell_<version>_universal.dmg`。
-2. 将 `CNshell.app` 拖到“应用程序”。
-3. 从“应用程序”启动 CNshell。
+1. 从本仓库 GitHub Release 下载 `CNshell_<version>_universal.dmg` 和 `SHA256SUMS.txt`，先核对 SHA-256。
+2. 打开 DMG，将 `CNshell.app` 拖到“应用程序”。
+3. 当前 Beta 没有 Developer ID 和 Apple 公证。确认来源与哈希后，在 Finder 的“应用程序”中对 CNshell 使用右键“打开”，并仔细阅读 Gatekeeper 提示。
 4. 创建 SSH 连接并通过可信渠道核对首次显示的 SHA-256 主机指纹。
 
-当前仓库生成的候选 DMG 是 ad-hoc 签名，仅用于本机验收，不等同公开发行包。正式发布包必须通过 Developer ID 签名和 Apple 公证；不要通过绕过 Gatekeeper 的方式运行来源不明的副本。
+当前 Beta DMG 是 ad-hoc 签名，不等同通过 Developer ID 签名和 Apple 公证的正式发行包。不要执行 `xattr -cr`，不要关闭 Gatekeeper，也不要通过其他全局绕过方式运行来源不明的副本。
 
 Windows：
 
@@ -24,11 +24,13 @@ Windows：
 3. 运行当前用户 NSIS 安装器。安装器创建开始菜单入口，不会在未明确选择时写桌面快捷方式；WebView2 缺失时使用随包 bootstrapper 安装。
 4. 首个未做 Authenticode 的 Beta 可能显示 SmartScreen 信誉提示。只在哈希与本仓库 Release 一致时继续；不要关闭 SmartScreen 或全局降低系统安全设置。
 
+Tauri updater 的 minisign 签名会验证更新归档，但不能替代 Developer ID、Apple 公证或 Windows Authenticode。x64 包在真机扩大验收期间标记为 Beta，ARM64 包在完成原生设备验收前标记为 Preview。
+
 ## 升级
 
-正式 updater 启用后，CNshell 只从发布配置中的 HTTPS endpoint 检查签名更新，验证失败会保留当前版本。当前公开的 macOS 候选版采用手动升级；启用四平台正式 updater 后，macOS 与 Windows 使用同一版本清单：
+`v0.2.0-beta.1` 使用独立 Beta updater endpoint；CNshell 只接受由内置公钥验证通过的更新归档，验证失败会保留当前版本。macOS 与 Windows 使用同一份四平台版本清单：
 
-正式发行包可在“设置 → 软件更新”手动检查。CNshell 会先展示目标版本和发布说明，只有用户确认后才下载并安装；不会静默安装。候选版未配置 endpoint 时，界面会明确说明更新通道尚未启用。
+在“设置 → 软件更新”可手动检查。CNshell 会先展示目标版本和发布说明，只有用户确认后才下载并安装；不会静默安装。未来正式发布仍需 Developer ID、公证和 Authenticode，并继续沿用兼容的 updater 签名信任链。
 
 1. 退出 CNshell，确保传输队列没有运行中任务。
 2. 备份重要连接；普通安全导出不含凭据，需要跨设备或跨平台携带凭据时使用加密导出。
