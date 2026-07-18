@@ -282,6 +282,8 @@ Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $WindowsPortDestinatio
 New-Item -ItemType Directory -Force $WindowsPortDestination | Out-Null
 Copy-Item -Recurse -Force (Join-Path $PortSource "*") $WindowsPortDestination
 Copy-Item -Force $PSCommandPath (Join-Path $WindowsPortDestination "build-mosh-sidecar.ps1")
+Copy-Item -Force (Join-Path $Root "scripts\test-mosh-windows.ps1") `
+  (Join-Path $WindowsPortDestination "test-mosh-windows.ps1")
 
 $Notice = @"
 # Mosh third-party notices
@@ -302,10 +304,7 @@ if ($Architecture -eq "x64") {
   if ($LASTEXITCODE -ne 0 -or $colors.Trim() -ne "256") { throw "Mosh color capability smoke failed" }
   $version = & $Built --version 2>&1 | Out-String
   if ($LASTEXITCODE -ne 0 -or $version -notmatch "mosh 1\.4\.0") { throw "Mosh version smoke failed" }
-  $selfTest = & $Built --self-test 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0 -or $selfTest -notmatch "encrypted UDP loopback passed") {
-    throw "Mosh encrypted UDP loopback failed: $selfTest"
-  }
+  & (Join-Path $Root "scripts\test-mosh-windows.ps1") $Built
 }
 
 Write-Host "Native Windows Mosh helper generated: $Built ($Architecture, $Triplet)"

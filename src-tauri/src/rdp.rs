@@ -254,10 +254,9 @@ impl RdpManager {
             .as_deref()
             .map(|path| crate::bookmark::access_rdp_drive(&profile.id, Path::new(path)))
             .transpose()?;
-        let position = app
-            .get_webview_window("main")
-            .and_then(|window| window.outer_position().ok())
-            .map(|position| (position.x.saturating_add(36), position.y.saturating_add(36)));
+        let position = main_window_rdp_position(&app);
+        #[cfg(target_os = "windows")]
+        let follow_main_window = options.display_mode == "window";
         let args = arguments(
             &profile,
             &options,
@@ -267,6 +266,8 @@ impl RdpManager {
         let child = spawn_helper(&executable, &args, password.as_str(), drive_access)?;
         let id = Uuid::new_v4().to_string();
         let shared = Arc::new(Mutex::new(child));
+        #[cfg(target_os = "windows")]
+        let helper_pid = shared.lock().child.id();
         let runtime_event = shared.lock().runtime_event.clone();
         self.children.lock().insert(id.clone(), shared.clone());
         let manager = self.clone();
@@ -275,6 +276,8 @@ impl RdpManager {
             let started = Instant::now();
             let mut online_emitted = false;
             let mut runtime_status = "connecting";
+            #[cfg(target_os = "windows")]
+            let mut synced_window_position = None;
             let status = loop {
                 match shared.lock().child.try_wait() {
                     Ok(Some(status)) => break status,
@@ -322,6 +325,14 @@ impl RdpManager {
                                 );
                             }
                             _ => {}
+                        }
+                        #[cfg(target_os = "windows")]
+                        if follow_main_window
+                            && let Some(position) = main_window_rdp_position(&app)
+                            && synced_window_position != Some(position)
+                            && sync_process_position(helper_pid, position).is_ok()
+                        {
+                            synced_window_position = Some(position);
                         }
                         std::thread::sleep(Duration::from_millis(200));
                     }
@@ -429,6 +440,15 @@ impl RdpManager {
             .ok_or_else(|| AppError::NotFound(format!("RDP 会话 {id}")))?;
         action(child.lock().child.id())
     }
+}
+
+fn main_window_rdp_position(app: &AppHandle) -> Option<(i32, i32)> {
+    let window = app.get_webview_window("main")?;
+    if window.is_minimized().ok()? {
+        return None;
+    }
+    let position = window.outer_position().ok()?;
+    Some((position.x.saturating_add(36), position.y.saturating_add(36)))
 }
 
 fn spawn_helper(
@@ -707,6 +727,33 @@ fn hide_process(pid: u32) -> AppResult<()> {
 }
 
 #[cfg(target_os = "windows")]
+fn sync_process_position(pid: u32, position: (i32, i32)) -> AppResult<()> {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, SetWindowPos,
+    };
+    let window = find_process_window(pid)?;
+    let moved = unsafe {
+        SetWindowPos(
+            window,
+            std::ptr::null_mut(),
+            position.0,
+            position.1,
+            0,
+            0,
+            SWP_NOACTIVATE | SWP_NOSIZE | SWP_NOZORDER,
+        )
+    };
+    if moved == 0 {
+        Err(AppError::Unavailable(format!(
+            "无法同步 FreeRDP 窗口位置：{}",
+            std::io::Error::last_os_error()
+        )))
+    } else {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn hide_process(pid: u32) -> AppResult<()> {
     use windows_sys::Win32::UI::WindowsAndMessaging::{SW_HIDE, ShowWindow};
     let window = find_process_window(pid)?;
@@ -867,6 +914,17 @@ mod tests {
         let args = arguments(&profile(), &options(), None, None).unwrap();
         assert!(args.contains(&"+dynamic-resolution".into()));
         assert!(!args.iter().any(|arg| arg.starts_with("/p:")));
+    }
+
+    #[test]
+    fn window_position_is_applied_only_to_windowed_sessions() {
+        let args = arguments(&profile(), &options(), None, Some((-120, 42))).unwrap();
+        assert!(args.contains(&"/window-position:-120x42".into()));
+
+        let mut fullscreen = options();
+        fullscreen.display_mode = "fullscreen".into();
+        let args = arguments(&profile(), &fullscreen, None, Some((100, 200))).unwrap();
+        assert!(!args.iter().any(|arg| arg.starts_with("/window-position:")));
     }
 
     #[test]

@@ -209,6 +209,10 @@ describe("relay container smoke", () => {
     resolve("scripts/build-mosh-sidecar.ps1"),
     "utf8",
   );
+  const windowsMoshTest = readFileSync(
+    resolve("scripts/test-mosh-windows.ps1"),
+    "utf8",
+  );
   const windowsMoshCompat = readFileSync(
     resolve("scripts/mosh-windows/mosh-windows-compat.cc"),
     "utf8",
@@ -357,6 +361,13 @@ describe("relay container smoke", () => {
     expect(installerTest).toContain("created a desktop shortcut without an explicit user choice");
     expect(installerTest).toContain("start menu shortcut was not created");
     expect(installerTest).toContain("Assert-CNshellStarts");
+    const installerHooks = readFileSync(
+      resolve("src-tauri/windows/installer-hooks.nsh"),
+      "utf8",
+    );
+    expect(installerHooks).toContain("!include WinVer.nsh");
+    expect(installerHooks).toContain("${AtLeastBuild} 19045");
+    expect(installerHooks).toContain("Windows 10 22H2");
     expect(peVerifier).toContain("0x8664");
     expect(peVerifier).toContain("0xAA64");
     expect(windowsFreeRdpBuilder).toContain("Get-VisualStudioGenerator");
@@ -381,7 +392,15 @@ describe("relay container smoke", () => {
     expect(windowsKermitCompat).toContain("#define __STDC__ 1");
     expect(windowsKermitBuilder).toContain("RedirectStandardError");
     expect(windowsPackageWorkflow).toContain("npm run build:mosh");
-    expect(windowsPackageWorkflow).toContain("mosh-client.exe --self-test");
+    expect(windowsPackageWorkflow).toContain("test-mosh-windows.ps1");
+    expect(releaseWorkflow).toContain("test-mosh-windows.ps1");
+    expect(releaseWorkflow).toContain("mosh-windows-port-source.zip");
+    expect(windowsMoshBuilder).toContain("test-mosh-windows.ps1");
+    expect(windowsMoshBuilder).toContain('WindowsPortDestination "test-mosh-windows.ps1"');
+    expect(windowsMoshTest).toContain("RedirectStandardOutput");
+    expect(windowsMoshTest).toContain("RedirectStandardError");
+    expect(windowsMoshTest).toContain("$process.ExitCode");
+    expect(windowsMoshTest).toContain("encrypted UDP loopback passed");
     expect(windowsMoshBuilder).toContain(
       "872e4b134e5df29c8933dff12350785054d2fd2839b5ae6b5587b14db1465ddd",
     );

@@ -11,6 +11,7 @@ on:
       - "scripts/build-sidecar.mjs"
       - "scripts/build-freerdp-sidecar.ps1"
       - "scripts/build-mosh-sidecar.ps1"
+      - "scripts/test-mosh-windows.ps1"
       - "scripts/build-kermit-sidecar.ps1"
       - "scripts/mosh-windows/**"
       - "scripts/kermit-windows/**"
@@ -80,6 +81,7 @@ jobs:
           foreach ($path in @(
             "scripts/build-freerdp-sidecar.ps1",
             "scripts/build-mosh-sidecar.ps1",
+            "scripts/test-mosh-windows.ps1",
             "scripts/build-kermit-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
             "scripts/verify-windows-pe.ps1"
@@ -114,8 +116,7 @@ jobs:
         run: |
           ./scripts/verify-windows-pe.ps1 src-tauri/resources/mosh/mosh-client.exe ${{ matrix.architecture }}
           if ("${{ matrix.runtime }}" -eq "true") {
-            & src-tauri/resources/mosh/mosh-client.exe --self-test
-            if ($LASTEXITCODE -ne 0) { throw "Mosh x64 encrypted UDP loopback failed" }
+            ./scripts/test-mosh-windows.ps1 src-tauri/resources/mosh/mosh-client.exe
           }
       - name: Build pinned Windows FreeRDP
         shell: powershell
