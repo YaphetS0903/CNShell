@@ -1,6 +1,6 @@
-# CNshell v0.1.1 验收矩阵
+# CNshell v0.2.0-beta.1 验收矩阵
 
-> 最后核验：2026-07-17（macOS 本机）
+> 最后核验：2026-07-18（macOS 本机与 GitHub Windows CI）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -227,6 +227,21 @@
 | `CNSHELL_SOAK_SECONDS=6 npm run test:soak` | 通过，脚本、独立 monitor Exec、PTY 与 RSS 指标可运行 |
 | `APPLE_SIGNING_IDENTITY=- npm run tauri build -- --target universal-apple-darwin --bundles app,dmg` | 通过，v0.1.1 当前源码生成最低 macOS 13、x86_64 + arm64 的 App 与 DMG；严格 ad-hoc 签名和 DMG 完整性校验通过；打包主程序 `--rdp-preflight` 返回 `available: true`，并解析到 App 内的 universal FreeRDP helper，Mosh 1.4.0 与 G-Kermit 2.01 也由包内 helper 返回版本；DMG SHA-256：`8b9d15fe66c080ebe52ef468143314cdcfa9a27911b5e4f72d559b216afd4120`。覆盖安装前后 SQLite 主文件及 WAL/SHM 校验清单一致；安装后 6 条连接完整，实际窗口无白屏，原 SSH 工作区、SFTP 和监控恢复在线。此前只读挂载辅助功能树及真实 PTY Canvas 证据继续有效 |
 
+### 2026-07-18 Windows 双架构增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 平台核心 | GitHub Core CI run `29636049087` 已通过前端/Rust、WebKit/PTY、relay、Windows x64 测试、Windows ARM64 `cargo check --all-targets` 与 macOS universal smoke；Windows x64 共执行 205 项 Rust 测试，Credential Manager 的连接秘密和路径记录真往返均通过 |
+| ARM64 sidecar 与安装包 | Windows Packaging run `29636049096` 的 ARM64 job 已从固定源码构建 G-Kermit、Mosh 1.4.0、FreeRDP 3.28.0，完成 ARM64 PE 校验、应用构建、NSIS 生成和 Artifact 上传。该证据是交叉构建与包结构证据，不等同 ARM64 原生运行 |
+| G-Kermit x64 | 同一 Packaging run 的 x64 job 已构建 G-Kermit 并通过两个独立 helper 的 12,345 字节外部协议管道互传 |
+| Mosh Windows 诊断 | Mosh x64 已成功编译并通过 PE；第一次自测被 PowerShell 将上游正常 `stderr` 状态行误判为异常。随后 ARM64 复用缓存时暴露 `read`/`write` 补丁会重复应用；提交 `6eb5b43` 改为每次从校验归档重新展开 Mosh，并补齐幂等检测，后续 ARM64 Mosh 已重新通过。最终双架构结果仍以目标提交为准 |
+| RDP Win32 联动 | `src-tauri/src/rdp.rs` 已补齐窗口模式下的 `SetWindowPos` 动态位置联动，同时保留全屏和用户手动移动边界；15 项 RDP 定向测试通过，Windows 专属编译由最终 Core CI/Packaging 验证 |
+| 安装系统门槛 | NSIS hook 使用 WinVer `${AtLeastBuild} 19045`，Windows 10 22H2 以下会在安装前终止；发布门禁测试确认 hook、当前用户安装、开始菜单、无默认桌面快捷方式和 WebView2 bootstrapper 配置 |
+| Windows 长路径 | 短路径授权继续由 Credential Manager 真往返；当 Base64 路径记录超过 Windows 2560 字节 credential blob 上限时，后端会删除旧冗余记录并使用 profile 中已有的绝对路径，避免合法长路径因凭据库大小限制而无法保存。Windows 定向测试覆盖该降级与旧记录清理 |
+| 本地短时回归 | `npm run check` 覆盖前端 178 项、production build、Rust 与 relay；另有发布门禁 17 项、RDP 15 项、YAML 解析、Rust format 与 `git diff --check` 通过。本轮遵照用户要求未重跑 soak、1 GB 或长时测试 |
+| 最终双架构 run | 通过。`v0.2.0-beta.1` 提交 `3826715` 的 Core CI `29638753518` 五个 job 全部成功；Windows x64 执行 208 项 Rust 测试并通过 ConPTY 输入/resize/关闭/重开。Windows Packaging `29638753524` 的 x64 与 ARM64 Preview job 均成功：x64 通过 G-Kermit 互操作、Mosh 加密 UDP 双向回环、FreeRDP 3.28.0 运行、应用/NSIS 构建及静默安装、WebView2、SQLite、Credential Manager、原生关闭、覆盖升级、卸载、重装；ARM64 通过三类 sidecar、应用 PE、NSIS 和 Artifact。Actions artifact ID 为 x64 `8428294463`、ARM64 `8428165822`；它们是未签名 CI 测试包，不等同正式 Release |
+| 保留真机边界 | 当前没有 Windows 10/11 x64、Windows 11 ARM64、真实 RDP、Windows Hello、实体 FIDO2、VcXsrv/Xming 或实体串口环境；中文 IME、DPI、高对比、Narrator、睡眠唤醒和真实网络切换均未声明真机通过。Windows x64 继续标记 Beta，ARM64 继续标记 Preview |
+
 ## 3. 必验场景与发布门槛
 
 | 场景 | 状态 | 说明 |
@@ -265,7 +280,7 @@
 
 ## 5. 结论
 
-当前代码达到可本机试用的 **v0.1.1 候选版**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收。正式对外发布仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证和正式更新通道配置。
+当前代码达到可自动化打包的 **v0.2.0-beta.1 跨平台候选版**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收。正式对外发布仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证和正式更新通道配置。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 

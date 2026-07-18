@@ -6,6 +6,7 @@ $Work = Join-Path $Root "src-tauri\target\freerdp-sidecar-windows"
 $Downloads = Join-Path $Work "downloads"
 $Sources = Join-Path $Work "sources"
 $Output = Join-Path $Root "src-tauri\resources\freerdp"
+$SourceOutput = Join-Path $Output "source"
 $Architecture = if ($env:CNSHELL_WINDOWS_ARCH) { $env:CNSHELL_WINDOWS_ARCH } else { "x64" }
 if ($Architecture -notin @("x64", "arm64")) {
   throw "CNSHELL_WINDOWS_ARCH must be x64 or arm64"
@@ -20,7 +21,7 @@ $Source = Join-Path $Sources "freerdp"
 $Build = Join-Path $Work "build-$Architecture"
 $Vcpkg = Join-Path $Work "vcpkg"
 
-New-Item -ItemType Directory -Force $Downloads, $Sources, (Join-Path $Output "licenses") | Out-Null
+New-Item -ItemType Directory -Force $Downloads, $Sources, (Join-Path $Output "licenses"), $SourceOutput | Out-Null
 
 function Get-CheckedFile([string]$Url, [string]$Path, [string]$Sha256) {
   $valid = Test-Path -LiteralPath $Path
@@ -163,6 +164,11 @@ if (-not $Helper) { throw "sdl-freerdp.exe was not generated" }
 Copy-Item -Force $Helper.FullName (Join-Path $Output "sdl-freerdp.exe")
 Copy-Item -Force (Join-Path $Source "LICENSE") (Join-Path $Output "licenses\FreeRDP-Apache-2.0.txt")
 Copy-Item -Force (Join-Path $Root "docs\THIRD_PARTY_NOTICES.md") (Join-Path $Output "licenses\THIRD_PARTY_NOTICES.md")
+Copy-Item -Force $Archive (Join-Path $SourceOutput "freerdp-$FreeRdpVersion.tar.gz")
+Copy-Item -Force (Join-Path $Root "scripts\build-freerdp-sidecar.ps1") $SourceOutput
+foreach ($Patch in @("freerdp-sdl-user-close.patch", "freerdp-sdl-state-marker.patch")) {
+  Copy-Item -Force (Join-Path $Root "scripts\patches\$Patch") $SourceOutput
+}
 
 $Built = Join-Path $Output "sdl-freerdp.exe"
 if (-not (Test-Path $Built) -or (Get-Item $Built).Length -eq 0) {

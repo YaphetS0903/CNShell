@@ -359,7 +359,14 @@ describe("relay container smoke", () => {
     expect(installerTest).toContain("Assert-TestCredential");
     expect(installerTest).toContain("Remove-TestCredential");
     expect(installerTest).toContain("created a desktop shortcut without an explicit user choice");
+    expect(installerTest).toContain("removed the user's existing desktop shortcut during upgrade");
+    expect(installerTest).toContain("New-ExistingDesktopShortcut");
     expect(installerTest).toContain("start menu shortcut was not created");
+    expect(installerTest).toContain("Assert-BundledResources");
+    expect(installerTest).toContain('"freerdp\\source\\freerdp-3.28.0.tar.gz"');
+    expect(installerTest).toContain('"mosh\\mosh-client.exe"');
+    expect(installerTest).toContain('"mosh\\source\\mosh-1.4.0.tar.gz"');
+    expect(installerTest).toContain('"kermit\\source\\gku201.tar.gz"');
     expect(installerTest).toContain("Assert-CNshellStarts");
     const installerHooks = readFileSync(
       resolve("src-tauri/windows/installer-hooks.nsh"),
@@ -376,6 +383,11 @@ describe("relay container smoke", () => {
     expect(windowsFreeRdpBuilder).toContain('"arm64-windows-static"');
     expect(windowsFreeRdpBuilder).not.toContain("windows-static-md");
     expect(windowsFreeRdpBuilder).not.toContain('-G "Visual Studio 17 2022"');
+    expect(windowsFreeRdpBuilder).toContain(
+      'Copy-Item -Force $Archive (Join-Path $SourceOutput "freerdp-$FreeRdpVersion.tar.gz")',
+    );
+    expect(windowsFreeRdpBuilder).toContain("freerdp-sdl-user-close.patch");
+    expect(windowsFreeRdpBuilder).toContain("freerdp-sdl-state-marker.patch");
     expect(windowsPackageWorkflow).toContain("npm run build:kermit");
     expect(windowsPackageWorkflow).toContain(
       "kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode",
@@ -454,6 +466,8 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("windows-aarch64");
     expect(releaseWorkflow).toContain("SHA256SUMS.txt");
     expect(releaseWorkflow).toContain("gkermit-windows-port-source.zip");
+    expect(releaseWorkflow).toContain("freerdp-3.28.0.tar.gz");
+    expect(releaseWorkflow).toContain("freerdp-cnshell-windows-port-source.zip");
     expect(releaseWorkflow).toContain("mosh-windows-port-source.zip");
     expect(releaseWorkflow).toContain("mosh-1.4.0.tar.gz");
     expect(releaseWorkflow).toContain("protobuf-all-21.12.tar.gz");

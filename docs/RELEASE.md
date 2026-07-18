@@ -49,3 +49,20 @@ CNshell 采用 Developer ID 站外分发，不以 Mac App Store 为目标。Hard
 汇总 job 会用 Windows x64 CNshell 验证 macOS、Windows x64、Windows ARM64 三个 updater 归档及其 `.sig`，再生成四平台 `latest.json`、`SHA256SUMS.txt`、第三方说明和对应源码附件。它只创建或更新 Draft Release，且拒绝覆盖同版本的公开 Release；发布负责人核对验收矩阵后才可人工公开。`latest.json` 仍必须部署到 `tauri.release.json` 配置的 endpoint，不得只上传 DMG/EXE 后宣称自动更新可用。
 
 首个未做 Authenticode 的 Windows Beta 会触发 SmartScreen 信誉提示。发布页必须同时提供 SHA-256、仓库来源和该限制，不能指导用户关闭 SmartScreen 或系统安全功能。取得可信代码签名证书或云签名服务后，应同时签名主程序、FreeRDP helper 和 NSIS 安装包；Tauri updater minisign 不能替代 Authenticode，反之亦然。
+
+## Windows 候选门禁
+
+Windows 安装包最低系统为 Windows 10 22H2（build 19045）。NSIS 在复制文件前通过 `src-tauri/windows/installer-hooks.nsh` 检查 build；Windows 11 的 build 高于该门槛。不要只在 README 中声明最低版本而省略安装器限制。
+
+`Windows Packaging` 必须在同一个目标提交上满足以下条件：
+
+1. x64 与 ARM64 分别从固定源码构建 G-Kermit、Mosh 和 FreeRDP，并通过对应 PE 架构检查。
+2. x64 G-Kermit 完成两个 helper 的外部管道互传。
+3. x64 Mosh 通过 `scripts/test-mosh-windows.ps1` 的加密 UDP 双向回环；该脚本分别捕获 stdout、stderr 和真实退出码，正常诊断输出不能被 PowerShell 误判为失败。
+4. x64 FreeRDP 执行 `/version`；ARM64 只做 PE/依赖检查，不能在 x64 runner 上伪运行。
+5. x64 安装器完成静默安装、WebView2 renderer、SQLite 初始化、Credential Manager 保留、原生关闭、覆盖升级、卸载、重装；ARM64 完成应用 PE、NSIS 和 artifact 检查。
+6. 安装器创建开始菜单入口，不在干净账户默认创建桌面快捷方式；升级前已有的用户桌面快捷方式不得被误删。
+
+普通 `Windows Packaging` artifact 是未签名测试安装包，不等同正式 Release。正式对外发布必须使用 `Signed Cross-platform Release Candidate` 生成 updater 归档和 `.sig`，由 Windows x64 verifier 验证三平台签名后才创建 Draft Release。Draft Release 同时附带 FreeRDP、Mosh、Protocol Buffers、G-Kermit 的固定源码归档，以及 CNshell 对 FreeRDP/Mosh/G-Kermit 的 Windows 构建与适配源码包。
+
+`v0.2.0-beta.1` 目标提交 `3826715` 已通过 Core CI run `29638753518` 和 Windows Packaging run `29638753524`；x64 与 ARM64 Preview 两个 Packaging job 均成功。后续任何构建、安装器或源码附件改动都必须在新目标提交上重新通过同一组门禁，不能沿用旧提交的结论。

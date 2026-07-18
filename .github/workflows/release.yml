@@ -232,6 +232,12 @@ jobs:
           Copy-Item $signature "$stagedArchive.sig"
           if ("${{ matrix.runtime }}" -eq "true") {
             Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
+            Copy-Item src-tauri/resources/freerdp/source/freerdp-3.28.0.tar.gz $output
+            Compress-Archive -CompressionLevel Optimal -Path `
+              scripts/build-freerdp-sidecar.ps1, `
+              scripts/patches/freerdp-sdl-user-close.patch, `
+              scripts/patches/freerdp-sdl-state-marker.patch `
+              -DestinationPath (Join-Path $output "freerdp-cnshell-windows-port-source.zip")
             Copy-Item src-tauri/resources/mosh/source/mosh-1.4.0.tar.gz $output
             Copy-Item src-tauri/resources/mosh/source/protobuf-all-21.12.tar.gz $output
             Compress-Archive -CompressionLevel Optimal -Path `
@@ -343,12 +349,14 @@ jobs:
             scripts/build-kermit-sidecar.ps1 `
             -DestinationPath (Join-Path $output "gkermit-windows-port-source.zip")
           foreach ($name in @(
+            "freerdp-3.28.0.tar.gz",
+            "freerdp-cnshell-windows-port-source.zip",
             "mosh-1.4.0.tar.gz",
             "protobuf-all-21.12.tar.gz",
             "mosh-windows-port-source.zip"
           )) {
             $source = Get-Item "release-input/$name"
-            if ($source.Length -eq 0) { throw "Mosh corresponding source artifact is empty: $name" }
+            if ($source.Length -eq 0) { throw "Corresponding source artifact is empty: $name" }
             Copy-Item $source.FullName $output
           }
           $base = [Uri]$env:UPDATER_DOWNLOAD_BASE_URL

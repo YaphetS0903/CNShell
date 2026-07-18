@@ -29,6 +29,11 @@ G-Kermit 的完整对应源码归档随应用位于
 Windows 版本使用的 GPL 外部协议适配层与构建脚本位于
 `kermit/source/windows-port`，并在 GitHub Release 中单独提供
 `gkermit-windows-port-source.zip`。
+FreeRDP 3.28.0 的固定哈希原始源码与 CNshell SDL 状态/关闭适配补丁随 Windows
+应用位于 `freerdp/source`。GitHub Release 另提供 `freerdp-3.28.0.tar.gz` 和
+`freerdp-cnshell-windows-port-source.zip`；后者包含构建脚本及全部实际应用的补丁。
 Mosh 1.4.0 与 Protocol Buffers 21.12 的固定哈希源码归档随应用位于
 `mosh/source`；Windows 原生 WinSock/ConPTY 适配层位于
-`mosh/source/windows-port`，并在 GitHub Release 中提供对应源码归档。
+`mosh/source/windows-port`。该目录同时包含可复现构建脚本和独立加密 UDP
+回环自测脚本；GitHub Release 另提供 `mosh-windows-port-source.zip`，并单独附上
+Mosh 与 Protocol Buffers 原始源码归档。
