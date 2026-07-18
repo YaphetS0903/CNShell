@@ -7,7 +7,7 @@ use sqlx::{
     Row, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteRow},
 };
-use std::{path::Path, str::FromStr};
+use std::{path::Path, str::FromStr, time::Duration};
 
 #[derive(Clone)]
 pub struct Database {
@@ -612,9 +612,9 @@ fn backup_database_files(path: &Path) -> AppResult<()> {
     if !path.exists() {
         return Ok(());
     }
-    std::fs::copy(
+    copy_database_file_with_retry(
         path,
-        path.with_extension(format!(
+        &path.with_extension(format!(
             "{}.backup",
             path.extension()
                 .and_then(|value| value.to_str())
@@ -624,13 +624,47 @@ fn backup_database_files(path: &Path) -> AppResult<()> {
     for suffix in ["-wal", "-shm"] {
         let sidecar = std::path::PathBuf::from(format!("{}{suffix}", path.display()));
         if sidecar.exists() {
-            std::fs::copy(
+            let result = copy_database_file_with_retry(
                 &sidecar,
-                std::path::PathBuf::from(format!("{}.backup", sidecar.display())),
-            )?;
+                &std::path::PathBuf::from(format!("{}.backup", sidecar.display())),
+            );
+            // SQLite may remove WAL sidecars immediately after the final pool closes.
+            // A sidecar that disappears between `exists` and `copy` no longer needs backup.
+            if let Err(error) = result
+                && error.kind() != std::io::ErrorKind::NotFound
+            {
+                return Err(error.into());
+            }
         }
     }
     Ok(())
+}
+
+fn copy_database_file_with_retry(source: &Path, destination: &Path) -> std::io::Result<()> {
+    const WINDOWS_RETRIES: usize = 10;
+    const WINDOWS_RETRY_DELAY: Duration = Duration::from_millis(25);
+
+    let mut retries = 0;
+    loop {
+        match std::fs::copy(source, destination) {
+            Ok(_) => return Ok(()),
+            Err(error)
+                if retries < WINDOWS_RETRIES && windows_backup_copy_error_is_transient(&error) =>
+            {
+                retries += 1;
+                std::thread::sleep(WINDOWS_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+}
+
+fn windows_backup_copy_error_is_transient(error: &std::io::Error) -> bool {
+    cfg!(target_os = "windows")
+        && (matches!(
+            error.kind(),
+            std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::WouldBlock
+        ) || matches!(error.raw_os_error(), Some(5 | 32 | 33)))
 }
 
 fn connection_from_row(row: SqliteRow) -> ConnectionProfile {
@@ -1838,6 +1872,10 @@ mod tests {
         db.pool.close().await;
 
         let error = Database::open(&path).await.err().unwrap();
-        assert!(error.to_string().contains("modified"));
+        let message = error.to_string();
+        assert!(
+            message.contains("modified"),
+            "unexpected migration error: {message}"
+        );
     }
 }
