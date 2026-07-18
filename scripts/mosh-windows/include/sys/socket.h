@@ -17,14 +17,14 @@ struct msghdr {
   int msg_flags;
 };
 
-struct cmsghdr {
-  size_t cmsg_len;
-  int cmsg_level;
-  int cmsg_type;
-};
-
 #ifndef MSG_TRUNC
 #define MSG_TRUNC 0x0100
+#endif
+#ifdef CMSG_FIRSTHDR
+#undef CMSG_FIRSTHDR
+#endif
+#ifdef CMSG_DATA
+#undef CMSG_DATA
 #endif
 #define CMSG_FIRSTHDR(message) ((struct cmsghdr *)0)
 #define CMSG_DATA(header) ((unsigned char *)((header) + 1))

@@ -13,7 +13,10 @@ if ($env:CI -ne "true") {
 $Installer = (Resolve-Path -LiteralPath $InstallerPath).Path
 $InstallDirectory = Join-Path $env:LOCALAPPDATA "CNshell"
 $DataDirectory = Join-Path $env:APPDATA "com.cnshell.desktop"
+$Database = Join-Path $DataDirectory "cnshell.sqlite"
 $Sentinel = Join-Path $DataDirectory "windows-installer-preserve.test"
+$CredentialTarget = "com.cnshell.desktop/installer-preserve-$env:GITHUB_RUN_ID-$PID"
+$CredentialCreated = $false
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "CNshell.lnk"
 $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs\CNshell\CNshell.lnk"
 
@@ -47,6 +50,62 @@ function Get-CNshellExecutable {
   return $candidate.FullName
 }
 
+function Test-WebViewDescendant([int]$ParentProcessId) {
+  $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, Name)
+  $pending = [System.Collections.Generic.Queue[uint32]]::new()
+  $visited = [System.Collections.Generic.HashSet[uint32]]::new()
+  $pending.Enqueue([uint32]$ParentProcessId)
+  [void]$visited.Add([uint32]$ParentProcessId)
+  while ($pending.Count -gt 0) {
+    $parent = $pending.Dequeue()
+    foreach ($candidate in $processes | Where-Object { $_.ParentProcessId -eq $parent }) {
+      if ($candidate.Name -ieq "msedgewebview2.exe") {
+        return $true
+      }
+      if ($visited.Add([uint32]$candidate.ProcessId)) {
+        $pending.Enqueue([uint32]$candidate.ProcessId)
+      }
+    }
+  }
+  return $false
+}
+
+function Assert-UserData {
+  if (-not (Test-Path -LiteralPath $Sentinel -PathType Leaf)) {
+    throw "CNshell user-data sentinel is missing: $Sentinel"
+  }
+  $databaseFile = Get-Item -LiteralPath $Database -ErrorAction SilentlyContinue
+  if (-not $databaseFile -or $databaseFile.Length -eq 0) {
+    throw "CNshell SQLite database is missing or empty: $Database"
+  }
+}
+
+function Set-TestCredential {
+  & cmdkey.exe "/generic:$CredentialTarget" "/user:CNshellInstallerTest" "/pass:CNSHELL_INSTALLER_PRESERVE_TEST" | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to create the Windows Credential Manager preservation fixture"
+  }
+  $script:CredentialCreated = $true
+}
+
+function Assert-TestCredential {
+  $output = & cmdkey.exe "/list:$CredentialTarget" 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0 -or -not $output.Contains($CredentialTarget)) {
+    throw "CNshell namespaced credential did not survive the installer lifecycle"
+  }
+}
+
+function Remove-TestCredential {
+  if (-not $script:CredentialCreated) {
+    return
+  }
+  & cmdkey.exe "/delete:$CredentialTarget" 2>&1 | Out-Null
+  if ($LASTEXITCODE -ne 0) {
+    throw "Unable to remove the Windows Credential Manager preservation fixture"
+  }
+  $script:CredentialCreated = $false
+}
+
 function Assert-CNshellStarts {
   $Executable = Get-CNshellExecutable
   $preflight = & $Executable --rdp-preflight
@@ -58,6 +117,19 @@ function Assert-CNshellStarts {
     Start-Sleep -Seconds 5
     if ($process.HasExited) {
       throw "Installed CNshell UI exited during the startup probe with status $($process.ExitCode)"
+    }
+    $databaseFile = Get-Item -LiteralPath $Database -ErrorAction SilentlyContinue
+    if (-not $databaseFile -or $databaseFile.Length -eq 0) {
+      throw "Installed CNshell did not initialize its SQLite database"
+    }
+    if (-not (Test-WebViewDescendant $process.Id)) {
+      throw "Installed CNshell did not start a WebView2 renderer"
+    }
+    if (-not $process.CloseMainWindow()) {
+      throw "Installed CNshell did not accept a native window close request"
+    }
+    if (-not $process.WaitForExit(10000)) {
+      throw "Installed CNshell did not exit after its native window close request"
     }
   } finally {
     if (-not $process.HasExited) {
@@ -82,28 +154,34 @@ if (Test-Path -LiteralPath (Join-Path $InstallDirectory "uninstall.exe")) {
   Uninstall-CNshell
 }
 
-Install-CNshell
-Assert-CNshellStarts
-New-Item -ItemType Directory -Force $DataDirectory | Out-Null
-[System.IO.File]::WriteAllText($Sentinel, "preserve across upgrade and uninstall")
+try {
+  Install-CNshell
+  Assert-CNshellStarts
+  New-Item -ItemType Directory -Force $DataDirectory | Out-Null
+  [System.IO.File]::WriteAllText($Sentinel, "preserve across upgrade and uninstall")
+  Set-TestCredential
+  Assert-UserData
+  Assert-TestCredential
 
-Install-CNshell
-if (-not (Test-Path -LiteralPath $Sentinel -PathType Leaf)) {
-  throw "CNshell in-place upgrade removed user data"
+  Install-CNshell
+  Assert-UserData
+  Assert-TestCredential
+  Assert-CNshellStarts
+
+  Uninstall-CNshell
+  Assert-UserData
+  Assert-TestCredential
+
+  Install-CNshell
+  Assert-UserData
+  Assert-TestCredential
+  Assert-CNshellStarts
+  Uninstall-CNshell
+  Assert-UserData
+  Assert-TestCredential
+
+  Write-Host "CNshell NSIS install, frontend startup, native close, upgrade, uninstall, SQLite, credential, and reinstall gates passed."
+} finally {
+  Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $Sentinel
+  Remove-TestCredential
 }
-Assert-CNshellStarts
-
-Uninstall-CNshell
-if (-not (Test-Path -LiteralPath $Sentinel -PathType Leaf)) {
-  throw "CNshell uninstall removed user data without explicit consent"
-}
-
-Install-CNshell
-if (-not (Test-Path -LiteralPath $Sentinel -PathType Leaf)) {
-  throw "CNshell reinstall could not see preserved user data"
-}
-Assert-CNshellStarts
-Uninstall-CNshell
-
-Remove-Item -Force -LiteralPath $Sentinel
-Write-Host "CNshell NSIS install, upgrade, uninstall, data preservation, and reinstall gates passed."

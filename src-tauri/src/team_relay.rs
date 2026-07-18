@@ -785,7 +785,12 @@ fn save_session(account: &str, token: &str, expires_at: &str) -> AppResult<()> {
     })
     .map_err(|error| AppError::Internal(error.to_string()))?;
     let result = keyring::Entry::new(KEYCHAIN_SERVICE, account)
-        .map_err(|error| AppError::Storage(format!("创建团队会话 Keychain 项失败：{error}")))?
+        .map_err(|error| {
+            AppError::Storage(format!(
+                "无法在{}中创建团队会话项：{error}",
+                crate::platform::credential_store_name()
+            ))
+        })?
         .set_password(&encoded)
         .map_err(|error| AppError::Storage(format!("保存团队会话失败：{error}")));
     encoded.zeroize();
@@ -793,8 +798,12 @@ fn save_session(account: &str, token: &str, expires_at: &str) -> AppResult<()> {
 }
 
 fn load_session(account: &str) -> AppResult<Option<SecretSession>> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, account)
-        .map_err(|error| AppError::Storage(format!("创建团队会话 Keychain 项失败：{error}")))?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, account).map_err(|error| {
+        AppError::Storage(format!(
+            "无法在{}中创建团队会话项：{error}",
+            crate::platform::credential_store_name()
+        ))
+    })?;
     let mut encoded = match entry.get_password() {
         Ok(value) => value,
         Err(keyring::Error::NoEntry) => return Ok(None),
@@ -802,15 +811,23 @@ fn load_session(account: &str) -> AppResult<Option<SecretSession>> {
             return Err(AppError::Storage(format!("读取团队会话失败：{error}")));
         }
     };
-    let result = serde_json::from_str(&encoded)
-        .map_err(|_| AppError::Storage("Keychain 中的团队会话格式无效".into()));
+    let result = serde_json::from_str(&encoded).map_err(|_| {
+        AppError::Storage(format!(
+            "{}中的团队会话格式无效",
+            crate::platform::credential_store_name()
+        ))
+    });
     encoded.zeroize();
     result.map(Some)
 }
 
 fn delete_session(account: &str) -> AppResult<()> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, account)
-        .map_err(|error| AppError::Storage(format!("创建团队会话 Keychain 项失败：{error}")))?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, account).map_err(|error| {
+        AppError::Storage(format!(
+            "无法在{}中创建团队会话项：{error}",
+            crate::platform::credential_store_name()
+        ))
+    })?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(AppError::Storage(format!("删除团队会话失败：{error}"))),
@@ -1779,9 +1796,10 @@ fn validate_snapshot(
             && device.signing_public_key == expected_local_keys.1
             && device.fingerprint == expected_local_keys.2
     }) {
-        return Err(AppError::PermissionDenied(
-            "本机设备已被撤销，或服务端公钥与本机 Keychain 身份不匹配".into(),
-        ));
+        return Err(AppError::PermissionDenied(format!(
+            "本机设备已被撤销，或服务端公钥与本机{}中的设备身份不匹配",
+            crate::platform::credential_store_name()
+        )));
     }
     Ok(())
 }

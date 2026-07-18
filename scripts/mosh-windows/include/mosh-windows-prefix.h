@@ -80,8 +80,8 @@ typedef unsigned long long rlim_t;
 #define RLIMIT_CORE 4
 
 extern "C" {
-ssize_t read(int fd, void *buffer, size_t length);
-ssize_t write(int fd, const void *buffer, size_t length);
+ssize_t cnshell_read(int fd, void *buffer, size_t length);
+ssize_t cnshell_write(int fd, const void *buffer, size_t length);
 int unsetenv(const char *name);
 int nanosleep(const struct timespec *request, struct timespec *remaining);
 int kill(int process, int signal_number);

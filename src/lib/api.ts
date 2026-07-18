@@ -298,7 +298,7 @@ export const api = {
   async closeTeamTerminalRoom(roomId:string):Promise<TeamTerminalRoom>{return invoke("team_terminal_room_close",{roomId});},
   async writeEncryptedSync(folder:string,passphrase:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write",{folder,passphrase,options});},
   async readEncryptedSync(folder:string,passphrase:string):Promise<SyncResult>{return invoke("sync_read",{folder,passphrase});},
-  async touchIdSyncStatus(folder:string):Promise<TouchIdSyncStatus>{return isTauri()?invoke("touch_id_sync_status",{folder}):{supported:false,saved:false,message:"Touch ID 需要运行 CNshell 桌面版"};},
+  async touchIdSyncStatus(folder:string):Promise<TouchIdSyncStatus>{return isTauri()?invoke("touch_id_sync_status",{folder}):{supported:false,saved:false,message:"系统生物识别需要运行 CNshell 桌面版"};},
   async saveTouchIdSyncKey(folder:string,passphrase:string):Promise<TouchIdSyncStatus>{return invoke("touch_id_sync_save",{folder,passphrase});},
   async deleteTouchIdSyncKey(folder:string):Promise<void>{return invoke("touch_id_sync_delete",{folder});},
   async writeEncryptedSyncWithTouchId(folder:string,options:SyncOptions):Promise<SyncResult>{return invoke("sync_write_touch_id",{folder,options});},

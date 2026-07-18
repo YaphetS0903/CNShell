@@ -96,6 +96,38 @@ function Expand-CheckedArchive([string]$Archive, [string]$Destination, [string]$
   }
 }
 
+function Replace-PinnedText([string]$Path, [string]$Before, [string]$After) {
+  $text = [System.IO.File]::ReadAllText($Path)
+  $first = $text.IndexOf($Before, [System.StringComparison]::Ordinal)
+  if ($first -lt 0) {
+    $patchedFirst = $text.IndexOf($After, [System.StringComparison]::Ordinal)
+    $patchedSecond = if ($patchedFirst -ge 0) {
+      $text.IndexOf(
+        $After,
+        $patchedFirst + $After.Length,
+        [System.StringComparison]::Ordinal
+      )
+    } else {
+      -1
+    }
+    if ($patchedFirst -ge 0 -and $patchedSecond -lt 0) {
+      return
+    }
+    throw "Pinned Mosh source no longer contains the expected text in $($Path): $Before"
+  }
+  $second = $text.IndexOf(
+    $Before,
+    $first + $Before.Length,
+    [System.StringComparison]::Ordinal
+  )
+  if ($second -ge 0) {
+    throw "Pinned Mosh source contains an ambiguous repeated patch target in $($Path): $Before"
+  }
+  $patched = $text.Remove($first, $Before.Length).Insert($first, $After)
+  $utf8 = New-Object System.Text.UTF8Encoding($false)
+  [System.IO.File]::WriteAllText($Path, $patched, $utf8)
+}
+
 function Build-Protobuf([string]$TargetArchitecture, [string]$Prefix, [bool]$BuildProtoc) {
   $library = Join-Path $Prefix "lib\libprotobuf.lib"
   $protoc = Join-Path $Prefix "bin\protoc.exe"
@@ -138,6 +170,19 @@ Get-CheckedFile `
 Expand-CheckedArchive $MoshArchive $MoshSource "src\network\network.cc"
 Expand-CheckedArchive $ProtobufArchive $ProtobufSource "cmake\CMakeLists.txt"
 
+$StmClient = Join-Path $MoshSource "src\frontend\stmclient.cc"
+$Swrite = Join-Path $MoshSource "src\util\swrite.cc"
+$TerminalOverlay = Join-Path $MoshSource "src\frontend\terminaloverlay.cc"
+$TerminalOverlayHeader = Join-Path $MoshSource "src\frontend\terminaloverlay.h"
+Replace-PinnedText $StmClient 'read( fd, buf, buf_size )' 'cnshell_read( fd, buf, buf_size )'
+Replace-PinnedText $Swrite 'write( fd, str + total_bytes_written,' 'cnshell_write( fd, str + total_bytes_written,'
+Replace-PinnedText $StmClient 'L"Nothing received from server on UDP port %s."' 'L"Nothing received from server on UDP port %hs."'
+Replace-PinnedText $StmClient 'L"Crypto exception: %s"' 'L"Crypto exception: %hs"'
+Replace-PinnedText $TerminalOverlayHeader 'L"%s"' 'L"%hs"'
+Replace-PinnedText $TerminalOverlay 'L"mosh: Last %s %s ago.%s"' 'L"mosh: Last %hs %hs ago.%hs"'
+Replace-PinnedText $TerminalOverlay 'L"mosh: %ls%s"' 'L"mosh: %ls%hs"'
+Replace-PinnedText $TerminalOverlay 'L"mosh: %ls (%s without %s.)%s"' 'L"mosh: %ls (%hs without %hs.)%hs"'
+
 foreach ($path in @(
   "CMakeLists.txt",
   "mosh-client-windows.cc",
@@ -148,8 +193,11 @@ foreach ($path in @(
   "locale-utils-windows.cc",
   "terminaldisplayinit-windows.cc",
   "include\config.h",
+  "include\err.h",
+  "include\mosh-windows-prefix.h",
   "include\select.h",
-  "include\mosh-windows-prefix.h"
+  "include\sys\socket.h",
+  "include\unistd.h"
 )) {
   if (-not (Test-Path -LiteralPath (Join-Path $PortSource $path) -PathType Leaf)) {
     throw "Mosh Windows port source is missing: $path"

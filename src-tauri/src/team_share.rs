@@ -177,7 +177,12 @@ pub(crate) fn save_private_key(device_id: &str, kind: &str, bytes: &[u8; 32]) ->
     let _access = keychain_access();
     let mut encoded = URL_SAFE_NO_PAD.encode(bytes);
     let result = keyring::Entry::new(KEYCHAIN_SERVICE, &key_account(device_id, kind))
-        .map_err(|error| AppError::Storage(format!("创建设备 Keychain 项失败：{error}")))?
+        .map_err(|error| {
+            AppError::Storage(format!(
+                "无法在{}中创建设备密钥项：{error}",
+                crate::platform::credential_store_name()
+            ))
+        })?
         .set_password(&encoded)
         .map_err(|error| AppError::Storage(format!("保存设备私钥失败：{error}")));
     encoded.zeroize();
@@ -187,16 +192,27 @@ pub(crate) fn save_private_key(device_id: &str, kind: &str, bytes: &[u8; 32]) ->
 pub(crate) fn load_private_key(device_id: &str, kind: &str) -> AppResult<[u8; 32]> {
     let _access = keychain_access();
     let mut value = keyring::Entry::new(KEYCHAIN_SERVICE, &key_account(device_id, kind))
-        .map_err(|error| AppError::Storage(format!("创建设备 Keychain 项失败：{error}")))?
+        .map_err(|error| {
+            AppError::Storage(format!(
+                "无法在{}中创建设备密钥项：{error}",
+                crate::platform::credential_store_name()
+            ))
+        })?
         .get_password()
         .map_err(|error| AppError::Unavailable(format!("读取本机设备私钥失败：{error}")))?;
-    let decoded = URL_SAFE_NO_PAD
-        .decode(&value)
-        .map_err(|_| AppError::Storage("Keychain 中的设备私钥编码无效".into()));
+    let decoded = URL_SAFE_NO_PAD.decode(&value).map_err(|_| {
+        AppError::Storage(format!(
+            "{}中的设备私钥编码无效",
+            crate::platform::credential_store_name()
+        ))
+    });
     value.zeroize();
-    decoded?
-        .try_into()
-        .map_err(|_| AppError::Storage("Keychain 中的设备私钥长度无效".into()))
+    decoded?.try_into().map_err(|_| {
+        AppError::Storage(format!(
+            "{}中的设备私钥长度无效",
+            crate::platform::credential_store_name()
+        ))
+    })
 }
 
 pub(crate) fn delete_private_keys(device_id: &str) {
@@ -670,7 +686,12 @@ pub async fn export_share(db: &Database, input: TeamShareExportInput) -> AppResu
     }
     let credential = if input.include_credential {
         ssh::load_credential(&profile.id)?
-            .ok_or_else(|| AppError::Unavailable("该连接没有可分享的 Keychain 凭据".into()))?
+            .ok_or_else(|| {
+                AppError::Unavailable(format!(
+                    "该连接在{}中没有可分享的凭据",
+                    crate::platform::credential_store_name()
+                ))
+            })?
             .into()
     } else {
         None

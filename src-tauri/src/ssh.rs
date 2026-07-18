@@ -280,7 +280,8 @@ pub fn delete_credential(connection_id: &str) -> AppResult<()> {
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
         Err(error) => Err(AppError::Storage(format!(
-            "Keychain 凭据清理失败（{}）：{error}",
+            "{}中的凭据清理失败（{}）：{error}",
+            crate::platform::credential_store_name(),
             credential_ref(connection_id)
         ))),
     }
@@ -532,8 +533,12 @@ pub fn authenticate(
     let secret = load_credential(&profile.id)?;
     match profile.auth_type.as_str() {
         "password" => {
-            let password =
-                secret.ok_or_else(|| AppError::Authentication("Keychain 中没有保存密码".into()))?;
+            let password = secret.ok_or_else(|| {
+                AppError::Authentication(format!(
+                    "{}中没有保存密码",
+                    crate::platform::credential_store_name()
+                ))
+            })?;
             connected
                 .session
                 .userauth_password(&profile.username, &password)

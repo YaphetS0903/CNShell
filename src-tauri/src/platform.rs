@@ -88,17 +88,17 @@ fn shortcut_modifier() -> &'static str {
 }
 
 #[cfg(target_os = "macos")]
-fn credential_store_name() -> &'static str {
+pub(crate) fn credential_store_name() -> &'static str {
     "macOS Keychain"
 }
 
 #[cfg(target_os = "windows")]
-fn credential_store_name() -> &'static str {
+pub(crate) fn credential_store_name() -> &'static str {
     "Windows 凭据管理器"
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn credential_store_name() -> &'static str {
+pub(crate) fn credential_store_name() -> &'static str {
     "系统凭据库"
 }
 
@@ -118,17 +118,17 @@ fn file_manager_name() -> &'static str {
 }
 
 #[cfg(target_os = "macos")]
-fn biometric_name() -> &'static str {
+pub(crate) fn biometric_name() -> &'static str {
     "Touch ID"
 }
 
 #[cfg(target_os = "windows")]
-fn biometric_name() -> &'static str {
+pub(crate) fn biometric_name() -> &'static str {
     "Windows Hello"
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn biometric_name() -> &'static str {
+pub(crate) fn biometric_name() -> &'static str {
     "系统生物识别"
 }
 
@@ -377,5 +377,17 @@ mod tests {
         assert!(!value.rdp.message.is_empty());
         assert!(!value.fido2.message.is_empty());
         assert!(!value.serial.message.is_empty());
+        #[cfg(target_os = "windows")]
+        {
+            assert_eq!(value.credential_store_name, "Windows 凭据管理器");
+            assert_eq!(value.biometric_name, "Windows Hello");
+            assert_eq!(value.shortcut_modifier, "Ctrl");
+        }
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(value.credential_store_name, "macOS Keychain");
+            assert_eq!(value.biometric_name, "Touch ID");
+            assert_eq!(value.shortcut_modifier, "⌘");
+        }
     }
 }

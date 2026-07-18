@@ -1951,7 +1951,12 @@ pub async fn team_terminal_room_close(
 pub async fn touch_id_sync_status(folder: String) -> AppResult<TouchIdSyncStatus> {
     tokio::task::spawn_blocking(move || crate::touch_id::status(&folder))
         .await
-        .map_err(|error| AppError::Internal(format!("Touch ID 状态任务失败：{error}")))?
+        .map_err(|error| {
+            AppError::Internal(format!(
+                "{}状态任务失败：{error}",
+                crate::platform::biometric_name()
+            ))
+        })?
 }
 
 #[tauri::command]
@@ -1964,14 +1969,24 @@ pub async fn touch_id_sync_save(
         crate::touch_id::save(&folder, passphrase.as_str())
     })
     .await
-    .map_err(|error| AppError::Internal(format!("Touch ID 保存任务失败：{error}")))?
+    .map_err(|error| {
+        AppError::Internal(format!(
+            "{}保存任务失败：{error}",
+            crate::platform::biometric_name()
+        ))
+    })?
 }
 
 #[tauri::command]
 pub async fn touch_id_sync_delete(folder: String) -> AppResult<()> {
     tokio::task::spawn_blocking(move || crate::touch_id::delete(&folder))
         .await
-        .map_err(|error| AppError::Internal(format!("Touch ID 删除任务失败：{error}")))?
+        .map_err(|error| {
+            AppError::Internal(format!(
+                "{}删除任务失败：{error}",
+                crate::platform::biometric_name()
+            ))
+        })?
 }
 
 #[tauri::command]
@@ -1983,7 +1998,12 @@ pub async fn sync_write_touch_id(
     let key_folder = folder.clone();
     let passphrase = tokio::task::spawn_blocking(move || crate::touch_id::load(&key_folder))
         .await
-        .map_err(|error| AppError::Internal(format!("Touch ID 解锁任务失败：{error}")))??;
+        .map_err(|error| {
+            AppError::Internal(format!(
+                "{}解锁任务失败：{error}",
+                crate::platform::biometric_name()
+            ))
+        })??;
     crate::backup::sync_write(&state.db, &folder, passphrase.as_str(), &options).await
 }
 
@@ -1995,7 +2015,12 @@ pub async fn sync_read_touch_id(
     let key_folder = folder.clone();
     let passphrase = tokio::task::spawn_blocking(move || crate::touch_id::load(&key_folder))
         .await
-        .map_err(|error| AppError::Internal(format!("Touch ID 解锁任务失败：{error}")))??;
+        .map_err(|error| {
+            AppError::Internal(format!(
+                "{}解锁任务失败：{error}",
+                crate::platform::biometric_name()
+            ))
+        })??;
     crate::backup::sync_read(&state.db, &folder, passphrase.as_str()).await
 }
 

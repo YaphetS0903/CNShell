@@ -37,6 +37,8 @@ add_executable(mosh-client
   "${MOSH_SRC}/terminal/terminalframebuffer.cc"
   "${MOSH_SRC}/terminal/terminalfunctions.cc"
   "${MOSH_SRC}/terminal/terminaluserinput.cc"
+  "${MOSH_SRC}/util/swrite.cc"
+  "${MOSH_SRC}/util/timestamp.cc"
   "${MOSH_PROTO_DIR}/hostinput.pb.cc"
   "${MOSH_PROTO_DIR}/transportinstruction.pb.cc"
   "${MOSH_PROTO_DIR}/userinput.pb.cc"

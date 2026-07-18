@@ -267,7 +267,7 @@ bool cnshell_console_size(unsigned short *columns, unsigned short *rows) {
   return true;
 }
 
-extern "C" ssize_t read(int fd, void *buffer, size_t length) {
+extern "C" ssize_t cnshell_read(int fd, void *buffer, size_t length) {
   if (fd != STDIN_FILENO || !buffer || length > MAXDWORD) { _set_errno(EINVAL); return -1; }
   HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
   DWORD received = 0;
@@ -280,7 +280,7 @@ extern "C" ssize_t read(int fd, void *buffer, size_t length) {
   return static_cast<ssize_t>(received);
 }
 
-extern "C" ssize_t write(int fd, const void *buffer, size_t length) {
+extern "C" ssize_t cnshell_write(int fd, const void *buffer, size_t length) {
   if ((fd != STDOUT_FILENO && fd != STDERR_FILENO) || !buffer || length > MAXDWORD) {
     _set_errno(EINVAL);
     return -1;

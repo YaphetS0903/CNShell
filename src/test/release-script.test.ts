@@ -213,6 +213,22 @@ describe("relay container smoke", () => {
     resolve("scripts/mosh-windows/mosh-windows-compat.cc"),
     "utf8",
   );
+  const windowsMoshCmake = readFileSync(
+    resolve("scripts/mosh-windows/CMakeLists.txt"),
+    "utf8",
+  );
+  const windowsMoshPrefix = readFileSync(
+    resolve("scripts/mosh-windows/include/mosh-windows-prefix.h"),
+    "utf8",
+  );
+  const windowsMoshSocket = readFileSync(
+    resolve("scripts/mosh-windows/include/sys/socket.h"),
+    "utf8",
+  );
+  const windowsMoshUnistd = readFileSync(
+    resolve("scripts/mosh-windows/include/unistd.h"),
+    "utf8",
+  );
   const desktopBuildScript = readFileSync(
     resolve("scripts/build-desktop.mjs"),
     "utf8",
@@ -331,8 +347,13 @@ describe("relay container smoke", () => {
     expect(windowsPackageWorkflow).toContain("test-windows-installer.ps1");
     expect(windowsPackageWorkflow).toContain("verify-windows-pe.ps1");
     expect(installerTest).toContain('if ($env:CI -ne "true")');
-    expect(installerTest).toContain("CNshell in-place upgrade removed user data");
-    expect(installerTest).toContain("CNshell uninstall removed user data without explicit consent");
+    expect(installerTest).toContain('Join-Path $DataDirectory "cnshell.sqlite"');
+    expect(installerTest).toContain("Installed CNshell did not start a WebView2 renderer");
+    expect(installerTest).toContain("did not accept a native window close request");
+    expect(installerTest).toContain("cmdkey.exe");
+    expect(installerTest).toContain("Assert-UserData");
+    expect(installerTest).toContain("Assert-TestCredential");
+    expect(installerTest).toContain("Remove-TestCredential");
     expect(installerTest).toContain("created a desktop shortcut without an explicit user choice");
     expect(installerTest).toContain("start menu shortcut was not created");
     expect(installerTest).toContain("Assert-CNshellStarts");
@@ -372,6 +393,21 @@ describe("relay container smoke", () => {
     expect(windowsMoshBuilder).not.toContain("MSYS2 build gate");
     expect(windowsMoshBuilder).toContain("Mosh ${MoshVersion}:");
     expect(windowsMoshBuilder).toContain("Protocol Buffers ${ProtobufVersion}:");
+    expect(windowsMoshBuilder).toContain("Replace-PinnedText");
+    expect(windowsMoshBuilder).toContain('L"Crypto exception: %hs"');
+    expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/swrite.cc"');
+    expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/timestamp.cc"');
+    expect(windowsMoshPrefix).toContain("#define __attribute(value)");
+    expect(windowsMoshPrefix).toContain("cnshell_read");
+    expect(windowsMoshPrefix).toContain("cnshell_write");
+    expect(windowsMoshBuilder).toContain("cnshell_read( fd, buf, buf_size )");
+    expect(windowsMoshBuilder).toContain(
+      "cnshell_write( fd, str + total_bytes_written,",
+    );
+    expect(windowsMoshUnistd).not.toContain("#define read");
+    expect(windowsMoshUnistd).not.toContain("#define write");
+    expect(windowsMoshSocket).not.toContain("struct cmsghdr {");
+    expect(windowsMoshSocket).toContain("#undef CMSG_FIRSTHDR");
     expect(windowsMoshCompat).toContain("WSADuplicateSocketW");
     expect(windowsMoshCompat).toContain("GetConsoleScreenBufferInfo");
     expect(desktopBuildScript).toContain('"mosh", "mosh-client.exe"');
