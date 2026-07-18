@@ -357,6 +357,8 @@ describe("relay container smoke", () => {
     expect(windowsKermitIo).toContain("MultiByteToWideChar");
     expect(windowsKermitCompat).toContain("#ifdef NOGETENV");
     expect(windowsKermitCompat).toContain("#define gptr ((char *)0)");
+    expect(windowsKermitCompat).toContain("#define __STDC__ 1");
+    expect(windowsKermitBuilder).toContain("RedirectStandardError");
     expect(windowsPackageWorkflow).toContain("npm run build:mosh");
     expect(windowsPackageWorkflow).toContain("mosh-client.exe --self-test");
     expect(windowsMoshBuilder).toContain(

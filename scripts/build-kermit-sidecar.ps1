@@ -121,8 +121,20 @@ $notice = @"
 $Built = Join-Path $Output "gkermit.exe"
 & (Join-Path $Root "scripts\verify-windows-pe.ps1") $Built $Architecture
 if ($Architecture -eq "x64") {
-  $help = & $Built -h 2>&1 | Out-String
-  if ($LASTEXITCODE -ne 0 -or $help -notmatch "G-Kermit 2\.01") {
+  $stdout = Join-Path $Work "gkermit-help.stdout"
+  $stderr = Join-Path $Work "gkermit-help.stderr"
+  Remove-Item -Force -ErrorAction SilentlyContinue $stdout, $stderr
+  $process = Start-Process `
+    -FilePath $Built `
+    -ArgumentList "-h" `
+    -NoNewWindow `
+    -Wait `
+    -PassThru `
+    -RedirectStandardOutput $stdout `
+    -RedirectStandardError $stderr
+  $help = "$(Get-Content -Raw -ErrorAction SilentlyContinue $stdout)`n$(Get-Content -Raw -ErrorAction SilentlyContinue $stderr)"
+  Remove-Item -Force -ErrorAction SilentlyContinue $stdout, $stderr
+  if ($process.ExitCode -ne 0 -or $help -notmatch "G-Kermit 2\.01") {
     throw "G-Kermit x64 runtime smoke failed"
   }
 }
