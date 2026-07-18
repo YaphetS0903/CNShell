@@ -370,6 +370,8 @@ describe("relay container smoke", () => {
     expect(windowsMoshBuilder).toContain("verify-windows-pe.ps1");
     expect(windowsMoshBuilder).not.toContain("has not completed");
     expect(windowsMoshBuilder).not.toContain("MSYS2 build gate");
+    expect(windowsMoshBuilder).toContain("Mosh ${MoshVersion}:");
+    expect(windowsMoshBuilder).toContain("Protocol Buffers ${ProtobufVersion}:");
     expect(windowsMoshCompat).toContain("WSADuplicateSocketW");
     expect(windowsMoshCompat).toContain("GetConsoleScreenBufferInfo");
     expect(desktopBuildScript).toContain('"mosh", "mosh-client.exe"');

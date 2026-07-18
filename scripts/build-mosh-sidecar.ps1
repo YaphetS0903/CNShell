@@ -226,8 +226,8 @@ Copy-Item -Force $PSCommandPath (Join-Path $WindowsPortDestination "build-mosh-s
 $Notice = @"
 # Mosh third-party notices
 
-- Mosh $MoshVersion: GPL-3.0-or-later. Corresponding source: source/mosh-$MoshVersion.tar.gz (SHA-256: $MoshSha256).
-- Protocol Buffers $ProtobufVersion: BSD-3-Clause. Source: source/protobuf-all-$ProtobufVersion.tar.gz (SHA-256: $ProtobufSha256).
+- Mosh ${MoshVersion}: GPL-3.0-or-later. Corresponding source: source/mosh-$MoshVersion.tar.gz (SHA-256: $MoshSha256).
+- Protocol Buffers ${ProtobufVersion}: BSD-3-Clause. Source: source/protobuf-all-$ProtobufVersion.tar.gz (SHA-256: $ProtobufSha256).
 - OpenSSL is statically built by pinned vcpkg commit $VcpkgCommit; its Apache-2.0 license is included.
 - CNshell's native WinSock/ConPTY adapter source is in source/windows-port/.
 - The helper does not require WSL, MSYS2, Homebrew, or an external Mosh client installation.
