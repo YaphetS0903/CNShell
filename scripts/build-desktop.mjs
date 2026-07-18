@@ -28,4 +28,12 @@ if (process.env.CNSHELL_SIDECARS_PREBUILT === "1") {
     run(process.execPath, ["scripts/build-sidecar.mjs", sidecar]);
   }
 }
-run(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "build"]);
+if (process.platform === "win32") {
+  const npmCli = process.env.npm_execpath;
+  if (!npmCli || !existsSync(npmCli)) {
+    throw new Error("npm_execpath is required for the Windows desktop build");
+  }
+  run(process.execPath, [npmCli, "run", "build"]);
+} else {
+  run("npm", ["run", "build"]);
+}

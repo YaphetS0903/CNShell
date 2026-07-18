@@ -373,6 +373,8 @@ describe("relay container smoke", () => {
     expect(windowsMoshCompat).toContain("WSADuplicateSocketW");
     expect(windowsMoshCompat).toContain("GetConsoleScreenBufferInfo");
     expect(desktopBuildScript).toContain('"mosh", "mosh-client.exe"');
+    expect(desktopBuildScript).toContain("process.env.npm_execpath");
+    expect(desktopBuildScript).not.toContain('"npm.cmd"');
   });
 
   it("assembles a protected four-platform draft release", () => {
