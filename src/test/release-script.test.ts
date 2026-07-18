@@ -209,6 +209,10 @@ describe("relay container smoke", () => {
     resolve("scripts/kermit-windows/gkermit-windows-io.c"),
     "utf8",
   );
+  const windowsKermitCompat = readFileSync(
+    resolve("scripts/kermit-windows/gkermit-windows-compat.h"),
+    "utf8",
+  );
   const dependabot = readFileSync(
     resolve(".github/dependabot.yml"),
     "utf8",
@@ -339,6 +343,8 @@ describe("relay container smoke", () => {
     expect(windowsKermitBuilder).not.toContain("has not completed");
     expect(windowsKermitIo).toContain("PeekNamedPipe");
     expect(windowsKermitIo).toContain("MultiByteToWideChar");
+    expect(windowsKermitCompat).toContain("#ifdef NOGETENV");
+    expect(windowsKermitCompat).toContain("#define gptr ((char *)0)");
   });
 
   it("assembles a protected four-platform draft release", () => {
