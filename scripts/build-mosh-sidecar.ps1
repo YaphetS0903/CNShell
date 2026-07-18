@@ -148,7 +148,8 @@ foreach ($path in @(
   "locale-utils-windows.cc",
   "terminaldisplayinit-windows.cc",
   "include\config.h",
-  "include\select.h"
+  "include\select.h",
+  "include\mosh-windows-prefix.h"
 )) {
   if (-not (Test-Path -LiteralPath (Join-Path $PortSource $path) -PathType Leaf)) {
     throw "Mosh Windows port source is missing: $path"

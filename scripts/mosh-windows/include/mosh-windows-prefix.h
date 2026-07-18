@@ -19,6 +19,9 @@ typedef int socklen_t;
 #ifndef __attribute__
 #define __attribute__(value)
 #endif
+#ifndef __attribute
+#define __attribute(value)
+#endif
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
