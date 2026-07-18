@@ -634,14 +634,14 @@ mod windows_hello {
     }
 
     pub fn delete(account: &str) -> AppResult<()> {
-        if let Ok(provider) = open_provider() {
-            if let Some(mut key) = open_key(&provider, account, false)? {
-                let status = unsafe { NCryptDeleteKey(key.0, 0) };
-                if !succeeded(status) {
-                    return Err(ncrypt_error("删除 Windows Hello 保护密钥", status));
-                }
-                key.0 = 0;
+        if let Ok(provider) = open_provider()
+            && let Some(mut key) = open_key(&provider, account, false)?
+        {
+            let status = unsafe { NCryptDeleteKey(key.0, 0) };
+            if !succeeded(status) {
+                return Err(ncrypt_error("删除 Windows Hello 保护密钥", status));
             }
+            key.0 = 0;
         }
         match entry(account)?.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),

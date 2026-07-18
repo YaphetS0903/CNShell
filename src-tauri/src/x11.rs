@@ -3,6 +3,8 @@ use rand::{RngCore, rngs::OsRng};
 use ssh2::{Channel, Session, X11ChannelReceiver};
 #[cfg(unix)]
 use std::os::unix::net::UnixStream;
+#[cfg(target_os = "windows")]
+use std::path::Path;
 use std::{
     io::{ErrorKind, Read, Write},
     net::{IpAddr, SocketAddr, TcpStream},
@@ -401,10 +403,10 @@ fn xauth_path() -> Option<PathBuf> {
             candidates.push(PathBuf::from(&root).join("VcXsrv").join("xauth.exe"));
             candidates.push(PathBuf::from(&root).join("Xming").join("xauth.exe"));
         }
-        return candidates
+        candidates
             .into_iter()
             .find(|path| path.is_file())
-            .or_else(|| which::which("xauth.exe").ok());
+            .or_else(|| which::which("xauth.exe").ok())
     }
     #[cfg(not(target_os = "windows"))]
     ["/opt/X11/bin/xauth", "/usr/X11/bin/xauth"]
@@ -415,7 +417,7 @@ fn xauth_path() -> Option<PathBuf> {
 }
 
 #[cfg(target_os = "windows")]
-fn configure_xauth_environment(command: &mut Command, executable: &PathBuf, display: &str) {
+fn configure_xauth_environment(command: &mut Command, executable: &Path, display: &str) {
     let system_root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
     let mut paths = vec![
         executable

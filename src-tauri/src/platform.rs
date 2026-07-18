@@ -177,7 +177,7 @@ pub fn ssh_agent_available() -> bool {
         .collect::<Vec<_>>();
     unsafe {
         WaitNamedPipeW(pipe.as_ptr(), 0) != 0
-            || !FindWindowA(b"Pageant\0".as_ptr(), b"Pageant\0".as_ptr()).is_null()
+            || !FindWindowA(c"Pageant".as_ptr().cast(), c"Pageant".as_ptr().cast()).is_null()
     }
 }
 

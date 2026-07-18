@@ -88,6 +88,23 @@ fn bundled_helper_path_for(executable: &Path) -> Option<PathBuf> {
         .map(|directory| directory.join("freerdp").join("sdl-freerdp"))
 }
 
+#[cfg(target_os = "macos")]
+fn system_helper_path() -> Option<PathBuf> {
+    ["/opt/homebrew/bin", "/usr/local/bin"]
+        .into_iter()
+        .flat_map(|directory| {
+            HELPER_NAMES
+                .into_iter()
+                .map(move |name| Path::new(directory).join(name))
+        })
+        .find(|path| path.is_file())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_helper_path() -> Option<PathBuf> {
+    None
+}
+
 fn helper_path() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
@@ -98,23 +115,7 @@ fn helper_path() -> Option<PathBuf> {
                 .map(PathBuf::from)
                 .filter(|path| path.is_file())
         })
-        .or_else(|| {
-            #[cfg(target_os = "macos")]
-            {
-                ["/opt/homebrew/bin", "/usr/local/bin"]
-                    .into_iter()
-                    .flat_map(|directory| {
-                        HELPER_NAMES
-                            .into_iter()
-                            .map(move |name| Path::new(directory).join(name))
-                    })
-                    .find(|path| path.is_file())
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                None
-            }
-        })
+        .or_else(system_helper_path)
         .or_else(|| {
             let name = if cfg!(target_os = "windows") {
                 "sdl-freerdp.exe"

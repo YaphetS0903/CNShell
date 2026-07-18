@@ -274,12 +274,15 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    fn spawn_conpty_fixture() -> (
+    type ConptyFixture = (
         Box<dyn Child + Send + Sync>,
         Box<dyn MasterPty + Send>,
         Box<dyn Write + Send>,
         std::sync::mpsc::Receiver<Vec<u8>>,
-    ) {
+    );
+
+    #[cfg(target_os = "windows")]
+    fn spawn_conpty_fixture() -> ConptyFixture {
         let pty = native_pty_system()
             .openpty(PtySize {
                 rows: 24,
