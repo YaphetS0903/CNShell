@@ -1,0 +1,4 @@
+#ifndef CNSHELL_MOSH_WINDOWS_VERSION_H
+#define CNSHELL_MOSH_WINDOWS_VERSION_H
+#define BUILD_VERSION "mosh 1.4.0 Windows/CNshell"
+#endif

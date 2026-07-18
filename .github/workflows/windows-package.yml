@@ -10,7 +10,9 @@ on:
       - "scripts/build-desktop.mjs"
       - "scripts/build-sidecar.mjs"
       - "scripts/build-freerdp-sidecar.ps1"
+      - "scripts/build-mosh-sidecar.ps1"
       - "scripts/build-kermit-sidecar.ps1"
+      - "scripts/mosh-windows/**"
       - "scripts/kermit-windows/**"
       - "scripts/patches/**"
       - "scripts/test-windows-installer.ps1"
@@ -65,7 +67,11 @@ jobs:
             src-tauri/target/freerdp-sidecar-windows/downloads
             src-tauri/target/freerdp-sidecar-windows/sources
             src-tauri/target/freerdp-sidecar-windows/vcpkg
-          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-static-v2
+            src-tauri/target/mosh-sidecar-windows/downloads
+            src-tauri/target/mosh-sidecar-windows/sources
+            src-tauri/target/mosh-sidecar-windows/protobuf-${{ matrix.architecture }}
+            src-tauri/target/mosh-sidecar-windows/protobuf-host-x64
+          key: windows-sidecars-v3-freerdp-3.28.0-mosh-1.4.0-protobuf-21.12-vcpkg-908da3a-${{ matrix.architecture }}
       - run: npm ci
       - name: Parse Windows packaging scripts
         shell: powershell
@@ -73,6 +79,7 @@ jobs:
           $failed = $false
           foreach ($path in @(
             "scripts/build-freerdp-sidecar.ps1",
+            "scripts/build-mosh-sidecar.ps1",
             "scripts/build-kermit-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
             "scripts/verify-windows-pe.ps1"
@@ -97,6 +104,19 @@ jobs:
         if: matrix.runtime
         shell: powershell
         run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} kermit::tests::bundled_helpers_interoperate_in_external_protocol_mode
+      - name: Build pinned native Windows Mosh
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:mosh
+      - name: Verify Mosh architecture and x64 encrypted UDP loopback
+        shell: powershell
+        run: |
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mosh/mosh-client.exe ${{ matrix.architecture }}
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & src-tauri/resources/mosh/mosh-client.exe --self-test
+            if ($LASTEXITCODE -ne 0) { throw "Mosh x64 encrypted UDP loopback failed" }
+          }
       - name: Build pinned Windows FreeRDP
         shell: powershell
         env:

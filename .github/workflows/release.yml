@@ -138,7 +138,11 @@ jobs:
             src-tauri/target/freerdp-sidecar-windows/downloads
             src-tauri/target/freerdp-sidecar-windows/sources
             src-tauri/target/freerdp-sidecar-windows/vcpkg
-          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-static-v2
+            src-tauri/target/mosh-sidecar-windows/downloads
+            src-tauri/target/mosh-sidecar-windows/sources
+            src-tauri/target/mosh-sidecar-windows/protobuf-${{ matrix.architecture }}
+            src-tauri/target/mosh-sidecar-windows/protobuf-host-x64
+          key: windows-sidecars-v3-freerdp-3.28.0-mosh-1.4.0-protobuf-21.12-vcpkg-908da3a-${{ matrix.architecture }}
       - run: npm ci
       - name: Prepare public updater configuration
         shell: pwsh
@@ -165,6 +169,11 @@ jobs:
         env:
           CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
         run: npm run build:kermit
+      - name: Build pinned native Windows Mosh
+        shell: pwsh
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:mosh
       - name: Verify G-Kermit x64 interoperability
         if: matrix.runtime
         shell: pwsh
@@ -176,6 +185,14 @@ jobs:
           if ("${{ matrix.runtime }}" -eq "true") {
             & src-tauri/resources/freerdp/sdl-freerdp.exe /version
             if ($LASTEXITCODE -ne 0) { throw "FreeRDP x64 runtime smoke failed" }
+          }
+      - name: Verify Mosh architecture and x64 encrypted UDP loopback
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mosh/mosh-client.exe ${{ matrix.architecture }}
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & src-tauri/resources/mosh/mosh-client.exe --self-test
+            if ($LASTEXITCODE -ne 0) { throw "Mosh x64 encrypted UDP loopback failed" }
           }
       - name: Build NSIS updater artifacts
         shell: pwsh
@@ -216,6 +233,12 @@ jobs:
           Copy-Item $signature "$stagedArchive.sig"
           if ("${{ matrix.runtime }}" -eq "true") {
             Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
+            Copy-Item src-tauri/resources/mosh/source/mosh-1.4.0.tar.gz $output
+            Copy-Item src-tauri/resources/mosh/source/protobuf-all-21.12.tar.gz $output
+            Compress-Archive -CompressionLevel Optimal -Path `
+              scripts/mosh-windows, `
+              scripts/build-mosh-sidecar.ps1 `
+              -DestinationPath (Join-Path $output "mosh-windows-port-source.zip")
           }
       - name: Remove Windows release configuration
         if: always()
@@ -319,6 +342,15 @@ jobs:
             scripts/kermit-windows, `
             scripts/build-kermit-sidecar.ps1 `
             -DestinationPath (Join-Path $output "gkermit-windows-port-source.zip")
+          foreach ($name in @(
+            "mosh-1.4.0.tar.gz",
+            "protobuf-all-21.12.tar.gz",
+            "mosh-windows-port-source.zip"
+          )) {
+            $source = Get-Item "release-input/$name"
+            if ($source.Length -eq 0) { throw "Mosh corresponding source artifact is empty: $name" }
+            Copy-Item $source.FullName $output
+          }
           $base = [Uri]$env:UPDATER_DOWNLOAD_BASE_URL
           if ($base.Scheme -ne "https" -or -not [string]::IsNullOrEmpty($base.UserInfo) -or -not [string]::IsNullOrEmpty($base.Fragment)) {
             throw "UPDATER_DOWNLOAD_BASE_URL must be a credential-free HTTPS URL"

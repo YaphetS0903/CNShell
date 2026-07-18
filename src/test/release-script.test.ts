@@ -205,6 +205,18 @@ describe("relay container smoke", () => {
     resolve("scripts/build-kermit-sidecar.ps1"),
     "utf8",
   );
+  const windowsMoshBuilder = readFileSync(
+    resolve("scripts/build-mosh-sidecar.ps1"),
+    "utf8",
+  );
+  const windowsMoshCompat = readFileSync(
+    resolve("scripts/mosh-windows/mosh-windows-compat.cc"),
+    "utf8",
+  );
+  const desktopBuildScript = readFileSync(
+    resolve("scripts/build-desktop.mjs"),
+    "utf8",
+  );
   const windowsKermitIo = readFileSync(
     resolve("scripts/kermit-windows/gkermit-windows-io.c"),
     "utf8",
@@ -345,6 +357,20 @@ describe("relay container smoke", () => {
     expect(windowsKermitIo).toContain("MultiByteToWideChar");
     expect(windowsKermitCompat).toContain("#ifdef NOGETENV");
     expect(windowsKermitCompat).toContain("#define gptr ((char *)0)");
+    expect(windowsPackageWorkflow).toContain("npm run build:mosh");
+    expect(windowsPackageWorkflow).toContain("mosh-client.exe --self-test");
+    expect(windowsMoshBuilder).toContain(
+      "872e4b134e5df29c8933dff12350785054d2fd2839b5ae6b5587b14db1465ddd",
+    );
+    expect(windowsMoshBuilder).toContain(
+      "2c6a36c7b5a55accae063667ef3c55f2642e67476d96d355ff0acb13dbb47f09",
+    );
+    expect(windowsMoshBuilder).toContain("verify-windows-pe.ps1");
+    expect(windowsMoshBuilder).not.toContain("has not completed");
+    expect(windowsMoshBuilder).not.toContain("MSYS2 build gate");
+    expect(windowsMoshCompat).toContain("WSADuplicateSocketW");
+    expect(windowsMoshCompat).toContain("GetConsoleScreenBufferInfo");
+    expect(desktopBuildScript).toContain('"mosh", "mosh-client.exe"');
   });
 
   it("assembles a protected four-platform draft release", () => {
@@ -354,6 +380,9 @@ describe("relay container smoke", () => {
     expect(releaseWorkflow).toContain("windows-aarch64");
     expect(releaseWorkflow).toContain("SHA256SUMS.txt");
     expect(releaseWorkflow).toContain("gkermit-windows-port-source.zip");
+    expect(releaseWorkflow).toContain("mosh-windows-port-source.zip");
+    expect(releaseWorkflow).toContain("mosh-1.4.0.tar.gz");
+    expect(releaseWorkflow).toContain("protobuf-all-21.12.tar.gz");
     expect(releaseWorkflow).toContain("gh release create");
     expect(releaseWorkflow).toContain("--draft");
     expect(releaseWorkflow).toContain("contents: write");

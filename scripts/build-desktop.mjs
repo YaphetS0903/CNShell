@@ -16,6 +16,7 @@ if (process.env.CNSHELL_SIDECARS_PREBUILT === "1") {
   }
   for (const helper of [
     resolve("src-tauri", "resources", "freerdp", "sdl-freerdp.exe"),
+    resolve("src-tauri", "resources", "mosh", "mosh-client.exe"),
     resolve("src-tauri", "resources", "kermit", "gkermit.exe"),
   ]) {
     if (!existsSync(helper) || !statSync(helper).isFile() || statSync(helper).size === 0) {
