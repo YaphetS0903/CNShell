@@ -321,9 +321,14 @@ mod tests {
     }
 
     #[cfg(target_os = "windows")]
-    fn expect_output(receiver: &std::sync::mpsc::Receiver<Vec<u8>>, marker: &str) {
+    fn expect_output(
+        receiver: &std::sync::mpsc::Receiver<Vec<u8>>,
+        writer: &mut (dyn Write + Send),
+        marker: &str,
+    ) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         let mut output = Vec::new();
+        let mut cursor_position_reported = false;
         while std::time::Instant::now() < deadline {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
             match receiver.recv_timeout(remaining) {
@@ -333,6 +338,17 @@ mod tests {
                         output.len() <= 1024 * 1024,
                         "ConPTY fixture output is unbounded"
                     );
+                    if !cursor_position_reported
+                        && output.windows(4).any(|window| window == b"\x1b[6n")
+                    {
+                        writer
+                            .write_all(b"\x1b[1;1R")
+                            .expect("ConPTY should accept a cursor position report");
+                        writer
+                            .flush()
+                            .expect("ConPTY cursor position report should flush");
+                        cursor_position_reported = true;
+                    }
                     if String::from_utf8_lossy(&output).contains(marker) {
                         return;
                     }
@@ -363,7 +379,7 @@ mod tests {
             .write_all(b"echo CNSHELL_CONPTY_FIRST\r\n")
             .expect("ConPTY should accept input");
         first_writer.flush().expect("ConPTY input should flush");
-        expect_output(&first_output, "CNSHELL_CONPTY_FIRST");
+        expect_output(&first_output, first_writer.as_mut(), "CNSHELL_CONPTY_FIRST");
         first_child.kill().expect("ConPTY child should close");
         first_child.wait().expect("closed ConPTY child should reap");
         drop(first_writer);
@@ -377,7 +393,11 @@ mod tests {
         second_writer
             .flush()
             .expect("reopened ConPTY input should flush");
-        expect_output(&second_output, "CNSHELL_CONPTY_REOPENED");
+        expect_output(
+            &second_output,
+            second_writer.as_mut(),
+            "CNSHELL_CONPTY_REOPENED",
+        );
         second_child
             .kill()
             .expect("reopened ConPTY child should close");

@@ -35,6 +35,46 @@ function Get-CheckedFile([string]$Url, [string]$Path, [string]$Sha256) {
   if ($actual -ne $Sha256) { throw "Checksum mismatch for $Path ($actual)" }
 }
 
+function Get-VisualStudioGenerator([string]$TargetArchitecture) {
+  $candidates = @()
+  $onPath = Get-Command vswhere.exe -ErrorAction SilentlyContinue
+  if ($onPath) { $candidates += $onPath.Source }
+  if (${env:ProgramFiles(x86)}) {
+    $candidates += Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+  }
+  $vswhere = $candidates |
+    Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+    Select-Object -First 1
+  if (-not $vswhere) {
+    throw "vswhere.exe is required to locate the installed MSVC toolchain"
+  }
+
+  $component = if ($TargetArchitecture -eq "arm64") {
+    "Microsoft.VisualStudio.Component.VC.Tools.ARM64"
+  } else {
+    "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+  }
+  $installationVersion = @(& $vswhere `
+    -latest `
+    -products * `
+    -requires $component `
+    -property installationVersion) |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -First 1
+  if ($LASTEXITCODE -ne 0 -or -not $installationVersion) {
+    throw "No Visual Studio installation contains the required $component toolchain"
+  }
+
+  $major = [int]($installationVersion.Split('.')[0])
+  $cmakeHelp = & cmake.exe --help 2>&1 | Out-String
+  if ($LASTEXITCODE -ne 0) { throw "Unable to inspect CMake generators" }
+  $match = [regex]::Match($cmakeHelp, "Visual Studio $major \d{4}")
+  if (-not $match.Success) {
+    throw "CMake does not support the installed Visual Studio $major toolchain"
+  }
+  return $match.Value
+}
+
 Get-CheckedFile `
   "https://github.com/FreeRDP/FreeRDP/archive/refs/tags/$FreeRdpVersion.tar.gz" `
   $Archive `
@@ -73,8 +113,10 @@ if ($LASTEXITCODE -ne 0) { throw "Unable to build pinned FreeRDP dependencies" }
 
 Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $Build
 $Toolchain = Join-Path $Vcpkg "scripts\buildsystems\vcpkg.cmake"
+$Generator = Get-VisualStudioGenerator $Architecture
+Write-Host "Configuring FreeRDP with $Generator for $Architecture"
 & cmake.exe -S $Source -B $Build `
-  -G "Visual Studio 17 2022" `
+  -G $Generator `
   -A $Architecture `
   "-DCMAKE_TOOLCHAIN_FILE=$Toolchain" `
   "-DVCPKG_TARGET_TRIPLET=$Triplet" `

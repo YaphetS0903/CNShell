@@ -1,4 +1,4 @@
-name: Signed Release Candidate
+name: Signed Cross-platform Release Candidate
 
 on:
   workflow_dispatch:
@@ -7,7 +7,8 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  macos:
+    name: macOS universal signed candidate
     runs-on: macos-15
     timeout-minutes: 90
     environment: release
@@ -89,7 +90,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: success()
         with:
-          name: cnshell-signed-candidate
+          name: cnshell-macos-release-candidate
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
@@ -97,3 +98,250 @@ jobs:
             src-tauri/target/universal-apple-darwin/release/bundle/latest.json
           if-no-files-found: error
           retention-days: 14
+
+  windows:
+    name: Windows ${{ matrix.label }} signed updater candidate
+    runs-on: windows-2025
+    timeout-minutes: 180
+    environment: release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: x64
+            architecture: x64
+            target: x86_64-pc-windows-msvc
+            runtime: true
+          - label: ARM64 Preview
+            architecture: arm64
+            target: aarch64-pc-windows-msvc
+            runtime: false
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: 1.96.0
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: src-tauri
+          key: windows-release-${{ matrix.architecture }}
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            src-tauri/target/freerdp-sidecar-windows/downloads
+            src-tauri/target/freerdp-sidecar-windows/sources
+            src-tauri/target/freerdp-sidecar-windows/vcpkg
+          key: freerdp-3.28.0-vcpkg-908da3a-${{ matrix.architecture }}-v1
+      - run: npm ci
+      - name: Prepare public updater configuration
+        shell: pwsh
+        env:
+          TAURI_RELEASE_CONFIG: ${{ secrets.TAURI_RELEASE_CONFIG }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_RELEASE_CONFIG)) {
+            throw "TAURI_RELEASE_CONFIG is missing"
+          }
+          if ($env:TAURI_RELEASE_CONFIG -match 'REPLACE_|\.example') {
+            throw "TAURI_RELEASE_CONFIG still contains placeholders"
+          }
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Resolve-Path "src-tauri") "tauri.release.json"),
+            $env:TAURI_RELEASE_CONFIG
+          )
+      - name: Build pinned Windows FreeRDP
+        shell: pwsh
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: npm run build:freerdp
+      - name: Verify FreeRDP architecture and x64 runtime
+        shell: pwsh
+        run: |
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/freerdp/sdl-freerdp.exe ${{ matrix.architecture }}
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & src-tauri/resources/freerdp/sdl-freerdp.exe /version
+            if ($LASTEXITCODE -ne 0) { throw "FreeRDP x64 runtime smoke failed" }
+          }
+      - name: Build NSIS updater artifacts
+        shell: pwsh
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+          CNSHELL_SIDECARS_PREBUILT: "1"
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --config src-tauri/tauri.release.json --target ${{ matrix.target }} --bundles nsis
+      - name: Verify and stage Windows candidate
+        id: candidate
+        shell: pwsh
+        run: |
+          $target = "${{ matrix.target }}"
+          $architecture = "${{ matrix.architecture }}"
+          $app = "src-tauri/target/$target/release/cnshell.exe"
+          ./scripts/verify-windows-pe.ps1 $app $architecture
+          $bundle = "src-tauri/target/$target/release/bundle/nsis"
+          $installers = @(Get-ChildItem $bundle -Filter "*-setup.exe" -File)
+          $archives = @(Get-ChildItem $bundle -Filter "*.nsis.zip" -File)
+          if ($installers.Count -ne 1 -or $archives.Count -ne 1) {
+            throw "Expected one NSIS installer and one updater archive"
+          }
+          $signature = "$($archives[0].FullName).sig"
+          if (-not (Test-Path -LiteralPath $signature -PathType Leaf)) {
+            throw "Windows updater signature is missing"
+          }
+          if ("${{ matrix.runtime }}" -eq "true") {
+            & $app --verify-updater-signature $archives[0].FullName $signature src-tauri/tauri.release.json
+            if ($LASTEXITCODE -ne 0) { throw "Windows updater signature verification failed" }
+            ./scripts/test-windows-installer.ps1 $installers[0].FullName
+          }
+          $version = node -p "require('./package.json').version"
+          $output = New-Item -ItemType Directory -Force "release-output"
+          Copy-Item $installers[0].FullName (Join-Path $output "CNshell_${version}_${architecture}-setup.exe")
+          $stagedArchive = Join-Path $output "CNshell_${version}_${architecture}.nsis.zip"
+          Copy-Item $archives[0].FullName $stagedArchive
+          Copy-Item $signature "$stagedArchive.sig"
+          if ("${{ matrix.runtime }}" -eq "true") {
+            Copy-Item $app (Join-Path $output "cnshell-windows-x64-verifier.exe")
+          }
+      - name: Remove Windows release configuration
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -Force -ErrorAction SilentlyContinue src-tauri/tauri.release.json
+          if (Test-Path -LiteralPath src-tauri/tauri.release.json) {
+            throw "Windows release configuration cleanup failed"
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: success()
+        with:
+          name: cnshell-windows-${{ matrix.architecture }}-release-candidate
+          path: release-output/*
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Assemble four-platform Draft Release
+    needs: [macos, windows]
+    runs-on: windows-2025
+    timeout-minutes: 20
+    environment: release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 20.20.2
+          cache: npm
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: cnshell-*-release-candidate
+          path: release-input
+          merge-multiple: true
+      - run: npm ci
+      - name: Verify signatures and assemble release files
+        id: assemble
+        shell: pwsh
+        env:
+          TAURI_RELEASE_CONFIG: ${{ secrets.TAURI_RELEASE_CONFIG }}
+          UPDATER_DOWNLOAD_BASE_URL: ${{ vars.UPDATER_DOWNLOAD_BASE_URL }}
+        run: |
+          $version = node -p "require('./package.json').version"
+          $tag = "v$version"
+          $output = New-Item -ItemType Directory -Force "release-output"
+          $macArchives = @(Get-ChildItem release-input -Recurse -Filter "*.app.tar.gz" -File)
+          $macSignatures = @(Get-ChildItem release-input -Recurse -Filter "*.app.tar.gz.sig" -File)
+          $dmgs = @(Get-ChildItem release-input -Recurse -Filter "*.dmg" -File)
+          if ($macArchives.Count -ne 1 -or $macSignatures.Count -ne 1 -or $dmgs.Count -ne 1) {
+            throw "macOS release artifacts are incomplete or ambiguous"
+          }
+          $windowsX64 = Get-Item "release-input/CNshell_${version}_x64.nsis.zip"
+          $windowsArm64 = Get-Item "release-input/CNshell_${version}_arm64.nsis.zip"
+          $verifier = Get-Item "release-input/cnshell-windows-x64-verifier.exe"
+          foreach ($path in @(
+            $macArchives[0].FullName,
+            $macSignatures[0].FullName,
+            $dmgs[0].FullName,
+            $windowsX64.FullName,
+            "$($windowsX64.FullName).sig",
+            $windowsArm64.FullName,
+            "$($windowsArm64.FullName).sig",
+            $verifier.FullName,
+            "release-input/CNshell_${version}_x64-setup.exe",
+            "release-input/CNshell_${version}_arm64-setup.exe"
+          )) {
+            if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or (Get-Item $path).Length -eq 0) {
+              throw "Release artifact is missing or empty: $path"
+            }
+          }
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Resolve-Path "src-tauri") "tauri.release.json"),
+            $env:TAURI_RELEASE_CONFIG
+          )
+          foreach ($archive in @($macArchives[0].FullName, $windowsX64.FullName, $windowsArm64.FullName)) {
+            & $verifier.FullName --verify-updater-signature $archive "$archive.sig" src-tauri/tauri.release.json
+            if ($LASTEXITCODE -ne 0) { throw "Cross-platform updater verification failed: $archive" }
+          }
+          Remove-Item -Force src-tauri/tauri.release.json
+          Copy-Item $dmgs[0].FullName $output
+          Copy-Item $macArchives[0].FullName $output
+          Copy-Item $macSignatures[0].FullName $output
+          foreach ($name in @(
+            "CNshell_${version}_x64-setup.exe",
+            "CNshell_${version}_arm64-setup.exe",
+            "CNshell_${version}_x64.nsis.zip",
+            "CNshell_${version}_x64.nsis.zip.sig",
+            "CNshell_${version}_arm64.nsis.zip",
+            "CNshell_${version}_arm64.nsis.zip.sig"
+          )) {
+            Copy-Item "release-input/$name" $output
+          }
+          Copy-Item docs/THIRD_PARTY_NOTICES.md (Join-Path $output "THIRD_PARTY_NOTICES.md")
+          Copy-Item docs/RELEASE.md (Join-Path $output "RELEASE.md")
+          Copy-Item src-tauri/resources/kermit/source/gku201.tar.gz $output
+          $base = [Uri]$env:UPDATER_DOWNLOAD_BASE_URL
+          if ($base.Scheme -ne "https" -or -not [string]::IsNullOrEmpty($base.UserInfo) -or -not [string]::IsNullOrEmpty($base.Fragment)) {
+            throw "UPDATER_DOWNLOAD_BASE_URL must be a credential-free HTTPS URL"
+          }
+          $releaseBase = "$($env:UPDATER_DOWNLOAD_BASE_URL.TrimEnd('/'))/$tag"
+          $macArchive = Get-Item (Join-Path $output $macArchives[0].Name)
+          $x64Archive = Get-Item (Join-Path $output "CNshell_${version}_x64.nsis.zip")
+          $arm64Archive = Get-Item (Join-Path $output "CNshell_${version}_arm64.nsis.zip")
+          & node scripts/generate-updater-manifest.mjs `
+            --platform darwin-aarch64 $macArchive.FullName "$($macArchive.FullName).sig" "$releaseBase/$($macArchive.Name)" `
+            --platform darwin-x86_64 $macArchive.FullName "$($macArchive.FullName).sig" "$releaseBase/$($macArchive.Name)" `
+            --platform windows-x86_64 $x64Archive.FullName "$($x64Archive.FullName).sig" "$releaseBase/$($x64Archive.Name)" `
+            --platform windows-aarch64 $arm64Archive.FullName "$($arm64Archive.FullName).sig" "$releaseBase/$($arm64Archive.Name)" `
+            --output (Join-Path $output "latest.json")
+          if ($LASTEXITCODE -ne 0) { throw "Four-platform updater manifest generation failed" }
+          $hashLines = Get-ChildItem $output -File |
+            Sort-Object Name |
+            ForEach-Object { "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $_.Name }
+          [System.IO.File]::WriteAllLines((Join-Path $output "SHA256SUMS.txt"), $hashLines)
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+      - name: Create or update protected Draft Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ steps.assemble.outputs.tag }}"
+          $existing = $null
+          gh release view $tag --json isDraft --jq .isDraft 2>$null | Tee-Object -Variable existing | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            if (($existing -join "").Trim() -ne "true") {
+              throw "Refusing to overwrite an existing public release: $tag"
+            }
+            $files = @(Get-ChildItem release-output -File | ForEach-Object { $_.FullName })
+            gh release upload $tag @files --clobber
+          } else {
+            $files = @(Get-ChildItem release-output -File | ForEach-Object { $_.FullName })
+            gh release create $tag @files --draft --target $env:GITHUB_SHA --title "CNshell $tag" --generate-notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Draft Release publication failed" }

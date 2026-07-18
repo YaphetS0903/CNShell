@@ -197,6 +197,10 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/windows-package.yml"),
     "utf8",
   );
+  const windowsFreeRdpBuilder = readFileSync(
+    resolve("scripts/build-freerdp-sidecar.ps1"),
+    "utf8",
+  );
   const dependabot = readFileSync(
     resolve(".github/dependabot.yml"),
     "utf8",
@@ -272,7 +276,9 @@ describe("relay container smoke", () => {
     expect(workflow.match(/persist-credentials: false/g)).toHaveLength(
       workflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
-    expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(1);
+    expect(releaseWorkflow.match(/persist-credentials: false/g)).toHaveLength(
+      releaseWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
+    );
     expect(windowsPackageWorkflow.match(/persist-credentials: false/g)).toHaveLength(
       windowsPackageWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
@@ -308,6 +314,21 @@ describe("relay container smoke", () => {
     expect(installerTest).toContain("Assert-CNshellStarts");
     expect(peVerifier).toContain("0x8664");
     expect(peVerifier).toContain("0xAA64");
+    expect(windowsFreeRdpBuilder).toContain("Get-VisualStudioGenerator");
+    expect(windowsFreeRdpBuilder).toContain("vswhere.exe");
+    expect(windowsFreeRdpBuilder).not.toContain('-G "Visual Studio 17 2022"');
+  });
+
+  it("assembles a protected four-platform draft release", () => {
+    expect(releaseWorkflow).toContain("darwin-aarch64");
+    expect(releaseWorkflow).toContain("darwin-x86_64");
+    expect(releaseWorkflow).toContain("windows-x86_64");
+    expect(releaseWorkflow).toContain("windows-aarch64");
+    expect(releaseWorkflow).toContain("SHA256SUMS.txt");
+    expect(releaseWorkflow).toContain("gh release create");
+    expect(releaseWorkflow).toContain("--draft");
+    expect(releaseWorkflow).toContain("contents: write");
+    expect(releaseWorkflow).toContain("Refusing to overwrite an existing public release");
   });
 
   it("checks container isolation, persistence, loopback binding, and graceful stop", () => {
