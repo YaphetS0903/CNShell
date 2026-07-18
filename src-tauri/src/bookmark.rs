@@ -3,6 +3,8 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use std::path::{Path, PathBuf};
 
 const KEYCHAIN_SERVICE: &str = "com.cnshell.desktop";
+#[cfg(target_os = "windows")]
+const WINDOWS_CREDENTIAL_BLOB_BYTES: usize = 2_560;
 
 pub fn bookmark_ref(connection_id: &str) -> String {
     format!("private-key-bookmark:{connection_id}")
@@ -35,9 +37,18 @@ fn save_value(reference: &str, path: &Path, label: &str) -> AppResult<()> {
         )));
     }
     let encoded = STANDARD.encode(create(path, label, true)?);
+    save_path_record(reference, &encoded, label)
+}
+
+fn save_path_record(reference: &str, encoded: &str, label: &str) -> AppResult<()> {
+    #[cfg(target_os = "windows")]
+    if encoded.encode_utf16().count() * 2 > WINDOWS_CREDENTIAL_BLOB_BYTES {
+        delete_value(reference, label)?;
+        return Ok(());
+    }
     keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?
-        .set_password(&encoded)
+        .set_password(encoded)
         .map_err(|error| AppError::Storage(format!("{label}路径授权保存失败：{error}")))
 }
 
@@ -49,10 +60,7 @@ pub fn save_rdp_drive(connection_id: &str, path: &Path) -> AppResult<()> {
     }
     let reference = rdp_drive_bookmark_ref(connection_id);
     let encoded = STANDARD.encode(create(path, "RDP 映射目录", false)?);
-    keyring::Entry::new(KEYCHAIN_SERVICE, &reference)
-        .map_err(|error| AppError::Storage(error.to_string()))?
-        .set_password(&encoded)
-        .map_err(|error| AppError::Storage(format!("RDP 映射目录路径授权保存失败：{error}")))
+    save_path_record(&reference, &encoded, "RDP 映射目录")
 }
 
 pub fn load(connection_id: &str) -> AppResult<Option<String>> {
@@ -391,6 +399,19 @@ mod tests {
         );
         delete(&id).unwrap();
         assert!(load(&id).unwrap().is_none());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn oversized_windows_path_records_fall_back_to_the_profile_path() {
+        let reference = format!("windows-long-path-test-{}", uuid::Uuid::new_v4());
+        keyring::Entry::new(KEYCHAIN_SERVICE, &reference)
+            .unwrap()
+            .set_password("previous-short-path")
+            .unwrap();
+        let encoded = "a".repeat(WINDOWS_CREDENTIAL_BLOB_BYTES / 2 + 1);
+        save_path_record(&reference, &encoded, "测试路径").unwrap();
+        assert!(load_value(&reference, "测试路径").unwrap().is_none());
     }
 
     #[test]
