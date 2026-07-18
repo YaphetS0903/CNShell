@@ -271,6 +271,10 @@ async fn start_remote(
 }
 
 impl MoshManager {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "Mosh startup crosses the application, SSH, logging, PTY, and UDP range boundary"
+    )]
     pub async fn open(
         &self,
         app: AppHandle,
@@ -327,21 +331,21 @@ impl MoshManager {
         }));
         self.sessions.lock().insert(id.clone(), managed.clone());
         ssh_sessions.insert_external(id.clone(), profile.clone());
-        if let Some(startup) = profile.startup_command.as_deref() {
-            if !startup.is_empty() {
-                let mut handle = managed.lock();
-                let startup_result = handle
-                    .writer
-                    .write_all(startup.as_bytes())
-                    .and_then(|_| handle.writer.write_all(b"\r"))
-                    .and_then(|_| handle.writer.flush());
-                if let Err(error) = startup_result {
-                    let _ = handle.child.kill();
-                    drop(handle);
-                    self.sessions.lock().remove(&id);
-                    ssh_sessions.remove_external(&id);
-                    return Err(error.into());
-                }
+        if let Some(startup) = profile.startup_command.as_deref()
+            && !startup.is_empty()
+        {
+            let mut handle = managed.lock();
+            let startup_result = handle
+                .writer
+                .write_all(startup.as_bytes())
+                .and_then(|_| handle.writer.write_all(b"\r"))
+                .and_then(|_| handle.writer.flush());
+            if let Err(error) = startup_result {
+                let _ = handle.child.kill();
+                drop(handle);
+                self.sessions.lock().remove(&id);
+                ssh_sessions.remove_external(&id);
+                return Err(error.into());
             }
         }
         spawn_reader(

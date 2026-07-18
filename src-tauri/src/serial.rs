@@ -591,7 +591,7 @@ pub fn devices() -> AppResult<Vec<SerialDeviceInfo>> {
             },
         })
         .collect::<Vec<_>>();
-    devices.sort_by(|left, right| serial_sort_key(&left.path).cmp(&serial_sort_key(&right.path)));
+    devices.sort_by_key(|device| serial_sort_key(&device.path));
     Ok(devices)
 }
 

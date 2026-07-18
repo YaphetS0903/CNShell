@@ -7,10 +7,14 @@ use crate::{
 use parking_lot::Mutex;
 use std::{collections::HashMap, io::Read, path::Path, sync::Arc, time::Instant};
 
+type CpuSnapshot = (u64, u64);
+type NetworkCounters = HashMap<String, (u64, u64)>;
+type NetworkSnapshot = (Instant, NetworkCounters);
+
 #[derive(Clone, Default)]
 pub struct MonitorState {
-    cpu: Arc<Mutex<HashMap<String, (u64, u64)>>>,
-    network: Arc<Mutex<HashMap<String, (Instant, HashMap<String, (u64, u64)>)>>>,
+    cpu: Arc<Mutex<HashMap<String, CpuSnapshot>>>,
+    network: Arc<Mutex<HashMap<String, NetworkSnapshot>>>,
 }
 
 impl MonitorState {
@@ -120,14 +124,13 @@ fn bytes_from_kb(value: u64) -> u64 {
 fn parse_memory(body: &str) -> (u64, u64, u64, u64) {
     let mut map = HashMap::new();
     for line in body.lines() {
-        if let Some((key, value)) = line.split_once(':') {
-            if let Some(number) = value
+        if let Some((key, value)) = line.split_once(':')
+            && let Some(number) = value
                 .split_whitespace()
                 .next()
                 .and_then(|v| v.parse::<u64>().ok())
-            {
-                map.insert(key, bytes_from_kb(number));
-            }
+        {
+            map.insert(key, bytes_from_kb(number));
         }
     }
     let total = *map.get("MemTotal").unwrap_or(&0);

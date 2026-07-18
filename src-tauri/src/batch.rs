@@ -262,8 +262,7 @@ fn is_destructive(command: &str) -> bool {
             .collect::<Vec<_>>();
         if tokens.iter().any(|token| {
             matches!(*token, "shutdown" | "reboot" | "poweroff") || token.starts_with("mkfs.")
-        }) || tokens.iter().any(|token| token.starts_with("of=/dev/"))
-            && tokens.iter().any(|token| *token == "dd")
+        }) || tokens.iter().any(|token| token.starts_with("of=/dev/")) && tokens.contains(&"dd")
         {
             return true;
         }

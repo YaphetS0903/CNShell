@@ -433,6 +433,10 @@ where
     Ok(Some(RemoteObject { bytes, etag }))
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "WebDAV conditional PUT keeps authentication, preconditions, and cancellation explicit"
+)]
 async fn put(
     client: &Client,
     url: &Url,

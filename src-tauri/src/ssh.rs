@@ -1097,6 +1097,10 @@ async fn diagnostic_first_hop(
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Terminal startup crosses the application, database, session, PTY, logging, and forwarding boundary"
+)]
 pub async fn open_terminal(
     app: AppHandle,
     db: Database,
@@ -1167,11 +1171,9 @@ fn open_pty(
         None
     };
     channel.shell()?;
-    if run_startup {
-        if let Some(command) = profile.startup_command.as_deref() {
-            channel.write_all(command.as_bytes())?;
-            channel.write_all(b"\n")?;
-        }
+    if run_startup && let Some(command) = profile.startup_command.as_deref() {
+        channel.write_all(command.as_bytes())?;
+        channel.write_all(b"\n")?;
     }
     connected
         .session
@@ -1722,7 +1724,7 @@ pub async fn zmodem_start(
         } else if drive.status.is_some() {
             ZmodemState::default()
         } else {
-            ZmodemState::Active(active)
+            ZmodemState::Active(Box::new(active))
         };
         let _ = app.emit("zmodem-event", event.clone());
         Ok(event)
@@ -1907,7 +1909,7 @@ fn validate_terminal_size(cols: u32, rows: u32) -> AppResult<()> {
 pub async fn terminal_close(manager: SessionManager, session_id: String) -> AppResult<()> {
     let handle = manager
         .remove(&session_id)
-        .ok_or_else(|| AppError::NotFound(session_id))?;
+        .ok_or(AppError::NotFound(session_id))?;
     tokio::task::spawn_blocking(move || {
         let mut terminal = handle.lock();
         terminal.closed = true;

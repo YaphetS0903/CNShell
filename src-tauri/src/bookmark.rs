@@ -184,10 +184,10 @@ impl PrivateKeyAccess {
 impl Drop for PrivateKeyAccess {
     fn drop(&mut self) {
         #[cfg(target_os = "macos")]
-        if self.scoped {
-            if let Some(url) = &self.url {
-                unsafe { url.stopAccessingSecurityScopedResource() };
-            }
+        if self.scoped
+            && let Some(url) = &self.url
+        {
+            unsafe { url.stopAccessingSecurityScopedResource() };
         }
     }
 }

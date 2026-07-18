@@ -75,7 +75,7 @@ impl AwaitingTransfer {
 pub enum SessionState {
     Detecting(HandshakeDetector),
     Awaiting(AwaitingTransfer),
-    Active(ActiveTransfer),
+    Active(Box<ActiveTransfer>),
     Finishing(FinishingTransfer),
 }
 

@@ -1294,6 +1294,10 @@ fn write_guest_bytes(
     i32::try_from(bytes.len()).unwrap_or(-3)
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The sandbox entry point keeps each independently validated resource explicit"
+)]
 fn run_wasm(
     plugin_id: String,
     version: String,

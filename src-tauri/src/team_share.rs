@@ -464,18 +464,17 @@ pub async fn import_device(db: &Database, workspace_id: &str, path: &str) -> App
     }
     let existing = sqlx::query_as::<_, TeamDevice>("SELECT id,workspace_id,member_id,name,encryption_public_key,signing_public_key,fingerprint,is_local,status,created_at,updated_at,revoked_at FROM team_devices WHERE id=? AND workspace_id=?")
         .bind(&bundle.device_id).bind(workspace_id).fetch_optional(&db.pool).await?;
-    if let Some(existing) = &existing {
-        if existing.is_local
+    if let Some(existing) = &existing
+        && (existing.is_local
             || existing.member_id != bundle.member_id
             || existing.encryption_public_key != bundle.encryption_public_key
             || existing.signing_public_key != bundle.signing_public_key
             || existing.fingerprint != bundle.fingerprint
-            || existing.status != "active"
-        {
-            return Err(AppError::Validation(
-                "设备 ID 已是本机设备、密钥不一致或已撤销；必须使用新设备 ID".into(),
-            ));
-        }
+            || existing.status != "active")
+    {
+        return Err(AppError::Validation(
+            "设备 ID 已是本机设备、密钥不一致或已撤销；必须使用新设备 ID".into(),
+        ));
     }
     let count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM team_devices WHERE workspace_id=? AND status='active'",

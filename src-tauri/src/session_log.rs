@@ -344,15 +344,13 @@ fn log_worker(
     while let Ok(message) = receiver.recv() {
         let result = match message {
             LogMessage::Output(data) => {
-                let result =
-                    if writer.bytes_written.saturating_add(data.len() as u64) > MAX_FILE_BYTES {
-                        Err(AppError::Storage(
-                            "会话日志达到 100 MB 单文件上限，已自动停止".into(),
-                        ))
-                    } else {
-                        writer.write_event("output", Some(&data))
-                    };
-                result
+                if writer.bytes_written.saturating_add(data.len() as u64) > MAX_FILE_BYTES {
+                    Err(AppError::Storage(
+                        "会话日志达到 100 MB 单文件上限，已自动停止".into(),
+                    ))
+                } else {
+                    writer.write_event("output", Some(&data))
+                }
             }
             LogMessage::Flush(reply) => {
                 let result = writer.writer.flush().map_err(AppError::from);

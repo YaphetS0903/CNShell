@@ -439,7 +439,35 @@ fn conflict_path(directory: &Path, name: &str) -> io::Result<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::ExitStatus;
+    use std::{
+        ops::{Deref, DerefMut},
+        process::{Child, ExitStatus},
+    };
+
+    struct ReapedChild(Child);
+
+    impl Deref for ReapedChild {
+        type Target = Child;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
+
+    impl DerefMut for ReapedChild {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.0
+        }
+    }
+
+    impl Drop for ReapedChild {
+        fn drop(&mut self) {
+            if !matches!(self.0.try_wait(), Ok(Some(_))) {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+        }
+    }
 
     #[test]
     fn bundled_helper_reports_the_pinned_version_when_present() {
@@ -463,22 +491,26 @@ mod tests {
             .map(|index| (index % 251) as u8)
             .collect::<Vec<_>>();
         fs::write(&source, &bytes).unwrap();
-        let mut receiver = Command::new(&helper)
-            .args(["-X", "-r", "-i", "-P", "-q", "-S", "-b", "2"])
-            .current_dir(&receive_dir)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
-        let mut sender = Command::new(&helper)
-            .args(["-X", "-i", "-P", "-q", "-S", "-b", "2", "-s"])
-            .arg(&source)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+        let mut receiver = ReapedChild(
+            Command::new(&helper)
+                .args(["-X", "-r", "-i", "-P", "-q", "-S", "-b", "2"])
+                .current_dir(&receive_dir)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
+        let mut sender = ReapedChild(
+            Command::new(&helper)
+                .args(["-X", "-i", "-P", "-q", "-S", "-b", "2", "-s"])
+                .arg(&source)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap(),
+        );
         let mut sender_out = sender.stdout.take().unwrap();
         let mut sender_in = sender.stdin.take().unwrap();
         let mut receiver_out = receiver.stdout.take().unwrap();

@@ -1089,8 +1089,10 @@ mod tests {
     }
     #[test]
     fn rejects_invalid_settings_and_environment() {
-        let mut settings = AppSettings::default();
-        settings.theme = "invented".into();
+        let mut settings = AppSettings {
+            theme: "invented".into(),
+            ..Default::default()
+        };
         assert!(validate_settings(&settings).is_err());
         settings.theme = "system".into();
         settings.terminal.font_size = 40;

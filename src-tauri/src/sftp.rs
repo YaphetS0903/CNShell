@@ -619,6 +619,10 @@ fn remove_local_path(path: &Path) -> std::io::Result<()> {
     }
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "Directory transfer is an internal command boundary with explicit validated fields"
+)]
 pub async fn transfer_directory(
     db: Database,
     manager: SessionManager,
@@ -925,6 +929,10 @@ fn renamed_filename(filename: &str, index: u32) -> String {
     format!("{name} ({index}){extension}")
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The generic download primitive exposes injectable I/O hooks used by failure tests"
+)]
 fn download_to_path<R, W, Open, Sync, Pulse>(
     remote: &mut R,
     part: &Path,

@@ -87,13 +87,13 @@ fn parse_file(
             });
             continue;
         }
-        if let Some(block) = current.as_mut() {
-            if ["hostname", "user", "port", "identityfile", "proxyjump"].contains(&lower.as_str()) {
-                block
-                    .values
-                    .entry(lower)
-                    .or_insert_with(|| expand_home(value));
-            }
+        if let Some(block) = current.as_mut()
+            && ["hostname", "user", "port", "identityfile", "proxyjump"].contains(&lower.as_str())
+        {
+            block
+                .values
+                .entry(lower)
+                .or_insert_with(|| expand_home(value));
         }
     }
     if let Some(block) = current {
@@ -115,7 +115,7 @@ fn resolve_blocks(blocks: Vec<Block>) -> Vec<OpenSshHost> {
                 .and_then(|value| value.parse::<u16>().ok())
                 .unwrap_or(22);
             let mut warnings = block.warnings.clone();
-            if block.values.get("port").is_some() && port == 22 && block.values["port"] != "22" {
+            if block.values.contains_key("port") && port == 22 && block.values["port"] != "22" {
                 warnings.push("端口无效，已使用 22".into());
             }
             result.push(OpenSshHost {
@@ -281,13 +281,13 @@ fn shell_words(value: &str) -> Vec<String> {
 }
 fn expand_home(value: &str) -> String {
     let value = value.trim().trim_matches(['"', '\'']);
-    if let Some(rest) = value.strip_prefix("~/") {
-        if let Some(home) = home_directory() {
-            return PathBuf::from(home)
-                .join(rest)
-                .to_string_lossy()
-                .into_owned();
-        }
+    if let Some(rest) = value.strip_prefix("~/")
+        && let Some(home) = home_directory()
+    {
+        return PathBuf::from(home)
+            .join(rest)
+            .to_string_lossy()
+            .into_owned();
     }
     value.into()
 }
