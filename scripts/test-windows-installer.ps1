@@ -17,6 +17,7 @@ $Database = Join-Path $DataDirectory "cnshell.sqlite"
 $Sentinel = Join-Path $DataDirectory "windows-installer-preserve.test"
 $CredentialTarget = "com.cnshell.desktop/installer-preserve-$env:GITHUB_RUN_ID-$PID"
 $CredentialCreated = $false
+$StartupTimeoutSeconds = 30
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath("Desktop")) "CNshell.lnk"
 $StartMenuShortcut = Join-Path ([Environment]::GetFolderPath("StartMenu")) "Programs\CNshell\CNshell.lnk"
 
@@ -162,16 +163,26 @@ function Assert-CNshellStarts {
   }
   $process = Start-Process -FilePath $Executable -PassThru
   try {
-    Start-Sleep -Seconds 5
-    if ($process.HasExited) {
-      throw "Installed CNshell UI exited during the startup probe with status $($process.ExitCode)"
+    $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
+    $databaseReady = $false
+    $webViewReady = $false
+    do {
+      if ($process.HasExited) {
+        throw "Installed CNshell UI exited during the startup probe with status $($process.ExitCode)"
+      }
+      $databaseFile = Get-Item -LiteralPath $Database -ErrorAction SilentlyContinue
+      $databaseReady = $databaseFile -and $databaseFile.Length -gt 0
+      $webViewReady = Test-WebViewDescendant $process.Id
+      if ($databaseReady -and $webViewReady) {
+        break
+      }
+      Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $databaseReady) {
+      throw "Installed CNshell did not initialize its SQLite database within $StartupTimeoutSeconds seconds"
     }
-    $databaseFile = Get-Item -LiteralPath $Database -ErrorAction SilentlyContinue
-    if (-not $databaseFile -or $databaseFile.Length -eq 0) {
-      throw "Installed CNshell did not initialize its SQLite database"
-    }
-    if (-not (Test-WebViewDescendant $process.Id)) {
-      throw "Installed CNshell did not start a WebView2 renderer"
+    if (-not $webViewReady) {
+      throw "Installed CNshell did not start a WebView2 renderer within $StartupTimeoutSeconds seconds"
     }
     if (-not $process.CloseMainWindow()) {
       throw "Installed CNshell did not accept a native window close request"

@@ -487,6 +487,9 @@ describe("relay container smoke", () => {
     expect(installerTest).toContain('"mosh\\source\\mosh-1.4.0.tar.gz"');
     expect(installerTest).toContain('"kermit\\source\\gku201.tar.gz"');
     expect(installerTest).toContain("Assert-CNshellStarts");
+    expect(installerTest).toContain("$StartupTimeoutSeconds = 30");
+    expect(installerTest).toContain("Start-Sleep -Milliseconds 500");
+    expect(installerTest).not.toContain("Start-Sleep -Seconds 5");
     const installerHooks = readFileSync(
       resolve("src-tauri/windows/installer-hooks.nsh"),
       "utf8",
