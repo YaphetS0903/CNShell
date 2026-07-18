@@ -417,6 +417,11 @@ describe("relay container smoke", () => {
     expect(windowsMoshBuilder).toContain("CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded");
     expect(windowsMoshBuilder).toContain(".cnshell-msvc-static-runtime");
     expect(windowsMoshBuilder).toContain("Replace-PinnedText");
+    expect(windowsMoshBuilder).toContain("withoutPatchedTarget");
+    expect(windowsMoshBuilder).toContain("both patched and unpatched targets");
+    expect(windowsMoshBuilder).toContain(
+      "Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $MoshSource",
+    );
     expect(windowsMoshBuilder).toContain('L"Crypto exception: %hs"');
     expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/swrite.cc"');
     expect(windowsMoshCmake).toContain('"${MOSH_SRC}/util/timestamp.cc"');

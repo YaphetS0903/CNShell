@@ -98,21 +98,24 @@ function Expand-CheckedArchive([string]$Archive, [string]$Destination, [string]$
 
 function Replace-PinnedText([string]$Path, [string]$Before, [string]$After) {
   $text = [System.IO.File]::ReadAllText($Path)
+  $patchedFirst = $text.IndexOf($After, [System.StringComparison]::Ordinal)
+  if ($patchedFirst -ge 0) {
+    $patchedSecond = $text.IndexOf(
+      $After,
+      $patchedFirst + $After.Length,
+      [System.StringComparison]::Ordinal
+    )
+    if ($patchedSecond -ge 0) {
+      throw "Pinned Mosh source contains an ambiguous repeated patched target in $($Path): $After"
+    }
+    $withoutPatchedTarget = $text.Remove($patchedFirst, $After.Length)
+    if ($withoutPatchedTarget.IndexOf($Before, [System.StringComparison]::Ordinal) -ge 0) {
+      throw "Pinned Mosh source contains both patched and unpatched targets in $($Path): $Before"
+    }
+    return
+  }
   $first = $text.IndexOf($Before, [System.StringComparison]::Ordinal)
   if ($first -lt 0) {
-    $patchedFirst = $text.IndexOf($After, [System.StringComparison]::Ordinal)
-    $patchedSecond = if ($patchedFirst -ge 0) {
-      $text.IndexOf(
-        $After,
-        $patchedFirst + $After.Length,
-        [System.StringComparison]::Ordinal
-      )
-    } else {
-      -1
-    }
-    if ($patchedFirst -ge 0 -and $patchedSecond -lt 0) {
-      return
-    }
     throw "Pinned Mosh source no longer contains the expected text in $($Path): $Before"
   }
   $second = $text.IndexOf(
@@ -176,6 +179,7 @@ Get-CheckedFile `
   "https://github.com/protocolbuffers/protobuf/releases/download/v$ProtobufVersion/protobuf-all-$ProtobufVersion.tar.gz" `
   $ProtobufArchive `
   $ProtobufSha256
+Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $MoshSource
 Expand-CheckedArchive $MoshArchive $MoshSource "src\network\network.cc"
 Expand-CheckedArchive $ProtobufArchive $ProtobufSource "cmake\CMakeLists.txt"
 
