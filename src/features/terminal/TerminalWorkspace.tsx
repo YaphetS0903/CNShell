@@ -58,12 +58,13 @@ import { pasteRisk } from "./terminal-safety";
 import { errorMessage } from "../../lib/format";
 import {
   resolveTerminalPreferences,
-  terminalThemes,
+  resolveTerminalTheme,
   withTerminalFontSize,
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
 import { TeamTerminalCenter } from "./TeamTerminalCenter";
 import { primaryShortcutPressed, usePlatformCapabilities } from "../../lib/platform";
+import { useSystemPrefersDark } from "../../lib/system-theme";
 
 export default function TerminalWorkspace({
   connect,
@@ -71,6 +72,7 @@ export default function TerminalWorkspace({
   connect: (profile: ConnectionProfile) => Promise<void>;
 }) {
   const platform = usePlatformCapabilities();
+  const systemPrefersDark = useSystemPrefersDark();
   const {
     sessions,
     connections,
@@ -451,9 +453,11 @@ export default function TerminalWorkspace({
   const visibleIds = new Set(rectBySession.keys());
   const terminalThemeFor = (session: TerminalSession) =>
     isInteractiveTerminal(session)
-      ? terminalThemes[
-          resolveTerminalPreferences(settings, session.connectionId).colorScheme
-        ]
+      ? resolveTerminalTheme(
+          settings,
+          resolveTerminalPreferences(settings, session.connectionId),
+          systemPrefersDark,
+        )
       : undefined;
   const activeTerminalTheme = terminalThemeFor(active);
   return (

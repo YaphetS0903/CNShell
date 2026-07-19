@@ -24,10 +24,15 @@ import {
 } from "./terminal-triggers";
 import { searchBuffer } from "./terminal-safety";
 import { useAppStore } from "../../store/app-store";
-import { resolveTerminalPreferences, terminalFontFamilies, terminalThemes } from "./terminal-preferences";
+import {
+  resolveTerminalPreferences,
+  resolveTerminalTheme,
+  terminalFontFamilies,
+} from "./terminal-preferences";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ZmodemEvent } from "../../types";
 import { primaryShortcutPressed } from "../../lib/platform";
+import { useSystemPrefersDark } from "../../lib/system-theme";
 
 export interface TerminalActions {
   findNext: (term: string) => boolean;
@@ -61,8 +66,16 @@ export const TerminalView = forwardRef<
   const activeRef = useRef(focused);
   const settings = useAppStore((state)=>state.settings);
   const preferences = resolveTerminalPreferences(settings,session.connectionId);
+  const systemPrefersDark = useSystemPrefersDark();
+  const terminalTheme = resolveTerminalTheme(
+    settings,
+    preferences,
+    systemPrefersDark,
+  );
   const preferencesRef = useRef(preferences);
+  const terminalThemeRef = useRef(terminalTheme);
   preferencesRef.current = preferences;
+  terminalThemeRef.current = terminalTheme;
   activeRef.current = focused;
   const copyLineRef = useRef<number | null>(null);
   useImperativeHandle(
@@ -121,7 +134,7 @@ export const TerminalView = forwardRef<
       fontFamily: terminalFontFamilies[initialPreferences.fontFamily],
       fontSize: initialPreferences.fontSize,
       lineHeight: initialPreferences.lineHeight,
-      theme: terminalThemes[initialPreferences.colorScheme],
+      theme: terminalThemeRef.current,
     });
     const fit = new FitAddon();
     fitRef.current=fit;
@@ -452,21 +465,21 @@ export const TerminalView = forwardRef<
     terminal.options.fontSize = preferences.fontSize;
     terminal.options.lineHeight = preferences.lineHeight;
     terminal.options.scrollback = preferences.scrollback;
-    terminal.options.theme = terminalThemes[preferences.colorScheme];
+    terminal.options.theme = terminalTheme;
     terminal.options.cursorStyle = triggerConfigRef.current?.enhancedCursor
       ? "block"
       : preferences.cursorStyle;
     terminal.options.cursorBlink = preferences.cursorBlink;
     if (containerRef.current) {
       containerRef.current.style.backgroundColor =
-        terminalThemes[preferences.colorScheme].background ?? "";
+        terminalTheme.background ?? "";
     }
     requestAnimationFrame(() => {
       if (terminalRef.current !== terminal) return;
       fitRef.current?.fit();
       void api.terminalResize(session.id, terminal.cols, terminal.rows);
     });
-  }, [preferences, session.id]);
+  }, [preferences, session.id, terminalTheme]);
   useEffect(() => {
     if (focused) terminalRef.current?.focus();
   }, [focused]);

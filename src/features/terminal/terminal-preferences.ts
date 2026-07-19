@@ -31,6 +31,19 @@ export function resolveTerminalPreferences(settings: AppSettings, connectionId: 
   return settings.terminalOverrides[connectionId] ?? settings.terminal;
 }
 
+export function resolveTerminalTheme(
+  settings: Pick<AppSettings, "theme">,
+  preferences: TerminalPreferences,
+  systemPrefersDark: boolean,
+): ITheme {
+  const followsLightAppTheme =
+    preferences.colorScheme === "cnshell" &&
+    (settings.theme === "light" ||
+      (settings.theme === "system" && !systemPrefersDark));
+
+  return terminalThemes[followsLightAppTheme ? "light" : preferences.colorScheme];
+}
+
 export function withTerminalFontSize(settings: AppSettings, connectionId: string, fontSize: number): AppSettings {
   const normalized = Math.min(24, Math.max(10, Math.round(fontSize)));
   const override = settings.terminalOverrides[connectionId];

@@ -30,9 +30,10 @@ import type {
 } from "../../types";
 import {
   resolveTerminalPreferences,
+  resolveTerminalTheme,
   terminalFontFamilies,
-  terminalThemes,
 } from "./terminal-preferences";
+import { useSystemPrefersDark } from "../../lib/system-theme";
 
 const MAX_OUTPUT_FRAMES = 512;
 const MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
@@ -945,7 +946,14 @@ function SharedTerminal({
     settings,
     "team-relay-terminal",
   );
+  const systemPrefersDark = useSystemPrefersDark();
+  const terminalTheme = resolveTerminalTheme(
+    settings,
+    preferences,
+    systemPrefersDark,
+  );
   const initialPreferencesRef = useRef(preferences);
+  const initialTerminalThemeRef = useRef(terminalTheme);
   onInputRef.current = onInput;
   onErrorRef.current = onError;
   canInputRef.current = canInput;
@@ -962,7 +970,7 @@ function SharedTerminal({
       fontFamily: terminalFontFamilies[initialPreferences.fontFamily],
       fontSize: initialPreferences.fontSize,
       lineHeight: initialPreferences.lineHeight,
-      theme: terminalThemes[initialPreferences.colorScheme],
+      theme: initialTerminalThemeRef.current,
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
@@ -1015,9 +1023,9 @@ function SharedTerminal({
     terminal.options.fontSize = preferences.fontSize;
     terminal.options.lineHeight = preferences.lineHeight;
     terminal.options.scrollback = preferences.scrollback;
-    terminal.options.theme = terminalThemes[preferences.colorScheme];
+    terminal.options.theme = terminalTheme;
     requestAnimationFrame(() => fitRef.current?.fit());
-  }, [preferences]);
+  }, [preferences, terminalTheme]);
 
   return (
     <div
