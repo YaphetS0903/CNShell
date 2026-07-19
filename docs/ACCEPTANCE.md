@@ -243,6 +243,16 @@
 | 最终双架构 run | 通过。`v0.2.0-beta.1` 提交 `47b48c0` 的 Core CI `29640190967` 五个 job 全部成功；Windows x64 执行 208 项 Rust 测试并通过 ConPTY 输入/resize/关闭/重开。Windows Packaging `29640190971` 的 x64 与 ARM64 Preview job 均成功：x64 通过 G-Kermit 互操作、Mosh 加密 UDP 双向回环、FreeRDP 3.28.0 运行、应用/NSIS 构建及静默安装、完整 sidecar/许可证/对应源码资源检查、用户桌面快捷方式升级保留、WebView2、SQLite、Credential Manager、原生关闭、覆盖升级、卸载和重装；ARM64 通过三类 sidecar、应用 PE、NSIS 和 Artifact。Actions artifact ID 为 x64 `8428483436`（digest `7f47d7b1911230e976175b2f709db9ba2bd8597014db31dc4bd0dcce3643fcfb`）、ARM64 `8428460533`（digest `98ce4e0b99d827ffef3764cf0c532279f313330767ca79cc029662498be870ab`）；它们是未签名 CI 测试包，不等同正式 Release |
 | 保留真机边界 | 当前没有 Windows 10/11 x64、Windows 11 ARM64、真实 RDP、Windows Hello、实体 FIDO2、VcXsrv/Xming 或实体串口环境；中文 IME、DPI、高对比、Narrator、睡眠唤醒和真实网络切换均未声明真机通过。Windows x64 继续标记 Beta，ARM64 继续标记 Preview |
 
+### 2026-07-19 v0.2.0-beta.2 发布与更新链路验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 发布目标提交 | 标签 [`v0.2.0-beta.2`](https://github.com/YaphetS0903/CNShell/releases/tag/v0.2.0-beta.2) 指向提交 `78f390f`；该提交只包含 Beta.2 版本、下载入口、Release notes 与发布文档更新，以及 Beta.1 后已经合入的 Windows migration 备份重试和跨平台严格 Clippy 门禁 |
+| 发布前门禁 | Core CI run [`29652809401`](https://github.com/YaphetS0903/CNShell/actions/runs/29652809401) 的五个 job 全部成功；Windows Packaging run [`29652809412`](https://github.com/YaphetS0903/CNShell/actions/runs/29652809412) 的 x64 与 ARM64 Preview job 全部成功。本机另通过前端 lint、production build、187 项前端测试、Rust format、严格 Clippy、218 项 Rust 测试和 `git diff --check`；遵照用户要求未重跑 soak、1 GB 或其他长时测试 |
+| 未签名跨平台 Beta 发布 | GitHub Actions run [`29676593213`](https://github.com/YaphetS0903/CNShell/actions/runs/29676593213) 的 macOS universal、Windows x64 Beta、Windows ARM64 Preview 和发布汇总四个 job 全部成功；公开 Release 标记为 Pre-release，包含 18 个工作流附件及 GitHub 自动生成的 2 个源码包。三个 updater 包及签名、三套安装介质、`SHA256SUMS.txt`、第三方说明和固定版本对应源码均已从公开地址确认可访问 |
+| Beta updater 清单 | Release 与 `main` raw endpoint 的 `latest.json` SHA-256 均为 `2f90f4f2c8f6b7b95fe367212031ac717826e2ecdafc8faa9573599c0eadbffd`，版本为 `0.2.0-beta.2`，覆盖 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64` 与 `windows-aarch64`；工作流通过提交 `8b96c8f` 自动把同一清单写回 `updates/beta/latest.json` |
+| 验收边界 | 自动化发布证据不等同 Developer ID、公证、Authenticode 或 Windows/ARM64/Intel 真机体验验收。Beta.1 到 Beta.2 的应用内更新、版本显示以及连接资料/系统凭据保留仍需在本机已安装 Beta.1 客户端中完成最后人工确认 |
+
 ## 3. 必验场景与发布门槛
 
 | 场景 | 状态 | 说明 |
@@ -281,7 +291,7 @@
 
 ## 5. 结论
 
-当前代码已发布为 **v0.2.0-beta.1 未签名跨平台 Pre-release**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收，Beta updater 签名、四平台清单和公开下载入口已由发布工作流验证。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
+当前代码已发布为 **v0.2.0-beta.2 未签名跨平台 Pre-release**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收，Beta updater 签名、四平台清单和公开下载入口已由发布工作流验证。Beta.2 没有新增真机能力声明，主要验证 Windows migration 备份重试、严格 Clippy 门禁和从 Beta.1 升级的真实更新链路。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 
