@@ -6,6 +6,11 @@
   gap: 8px;
 }
 
+.text-editor textarea {
+  background: var(--editor-bg);
+  color: var(--editor-text);
+}
+
 .editor-toolbar {
   display: flex;
   align-items: center;
@@ -37,7 +42,7 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 7px;
-  background: #07101d;
+  background: var(--editor-bg);
 }
 
 .remote-code-editor .cm-editor {
@@ -45,17 +50,17 @@
 }
 
 .remote-code-editor .cm-search {
-  border-bottom: 1px solid #334155;
-  background: #0b1524;
-  color: #dce6f4;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-gutter-bg);
+  color: var(--editor-text);
 }
 
 .remote-code-editor .cm-search input,
 .remote-code-editor .cm-search button {
-  border: 1px solid #334155;
+  border: 1px solid var(--editor-border);
   border-radius: 4px;
-  background: #172337;
-  color: #dce6f4;
+  background: var(--editor-active-bg);
+  color: var(--editor-text);
 }
 
 .text-editor > footer {
@@ -160,8 +165,8 @@
   flex: 1;
   margin: 0;
   overflow: auto;
-  background: #07101d;
-  color: #dce6f4;
+  background: var(--editor-bg);
+  color: var(--editor-text);
   font: 9px/1.5 SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap;
 }

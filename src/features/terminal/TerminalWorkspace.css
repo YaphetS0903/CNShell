@@ -6,6 +6,15 @@
   padding-right: 35px;
 }
 
+.session-tab.active {
+  background: var(--terminal-tab-background, var(--surface-3));
+  color: var(--terminal-tab-foreground, var(--text));
+}
+
+.terminal-area {
+  background: var(--terminal-area-background, var(--editor-bg));
+}
+
 .tab-menu-trigger {
   position: absolute;
   right: 3px;
@@ -141,8 +150,8 @@
   padding: 4px 7px;
   border: 1px solid var(--border);
   border-radius: 5px;
-  background: #07101ddd;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--surface-2) 94%, transparent);
+  color: var(--text);
   font:
     9px SFMono-Regular,
     Menlo,
@@ -226,8 +235,8 @@
   overflow: hidden;
   border-right: 1px solid var(--border-soft);
   padding-top: 1px;
-  color: var(--faint);
-  background: #07101d;
+  color: var(--terminal-area-foreground, var(--editor-text));
+  background: var(--terminal-area-background, var(--editor-bg));
   font:
     9px/16.25px SFMono-Regular,
     Menlo,

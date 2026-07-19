@@ -58,6 +58,7 @@ import { pasteRisk } from "./terminal-safety";
 import { errorMessage } from "../../lib/format";
 import {
   resolveTerminalPreferences,
+  terminalThemes,
   withTerminalFontSize,
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
@@ -448,6 +449,13 @@ export default function TerminalWorkspace({
   const rects = effectiveLayout ? layoutRects(effectiveLayout) : [];
   const rectBySession = new Map(rects.map((rect) => [rect.sessionId, rect]));
   const visibleIds = new Set(rectBySession.keys());
+  const terminalThemeFor = (session: TerminalSession) =>
+    isInteractiveTerminal(session)
+      ? terminalThemes[
+          resolveTerminalPreferences(settings, session.connectionId).colorScheme
+        ]
+      : undefined;
+  const activeTerminalTheme = terminalThemeFor(active);
   return (
     <main className="workspace">
       <div
@@ -464,7 +472,9 @@ export default function TerminalWorkspace({
           )
         }
       >
-        {sessions.map((session) => (
+        {sessions.map((session) => {
+          const sessionTerminalTheme = terminalThemeFor(session);
+          return (
           <div className="session-tab-wrap" key={session.id}>
             <button
               id={`session-tab-${session.id}`}
@@ -474,6 +484,14 @@ export default function TerminalWorkspace({
               tabIndex={session.id === active.id ? 0 : -1}
               aria-label={`${session.title}，${sessionStatusLabel(session.status)}${session.lastError ? `，${session.lastError}` : ""}`}
               className={`session-tab ${session.id === active.id ? "active" : ""} ${visibleIds.has(session.id) ? "in-layout" : ""}`}
+              style={
+                session.id === active.id && sessionTerminalTheme
+                  ? ({
+                      "--terminal-tab-background": sessionTerminalTheme.background,
+                      "--terminal-tab-foreground": sessionTerminalTheme.foreground,
+                    } as React.CSSProperties)
+                  : undefined
+              }
               onClick={() => selectSession(session.id)}
             >
               <span
@@ -552,7 +570,8 @@ export default function TerminalWorkspace({
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
         <div className="tab-spacer" />
         <IconButton
           icon={RadioTower}
@@ -672,7 +691,17 @@ export default function TerminalWorkspace({
                   : undefined
               }
             >
-              <div className="terminal-area">
+              <div
+                className="terminal-area"
+                style={
+                  activeTerminalTheme
+                    ? ({
+                        "--terminal-area-background": activeTerminalTheme.background,
+                        "--terminal-area-foreground": activeTerminalTheme.foreground,
+                      } as React.CSSProperties)
+                    : undefined
+                }
+              >
                 {sessions
                   .filter((session) => isInteractiveTerminal(session))
                   .map((session) => {
