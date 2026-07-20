@@ -499,6 +499,10 @@ describe("relay container smoke", () => {
     expect(installerHooks).toContain("Windows 10 22H2");
     expect(peVerifier).toContain("0x8664");
     expect(peVerifier).toContain("0xAA64");
+    expect(peVerifier).toContain("RequireWindowsGui");
+    expect(windowsPackageWorkflow).toContain("-RequireWindowsGui");
+    expect(releaseWorkflow).toContain("-RequireWindowsGui");
+    expect(betaReleaseWorkflow).toContain("-RequireWindowsGui");
     expect(windowsFreeRdpBuilder).toContain("Get-VisualStudioGenerator");
     expect(windowsFreeRdpBuilder).toContain("vswhere.exe");
     expect(windowsFreeRdpBuilder).toContain('"x64-windows-static"');

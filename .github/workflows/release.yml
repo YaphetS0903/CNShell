@@ -208,7 +208,7 @@ jobs:
           $target = "${{ matrix.target }}"
           $architecture = "${{ matrix.architecture }}"
           $app = "src-tauri/target/$target/release/cnshell.exe"
-          ./scripts/verify-windows-pe.ps1 $app $architecture
+          ./scripts/verify-windows-pe.ps1 $app $architecture -RequireWindowsGui
           $bundle = "src-tauri/target/$target/release/bundle/nsis"
           $installers = @(Get-ChildItem $bundle -Filter "*-setup.exe" -File)
           if ($installers.Count -ne 1) {

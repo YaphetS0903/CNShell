@@ -4,7 +4,9 @@ param(
 
   [Parameter(Mandatory = $true)]
   [ValidateSet("x64", "arm64")]
-  [string]$Architecture
+  [string]$Architecture,
+
+  [switch]$RequireWindowsGui
 )
 
 $ErrorActionPreference = "Stop"
@@ -33,4 +35,16 @@ $Expected = if ($Architecture -eq "x64") { 0x8664 } else { 0xAA64 }
 if ($Machine -ne $Expected) {
   throw ("Unexpected PE machine 0x{0:X4} for {1}; expected {2}" -f $Machine, $Resolved, $Architecture)
 }
+
+if ($RequireWindowsGui) {
+  $OptionalHeader = $PeOffset + 24
+  if ($OptionalHeader + 70 -gt $Bytes.Length) {
+    throw "PE optional header is too small to contain the subsystem field: $Resolved"
+  }
+  $Subsystem = [BitConverter]::ToUInt16($Bytes, $OptionalHeader + 68)
+  if ($Subsystem -ne 2) {
+    throw ("Expected a Windows GUI subsystem (2), found {0} in {1}" -f $Subsystem, $Resolved)
+  }
+}
+
 Write-Host ("Verified {0} PE architecture: {1}" -f $Architecture, $Resolved)

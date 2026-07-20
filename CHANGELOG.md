@@ -2,6 +2,23 @@
 
 本项目采用语义化版本号。Beta 使用独立 updater 签名与更新通道；正式签名、公证与稳定更新通道完成前不标记为正式稳定版。
 
+## 0.2.0-beta.3（Windows 桌面体验修复版）
+
+### 新增
+
+- 新增 Windows Beta.3 桌面启动与主题回归验证项，覆盖 GUI 子系统、原生标题栏、菜单行为和终端配色。
+
+### 修复
+
+- Windows release 程序使用 GUI 子系统启动，不再额外弹出黑色控制台窗口。
+- Windows 原生窗口标题统一为 `CNshell`，移除与浅色界面不协调的 macOS 风格菜单栏；原菜单快捷键改由 Windows 前端快捷键保留。
+- Windows 浅色主题下默认终端跟随浅色配色，不再残留黑色背景。
+
+### 已知限制
+
+- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。
+- Windows 真机体验仍需用户安装本版本后验证，当前开发环境无法直接运行 Windows。
+
 ## 0.2.0-beta.2（跨平台更新链路候选版）
 
 ### 新增

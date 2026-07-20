@@ -54,10 +54,11 @@ use session_log::SessionLogManager;
 use sftp::TransferManager;
 use ssh::SessionManager;
 use task::TaskManager;
-use tauri::{
-    Emitter, Manager,
-    menu::{AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder},
+#[cfg(target_os = "macos")]
+use tauri::menu::{
+    AboutMetadata, MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder,
 };
+use tauri::{Emitter, Manager};
 use team_relay_terminal::TeamRelayTerminalManager;
 use team_share::TeamShareManager;
 use telnet::TelnetManager;
@@ -109,6 +110,7 @@ pub fn serial_devices_json() -> String {
 
 pub use updater_verify::verify_updater_signature;
 
+#[cfg(target_os = "macos")]
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
     let about_metadata = AboutMetadata {
         name: Some("CNshell".into()),
@@ -215,6 +217,7 @@ pub fn run() {
             let startup_db = app.state::<AppState>().db.clone();
             let startup_tasks = app.state::<AppState>().tasks.clone();
             webdav::start_startup_sync(handle.clone(), startup_db, startup_tasks);
+            #[cfg(target_os = "macos")]
             app.set_menu(build_menu(app)?)?;
             Ok(())
         })

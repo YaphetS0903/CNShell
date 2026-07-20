@@ -16,7 +16,7 @@ import { shellQuote, workspaceRuntime } from "./lib/workspace-runtime";
 import { mapLayoutSessions } from "./features/terminal/terminal-layout";
 import { ErrorToast } from "./components/ErrorToast";
 import { createWorkspaceSnapshot, saveBeforeWindowClose, saveWorkspaceIfChanged, type WorkspaceSnapshot } from "./lib/workspace-persistence";
-import { usePlatformCapabilities } from "./lib/platform";
+import { primaryShortcutPressed, usePlatformCapabilities } from "./lib/platform";
 
 const TerminalWorkspace = lazy(() => import("./features/terminal/TerminalWorkspace"));
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
@@ -25,7 +25,7 @@ const HelpModal = lazy(() => import("./features/help/HelpModal"));
 interface HostKeyPrompt { connection: ConnectionProfile; fingerprint: string; algorithm: string }
 
 export default function App() {
-  usePlatformCapabilities();
+  const platform = usePlatformCapabilities();
   const { bootstrap, loading, error, setError, addSession, connections, openConnectionEditor, setSettingsOpen, setHelpOpen, settings, settingsOpen, connectionEditorOpen } = useAppStore();
   const [connectionsOpen,setConnectionsOpen]=useState(true);const[monitorOpen,setMonitorOpen]=useState(true);const[connectionWidth,setConnectionWidth]=useState(260);const[monitorWidth,setMonitorWidth]=useState(232);const[connecting,setConnecting]=useState<string|null>(null);const[hostPrompt,setHostPrompt]=useState<HostKeyPrompt|null>(null);
   const workspaceRestoreStarted=useRef(false);const workspacePersistenceReady=useRef(false);const lastSavedWorkspace=useRef<string|null>(null);const workspaceSnapshotRef=useRef<()=>WorkspaceSnapshot>(()=>createWorkspaceSnapshot([],null,workspaceRuntime.cwdBySession,{terminalLayout:null,bottomOpen:true,bottomHeight:260,connectionsOpen:true,monitorOpen:true,connectionWidth:260,monitorWidth:232}));
@@ -38,6 +38,25 @@ export default function App() {
   },[addSession,setError]);
   const trustAndConnect=async()=>{if(!hostPrompt)return;const prompt=hostPrompt;setHostPrompt(null);try{await api.trustHost(prompt.connection.id,prompt.fingerprint,prompt.algorithm);await connect(prompt.connection);}catch(reason){setError(errorMessage(reason));}};
   useEffect(()=>{if(!api.isDesktop())return;const promise=listen<string>("menu-action",(event)=>{if(event.payload==="new_connection"){setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();}if(event.payload==="show_help"){setSettingsOpen(false);setHelpOpen(true);}if(event.payload==="toggle_files")setConnectionsOpen((value)=>!value);if(event.payload==="close_session")window.dispatchEvent(new Event("cnshell-close-session"));if(event.payload==="new_terminal"){const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];if(profile)void connect(profile);}});return()=>{void promise.then((unlisten)=>unlisten());};},[connect,connections,openConnectionEditor,setHelpOpen,setSettingsOpen]);
+  useEffect(()=>{
+    if(!api.isDesktop()||platform.operatingSystem==="macos")return;
+    const handler=(event:KeyboardEvent)=>{
+      if(!primaryShortcutPressed(event,platform.operatingSystem))return;
+      if(event.key.toLowerCase()==="n"){
+        event.preventDefault();setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();
+      }else if(event.key.toLowerCase()==="t"){
+        event.preventDefault();
+        const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];
+        if(profile)void connect(profile);
+      }else if(event.key==="?"){
+        event.preventDefault();setSettingsOpen(false);setHelpOpen(true);
+      }else if(event.key.toLowerCase()==="j"){
+        event.preventDefault();setConnectionsOpen((value)=>!value);
+      }
+    };
+    window.addEventListener("keydown",handler);
+    return()=>window.removeEventListener("keydown",handler);
+  },[connect,connections,openConnectionEditor,platform.operatingSystem,setHelpOpen,setSettingsOpen]);
   useEffect(()=>{if(!api.isDesktop()||loading||workspaceRestoreStarted.current)return;workspaceRestoreStarted.current=true;void api.loadWorkspace<RestorableWorkspaceSnapshot>().then(async(workspace)=>{if(!workspace)return;if(typeof workspace.connectionsOpen==="boolean")setConnectionsOpen(workspace.connectionsOpen);if(typeof workspace.monitorOpen==="boolean")setMonitorOpen(workspace.monitorOpen);if(workspace.connectionWidth)setConnectionWidth(clampPanelSize(workspace.connectionWidth,210,420));if(workspace.monitorWidth)setMonitorWidth(clampPanelSize(workspace.monitorWidth,200,360));const entries=(workspace.sessions??workspace.connectionIds?.map((connectionId)=>({id:crypto.randomUUID(),connectionId,cwd:null}))??[]).filter((entry)=>connections.some((item)=>item.id===entry.connectionId&&item.protocol==="ssh"));if(!entries.length||!confirm(`恢复上次的 ${entries.length} 个 SSH 会话和布局？只恢复目录，不会重放历史命令。`))return;const mapped=new Map<string,string>();for(const entry of entries){const profile=connections.find((item)=>item.id===entry.connectionId);if(!profile)continue;const before=new Set(useAppStore.getState().sessions.map((item)=>item.id));await connect(profile);const created=useAppStore.getState().sessions.find((item)=>!before.has(item.id));if(!created)continue;mapped.set(entry.id,created.id);if(entry.cwd)await api.terminalInput(created.id,`cd -- ${shellQuote(entry.cwd)}\n`);}const active=mapped.get(workspace.activeSessionId??"");if(active)useAppStore.getState().setActiveSession(active);window.dispatchEvent(new CustomEvent("cnshell-restore-layout",{detail:{terminalLayout:workspace.terminalLayout?mapLayoutSessions(workspace.terminalLayout,mapped):null,splitSessionId:mapped.get(workspace.splitSessionId??"")??null,bottomOpen:workspace.bottomOpen??true,bottomHeight:workspace.bottomHeight??260}}));}).catch((reason)=>setError(`工作区恢复失败：${errorMessage(reason)}`)).finally(()=>{workspacePersistenceReady.current=true;});},[loading,connections,connect,setError]);
   workspaceSnapshotRef.current=()=>{const state=useAppStore.getState();return createWorkspaceSnapshot(state.sessions,state.activeSessionId,workspaceRuntime.cwdBySession,{terminalLayout:workspaceRuntime.terminalLayout,bottomOpen:workspaceRuntime.bottomOpen,bottomHeight:workspaceRuntime.bottomHeight,connectionsOpen,monitorOpen,connectionWidth,monitorWidth});};
   useEffect(()=>{if(!api.isDesktop())return;let cancelled=false;let timer:number;const persist=async()=>{if(workspacePersistenceReady.current){try{lastSavedWorkspace.current=await saveWorkspaceIfChanged(workspaceSnapshotRef.current(),lastSavedWorkspace.current,(snapshot)=>api.saveWorkspace(snapshot));}catch(reason){console.error("工作区自动保存失败",reason);}}if(!cancelled)timer=window.setTimeout(persist,2_000);};timer=window.setTimeout(persist,2_000);return()=>{cancelled=true;window.clearTimeout(timer);};},[]);

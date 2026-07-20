@@ -4,6 +4,11 @@
     "windows": [
       {
         "label": "main",
+        "title": "CNshell",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 900,
+        "minHeight": 620,
         "titleBarStyle": "Visible",
         "hiddenTitle": false
       }

@@ -141,7 +141,7 @@ jobs:
         id: bundle
         shell: powershell
         run: |
-          ./scripts/verify-windows-pe.ps1 src-tauri/target/${{ matrix.target }}/release/cnshell.exe ${{ matrix.architecture }}
+          ./scripts/verify-windows-pe.ps1 src-tauri/target/${{ matrix.target }}/release/cnshell.exe ${{ matrix.architecture }} -RequireWindowsGui
           $installers = @(Get-ChildItem "src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe")
           if ($installers.Count -ne 1 -or $installers[0].Length -eq 0) {
             throw "Expected exactly one non-empty NSIS installer"
