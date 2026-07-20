@@ -487,6 +487,8 @@ describe("relay container smoke", () => {
     expect(installerTest).toContain('"mosh\\source\\mosh-1.4.0.tar.gz"');
     expect(installerTest).toContain('"kermit\\source\\gku201.tar.gz"');
     expect(installerTest).toContain("Assert-CNshellStarts");
+    expect(installerTest).toContain("-RedirectStandardOutput $preflightOutput");
+    expect(installerTest).toContain("-RedirectStandardError $preflightError");
     expect(installerTest).toContain("$StartupTimeoutSeconds = 30");
     expect(installerTest).toContain("Start-Sleep -Milliseconds 500");
     expect(installerTest).not.toContain("Start-Sleep -Seconds 5");

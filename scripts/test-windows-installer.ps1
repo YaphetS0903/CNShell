@@ -157,8 +157,20 @@ function Remove-TestCredential {
 function Assert-CNshellStarts {
   $Executable = Get-CNshellExecutable
   Assert-BundledResources
-  $preflight = & $Executable --rdp-preflight
-  if ($LASTEXITCODE -ne 0 -or ($preflight -join "`n") -notmatch '"available"\s*:') {
+  $preflightOutput = Join-Path $env:TEMP "cnshell-preflight-$PID.stdout.log"
+  $preflightError = Join-Path $env:TEMP "cnshell-preflight-$PID.stderr.log"
+  try {
+    $preflightProcess = Start-Process -FilePath $Executable -ArgumentList @("--rdp-preflight") -Wait -PassThru `
+      -RedirectStandardOutput $preflightOutput -RedirectStandardError $preflightError -WindowStyle Hidden
+    $preflight = if (Test-Path -LiteralPath $preflightOutput) {
+      Get-Content -LiteralPath $preflightOutput -Raw
+    } else {
+      ""
+    }
+  } finally {
+    Remove-Item -Force -ErrorAction SilentlyContinue $preflightOutput, $preflightError
+  }
+  if ($preflightProcess.ExitCode -ne 0 -or $preflight -notmatch '"available"\s*:') {
     throw "Installed CNshell executable failed its command-line startup preflight"
   }
   $process = Start-Process -FilePath $Executable -PassThru
