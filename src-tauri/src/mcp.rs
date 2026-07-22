@@ -4099,6 +4099,41 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn local_grant_paths_reject_junction_components() {
+        use std::process::Command;
+
+        let directory = tempfile::tempdir().unwrap();
+        let inside = directory.path().join("inside");
+        let junction = directory.path().join("junction");
+        std::fs::create_dir(&inside).unwrap();
+        std::fs::write(inside.join("source.txt"), b"content").unwrap();
+
+        let output = Command::new("cmd.exe")
+            .arg("/C")
+            .arg("mklink")
+            .arg("/J")
+            .arg(&junction)
+            .arg(&inside)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "unable to create junction fixture: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let error = resolve_local_grant_path(directory.path(), "junction/source.txt", false)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("重解析点"),
+            "unexpected junction error: {error}"
+        );
+        std::fs::remove_dir(&junction).unwrap();
+    }
+
     #[test]
     fn execution_limit_is_released_by_raii() {
         let directory = tempfile::tempdir().unwrap();
@@ -4570,6 +4605,45 @@ mod tests {
         symlink(&outside, &path).unwrap();
         assert!(write_discovery(&path, &document).is_err());
         assert_eq!(std::fs::read(&outside).unwrap(), b"unchanged");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn discovery_uses_a_protected_owner_rights_dacl() {
+        use std::process::Command;
+
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mcp-broker.json");
+        let document = DiscoveryDocument {
+            schema_version: BROKER_PROTOCOL_VERSION,
+            address: "127.0.0.1:12345".into(),
+            generation: "generation".into(),
+            broker_token: "broker-token-with-at-least-32-characters".into(),
+            process_id: 42,
+            created_at: Utc::now().to_rfc3339(),
+        };
+        write_discovery(&path, &document).unwrap();
+
+        let output = Command::new("powershell.exe")
+            .args([
+                "-NoProfile",
+                "-NonInteractive",
+                "-Command",
+                "(Get-Acl -LiteralPath $args[0]).Sddl",
+            ])
+            .arg(&path)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "unable to inspect discovery ACL: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let sddl = String::from_utf8_lossy(&output.stdout);
+        assert!(
+            sddl.contains("D:P(A;;FA;;;OW)"),
+            "unexpected discovery ACL: {sddl}"
+        );
     }
 
     #[test]
