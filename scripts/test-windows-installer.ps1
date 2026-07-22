@@ -100,6 +100,29 @@ function Assert-BundledResources {
   }
 }
 
+function Assert-McpSidecarStarts {
+  $sidecar = Join-Path $InstallDirectory "mcp\cnshell-mcp.exe"
+  $clientId = [guid]::NewGuid().ToString()
+  $stdout = Join-Path $env:TEMP "cnshell-mcp-provision-$PID.stdout.log"
+  $stderr = Join-Path $env:TEMP "cnshell-mcp-provision-$PID.stderr.log"
+  $digest = $null
+  try {
+    $provision = Start-Process -FilePath $sidecar -ArgumentList @("--provision-client-secret", $clientId) -Wait -PassThru `
+      -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden
+    $digest = if (Test-Path -LiteralPath $stdout) { (Get-Content -LiteralPath $stdout -Raw).Trim() } else { "" }
+    if ($provision.ExitCode -ne 0 -or $digest -notmatch '^sha256:[0-9a-f]{64}$') {
+      throw "Installed MCP sidecar failed its credential provisioning smoke test"
+    }
+    $revoke = Start-Process -FilePath $sidecar -ArgumentList @("--revoke-client-secret", $clientId, "--expected-sha256", $digest) -Wait -PassThru `
+      -RedirectStandardOutput $stdout -RedirectStandardError $stderr -WindowStyle Hidden
+    if ($revoke.ExitCode -ne 0) {
+      throw "Installed MCP sidecar failed its credential revocation smoke test"
+    }
+  } finally {
+    Remove-Item -Force -ErrorAction SilentlyContinue $stdout, $stderr
+  }
+}
+
 function Test-WebViewDescendant([int]$ParentProcessId) {
   $processes = @(Get-CimInstance Win32_Process -Property ProcessId, ParentProcessId, Name)
   $pending = [System.Collections.Generic.Queue[uint32]]::new()
@@ -159,6 +182,7 @@ function Remove-TestCredential {
 function Assert-CNshellStarts {
   $Executable = Get-CNshellExecutable
   Assert-BundledResources
+  Assert-McpSidecarStarts
   $preflightOutput = Join-Path $env:TEMP "cnshell-preflight-$PID.stdout.log"
   $preflightError = Join-Path $env:TEMP "cnshell-preflight-$PID.stderr.log"
   try {
@@ -255,7 +279,7 @@ try {
   Assert-UserData
   Assert-TestCredential
 
-  Write-Host "CNshell NSIS resources, install, frontend startup, native close, shortcut preservation, upgrade, uninstall, SQLite, credential, and reinstall gates passed."
+  Write-Host "CNshell NSIS resources, MCP sidecar, install, frontend startup, native close, shortcut preservation, upgrade, uninstall, SQLite, credential, and reinstall gates passed."
 } finally {
   Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $DesktopShortcut
   Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $Sentinel
