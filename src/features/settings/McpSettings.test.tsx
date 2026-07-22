@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { ConnectionProfile, McpApprovalRule, McpClient, McpStatus } from "../../types";
+import type { ConnectionProfile, McpApprovalRule, McpClient, McpClientConfig, McpStatus } from "../../types";
 import { McpSettings } from "./McpSettings";
 
 const status: McpStatus = {
@@ -45,6 +45,15 @@ const approvalRule: McpApprovalRule = {
   lastUsedAt: null,
 };
 
+const clientConfig: McpClientConfig = {
+  clientId: client.id,
+  clientName: client.name,
+  command: "cnshell-mcp",
+  args: [],
+  codexToml: "[mcp_servers.cnshell]",
+  json: '{"mcpServers":{"cnshell":{}}}',
+};
+
 describe("McpSettings", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -54,6 +63,7 @@ describe("McpSettings", () => {
     vi.spyOn(api, "mcpListAudit").mockResolvedValue([]);
     vi.spyOn(api, "mcpListLocalGrants").mockResolvedValue([]);
     vi.spyOn(api, "mcpListApprovalRules").mockResolvedValue([]);
+    vi.spyOn(api, "mcpClientConfig").mockResolvedValue(clientConfig);
   });
 
   it("saves hostname visibility only for the selected client", async () => {
@@ -71,6 +81,26 @@ describe("McpSettings", () => {
       showHostnames: false,
       remoteRoot: "/srv/app",
     }));
+  });
+
+  it("confirms saved grants and brings the generated client configuration into view", async () => {
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+    vi.spyOn(api, "mcpSaveClientGrants").mockResolvedValue(client);
+    vi.spyOn(api, "mcpListClients").mockResolvedValueOnce([client]).mockResolvedValue([{ ...client }]);
+    const user = userEvent.setup();
+    render(<McpSettings connections={[connection]} onError={vi.fn()} />);
+
+    await user.click(await screen.findByRole("button", { name: /^Codex/ }));
+    await user.click(screen.getByRole("button", { name: "保存授权并生成配置" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("授权已保存，客户端配置已生成。");
+    expect(screen.getByText("客户端配置")).toBeVisible();
+    expect(api.mcpClientConfig).toHaveBeenCalledWith(client.id);
+    await vi.waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   });
 
   it.each(["light", "dark"])("renders controls with the %s theme tokens", async (theme) => {

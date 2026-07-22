@@ -12,7 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
 import type {
@@ -64,6 +64,9 @@ export function McpSettings({
   const [localGrants, setLocalGrants] = useState<McpLocalGrant[]>([]);
   const [approvalRules, setApprovalRules] = useState<McpApprovalRule[]>([]);
   const [copied, setCopied] = useState<"codex" | "json" | null>(null);
+  const [configNotice, setConfigNotice] = useState<string | null>(null);
+  const configRef = useRef<HTMLDivElement | null>(null);
+  const initializedClientIdRef = useRef<string | null>(null);
 
   const sshConnections = useMemo(
     () => connections.filter((connection) => connection.protocol === "ssh"),
@@ -90,15 +93,19 @@ export function McpSettings({
 
   useEffect(() => {
     if (!selectedClient) {
+      initializedClientIdRef.current = null;
       setLocalGrants([]);
       setApprovalRules([]);
       return;
     }
+    if (initializedClientIdRef.current === selectedClient.id) return;
+    initializedClientIdRef.current = selectedClient.id;
     setConnectionIds(selectedClient.connectionIds);
     setTools(selectedClient.tools.length ? selectedClient.tools : DEFAULT_TOOLS);
     setRemoteRoot(selectedClient.remoteRoot);
     setShowHostnames(selectedClient.showHostnames);
     setConfig(null);
+    setConfigNotice(null);
     void Promise.all([
       api.mcpListLocalGrants(selectedClient.id),
       api.mcpListApprovalRules(selectedClient.id),
@@ -107,6 +114,14 @@ export function McpSettings({
       setApprovalRules(rules);
     }).catch((reason) => onError(errorMessage(reason)));
   }, [selectedClient, onError]);
+
+  useEffect(() => {
+    if (!config) return;
+    const frame = window.requestAnimationFrame(() => {
+      configRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [config]);
 
   const toggleEnabled = async (enabled: boolean) => {
     setBusy(true);
@@ -141,15 +156,20 @@ export function McpSettings({
         showHostnames,
       });
       setClients((current) => current.map((client) => client.id === saved.id ? saved : client));
-      setConfig(await api.mcpClientConfig(saved.id));
+      const generatedConfig = await api.mcpClientConfig(saved.id);
       await refresh();
+      setConfig(generatedConfig);
+      setConfigNotice("授权已保存，客户端配置已生成。");
     } catch (reason) { onError(errorMessage(reason)); }
     finally { setBusy(false); }
   };
 
   const loadConfig = async () => {
     if (!selectedClient) return;
-    try { setConfig(await api.mcpClientConfig(selectedClient.id)); }
+    try {
+      setConfig(await api.mcpClientConfig(selectedClient.id));
+      setConfigNotice("已加载客户端配置。");
+    }
     catch (reason) { onError(errorMessage(reason)); }
   };
 
@@ -245,7 +265,8 @@ export function McpSettings({
       <fieldset><legend>本地文件授权</legend><div className="mcp-local-actions"><button className="mini-button" disabled={busy} onClick={() => void createLocalGrant("upload", "file")}><FolderOpen size={12}/>授权上传文件</button><button className="mini-button" disabled={busy} onClick={() => void createLocalGrant("upload", "directory")}><FolderOpen size={12}/>授权上传文件夹</button><button className="mini-button" disabled={busy} onClick={() => void createLocalGrant("download", "directory")}><FolderOpen size={12}/>授权下载目录</button></div>{!localGrants.filter((grant) => !grant.revokedAt).length ? <small>暂无活动授权。默认创建一次性授权，使用后立即失效。</small> : <div className="mcp-local-list">{localGrants.filter((grant) => !grant.revokedAt).map((grant) => <div key={grant.id}><span><b>{grant.displayName}</b><small>{grant.direction === "upload" ? "上传只读" : "下载可写"} · {grant.persistent ? "持久" : "一次性"}</small></span><code>{grant.id}</code><button className="mini-button danger" aria-label={`撤销本地授权 ${grant.displayName}`} onClick={() => void revokeLocalGrant(grant)}><Ban size={11}/>撤销</button></div>)}</div>}</fieldset>
       <fieldset><legend>精确命令规则</legend>{!approvalRules.length ? <small>暂无规则。只有低风险命令可以在审批时保存，命令明文不会写入规则表。</small> : <div className="mcp-rule-list">{approvalRules.map((rule) => <div key={rule.id}><span><b>{rule.connectionName}</b><small>{rule.tool} · {rule.lastUsedAt ? `最近使用 ${new Date(rule.lastUsedAt).toLocaleString()}` : `创建于 ${new Date(rule.createdAt).toLocaleString()}`}</small></span><code title={rule.targetSummary}>{rule.targetSummary}</code><button className="mini-button danger" aria-label={`撤销精确规则 ${rule.connectionName}`} onClick={() => void revokeApprovalRule(rule)}><Ban size={11}/>撤销</button></div>)}</div>}</fieldset>
       <div className="mcp-grant-actions"><button className="button secondary" disabled={busy} onClick={() => void loadConfig()}><Clipboard size={14}/>查看现有配置</button><button className="button primary" disabled={busy} onClick={() => void saveGrants()}><Check size={14}/>保存授权并生成配置</button></div>
-      {config && <div className="mcp-config"><div><strong>客户端配置</strong><small>复制到对应 MCP Host 后，保持 CNshell 运行并启用 MCP。</small></div><pre>{config.codexToml}</pre><div className="mcp-config-actions"><button className="mini-button" onClick={() => void copyConfig("codex")}><Copy size={12}/>{copied === "codex" ? "已复制" : "复制 Codex TOML"}</button><button className="mini-button" onClick={() => void copyConfig("json")}><Copy size={12}/>{copied === "json" ? "已复制" : "复制通用 JSON"}</button></div></div>}
+      {configNotice && <p className="mcp-config-notice" role="status">{configNotice}</p>}
+      {config && <div ref={configRef} tabIndex={-1} className="mcp-config"><div><strong>客户端配置</strong><small>复制到对应 MCP Host 后，保持 CNshell 运行并启用 MCP。</small></div><pre>{config.codexToml}</pre><div className="mcp-config-actions"><button className="mini-button" onClick={() => void copyConfig("codex")}><Copy size={12}/>{copied === "codex" ? "已复制" : "复制 Codex TOML"}</button><button className="mini-button" onClick={() => void copyConfig("json")}><Copy size={12}/>{copied === "json" ? "已复制" : "复制通用 JSON"}</button></div></div>}
     </div>}
 
     <div className="mcp-subsection mcp-audit">
