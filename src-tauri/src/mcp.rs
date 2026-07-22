@@ -4629,9 +4629,9 @@ mod tests {
                 "-NoProfile",
                 "-NonInteractive",
                 "-Command",
-                "(Get-Acl -LiteralPath $args[0]).Sddl",
+                "(Get-Acl -LiteralPath $env:CNSHELL_TEST_DISCOVERY_PATH).Sddl",
             ])
-            .arg(&path)
+            .env("CNSHELL_TEST_DISCOVERY_PATH", &path)
             .output()
             .unwrap();
         assert!(
