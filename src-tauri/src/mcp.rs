@@ -4610,7 +4610,16 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn discovery_uses_a_protected_owner_rights_dacl() {
-        use std::process::Command;
+        use std::{os::windows::ffi::OsStrExt as _, ptr};
+        use windows_sys::Win32::{
+            Foundation::{ERROR_INSUFFICIENT_BUFFER, GetLastError, LocalFree},
+            Security::{
+                Authorization::{
+                    ConvertSecurityDescriptorToStringSecurityDescriptorW, SDDL_REVISION_1,
+                },
+                DACL_SECURITY_INFORMATION, GetFileSecurityW, PSECURITY_DESCRIPTOR,
+            },
+        };
 
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("mcp-broker.json");
@@ -4624,22 +4633,53 @@ mod tests {
         };
         write_discovery(&path, &document).unwrap();
 
-        let output = Command::new("powershell.exe")
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-Command",
-                "(Get-Acl -LiteralPath $env:CNSHELL_TEST_DISCOVERY_PATH).Sddl",
-            ])
-            .env("CNSHELL_TEST_DISCOVERY_PATH", &path)
-            .output()
-            .unwrap();
+        let path_wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+        let mut descriptor_len = 0_u32;
+        let first_read = unsafe {
+            GetFileSecurityW(
+                path_wide.as_ptr(),
+                DACL_SECURITY_INFORMATION,
+                ptr::null_mut(),
+                0,
+                &mut descriptor_len,
+            )
+        };
         assert!(
-            output.status.success(),
-            "unable to inspect discovery ACL: {}",
-            String::from_utf8_lossy(&output.stderr)
+            first_read == 0 && unsafe { GetLastError() } == ERROR_INSUFFICIENT_BUFFER,
+            "unable to determine discovery ACL descriptor length"
         );
-        let sddl = String::from_utf8_lossy(&output.stdout);
+
+        let mut descriptor = vec![0_u8; descriptor_len as usize];
+        let descriptor_ptr: PSECURITY_DESCRIPTOR = descriptor.as_mut_ptr().cast();
+        let read = unsafe {
+            GetFileSecurityW(
+                path_wide.as_ptr(),
+                DACL_SECURITY_INFORMATION,
+                descriptor_ptr,
+                descriptor_len,
+                &mut descriptor_len,
+            )
+        };
+        assert!(read != 0, "unable to read discovery ACL");
+
+        let mut sddl_ptr = ptr::null_mut();
+        let mut sddl_len = 0_u32;
+        let converted = unsafe {
+            ConvertSecurityDescriptorToStringSecurityDescriptorW(
+                descriptor_ptr,
+                SDDL_REVISION_1,
+                DACL_SECURITY_INFORMATION,
+                &mut sddl_ptr,
+                &mut sddl_len,
+            )
+        };
+        assert!(converted != 0, "unable to serialize discovery ACL");
+        let sddl = unsafe {
+            let value =
+                String::from_utf16_lossy(std::slice::from_raw_parts(sddl_ptr, sddl_len as usize));
+            LocalFree(sddl_ptr.cast());
+            value
+        };
         assert!(
             sddl.contains("D:P(A;;FA;;;OW)"),
             "unexpected discovery ACL: {sddl}"
