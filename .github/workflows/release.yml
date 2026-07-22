@@ -180,7 +180,7 @@ jobs:
           CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
         run: |
           npm run build:mcp
-          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }}
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }} -RequireStaticCrt
       - name: Verify G-Kermit x64 interoperability
         if: matrix.runtime
         shell: pwsh

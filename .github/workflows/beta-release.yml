@@ -219,7 +219,7 @@ jobs:
           CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
         run: |
           npm run build:mcp
-          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }}
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }} -RequireStaticCrt
       - name: Build updater-signed unsigned NSIS Beta
         shell: powershell
         env:

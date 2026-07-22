@@ -6,7 +6,9 @@ param(
   [ValidateSet("x64", "arm64")]
   [string]$Architecture,
 
-  [switch]$RequireWindowsGui
+  [switch]$RequireWindowsGui,
+
+  [switch]$RequireStaticCrt
 )
 
 $ErrorActionPreference = "Stop"
@@ -44,6 +46,15 @@ if ($RequireWindowsGui) {
   $Subsystem = [BitConverter]::ToUInt16($Bytes, $OptionalHeader + 68)
   if ($Subsystem -ne 2) {
     throw ("Expected a Windows GUI subsystem (2), found {0} in {1}" -f $Subsystem, $Resolved)
+  }
+}
+
+if ($RequireStaticCrt) {
+  # A dynamically linked MSVC runtime makes a stdio sidecar fail before main
+  # on Windows machines that do not have the VC++ redistributable installed.
+  $Ascii = [System.Text.Encoding]::ASCII.GetString($Bytes)
+  if ($Ascii.Contains("VCRUNTIME140.dll")) {
+    throw ("Expected a statically linked MSVC runtime in {0}" -f $Resolved)
   }
 }
 

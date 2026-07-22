@@ -15,6 +15,14 @@ $TargetTriple = if ($env:TAURI_ENV_TARGET_TRIPLE) {
 }
 
 New-Item -ItemType Directory -Force -Path $Output | Out-Null
+# The MCP sidecar is launched directly by external MCP hosts.  Keep it
+# self-contained so a clean Windows installation does not require the VC++
+# redistributable merely to initialize the client credential.
+if ([string]::IsNullOrWhiteSpace($env:RUSTFLAGS)) {
+  $env:RUSTFLAGS = "-C target-feature=+crt-static"
+} else {
+  $env:RUSTFLAGS = "$($env:RUSTFLAGS) -C target-feature=+crt-static"
+}
 & cargo.exe build --manifest-path $Manifest --release --bin cnshell-mcp --target $TargetTriple
 if ($LASTEXITCODE -ne 0) { throw "Unable to build cnshell-mcp for $TargetTriple" }
 $Built = Join-Path $Root "src-tauri\target\$TargetTriple\release\cnshell-mcp.exe"
