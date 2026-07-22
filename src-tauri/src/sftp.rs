@@ -6,7 +6,8 @@ use crate::{
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::Utc;
-use ssh2::{FileStat, OpenFlags, OpenType, RenameFlags, Sftp};
+use sha2::{Digest, Sha256};
+use ssh2::{ErrorCode, FileStat, OpenFlags, OpenType, RenameFlags, Sftp};
 #[cfg(unix)]
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{
@@ -22,7 +23,26 @@ use std::{
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
+fn atomic_replace(sftp: &Sftp, source: &Path, destination: &Path) -> AppResult<()> {
+    match sftp.posix_rename(source, destination) {
+        Ok(()) => Ok(()),
+        Err(error) if error.code() == ErrorCode::SFTP(8) => match sftp.lstat(destination) {
+            Err(not_found) if not_found.code() == ErrorCode::SFTP(2) => {
+                sftp.rename(source, destination, Some(RenameFlags::empty()))?;
+                Ok(())
+            }
+            Ok(_) => Err(AppError::Unavailable(
+                "远端 SFTP 服务不支持 posix-rename@openssh.com，无法安全地原子覆盖已有文件".into(),
+            )),
+            Err(stat_error) => Err(stat_error.into()),
+        },
+        Err(error) => Err(error.into()),
+    }
+}
+
 const RAW_PATH_PREFIX: &str = "cnshell-raw-path:";
+pub const MCP_MAX_DIRECTORY_ENTRIES: usize = 100_000;
+const MCP_MAX_DIRECTORY_BYTES: u64 = 20 * 1024 * 1024 * 1024;
 pub(crate) fn remote_path(path: &str) -> AppResult<PathBuf> {
     if let Some(encoded) = path.strip_prefix(RAW_PATH_PREFIX) {
         let bytes = URL_SAFE_NO_PAD
@@ -258,6 +278,263 @@ pub async fn list(
     .await
 }
 
+/// List a directory for MCP with a hard entry-count boundary.
+///
+/// The regular file browser intentionally keeps its historical unbounded
+/// listing behavior. MCP calls this variant so a hostile or accidentally
+/// huge remote directory cannot create an unbounded allocation before the
+/// broker applies pagination.
+pub async fn list_bounded(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    show_hidden: bool,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<Vec<RemoteFile>> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, false)?;
+        let directory = remote_path(&path)?;
+        let (raw_entries, more) = sftp.readdir_limited(
+            &directory,
+            MCP_MAX_DIRECTORY_ENTRIES.saturating_add(1),
+            8 * 1024 * 1024,
+        )?;
+        if more || raw_entries.len() > MCP_MAX_DIRECTORY_ENTRIES {
+            return Err(AppError::Validation(
+                "MCP 远端目录超过 100,000 项的首版限制，请缩小目标目录".into(),
+            ));
+        }
+        check_directory_transfer_cancelled(&cancelled)?;
+        let mut entries = raw_entries
+            .into_iter()
+            .filter_map(|(entry_path, stat)| {
+                let name = display_name(&entry_path);
+                if !show_hidden && name.starts_with('.') {
+                    return None;
+                }
+                let kind = remote_kind(&stat).to_string();
+                Some(RemoteFile {
+                    name,
+                    path: wire_path(&entry_path),
+                    kind: kind.clone(),
+                    size: stat.size.unwrap_or(0),
+                    modified_at: stat.mtime,
+                    permissions: permission_string(stat.perm, &kind),
+                    owner: stat.uid,
+                    group: stat.gid,
+                })
+            })
+            .collect::<Vec<_>>();
+        entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
+            ("directory", "file") => std::cmp::Ordering::Less,
+            ("file", "directory") => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+        });
+        Ok(entries)
+    })
+    .await
+}
+
+pub async fn path_kind(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+) -> AppResult<String> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, false)?;
+        let stat = sftp.lstat(&remote_path(&path)?)?;
+        let kind = remote_kind(&stat);
+        if kind == "symlink" || kind == "other" {
+            return Err(AppError::Validation(
+                "MCP 传输不跟随远端符号链接或特殊文件".into(),
+            ));
+        }
+        Ok(kind.into())
+    })
+    .await
+}
+
+/// Resolve both sides on the remote server before an MCP file operation.
+/// Lexical prefix checks alone are insufficient because an intermediate
+/// symlink can redirect an apparently authorized path outside its grant.
+pub async fn validate_mcp_remote_path_boundary(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    allow_missing: bool,
+) -> AppResult<()> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, allow_missing)
+    })
+    .await
+}
+
+fn validate_mcp_boundary_on_sftp(
+    sftp: &Sftp,
+    path: &str,
+    root: &str,
+    allow_missing: bool,
+) -> AppResult<()> {
+    let requested_root = remote_path(root)?;
+    let canonical_root = sftp.realpath(&requested_root)?;
+    let requested = remote_path(path)?;
+    let relative = requested
+        .strip_prefix(&requested_root)
+        .map_err(|_| AppError::PermissionDenied("MCP 远端路径不在授权根内".into()))?;
+    let (resolved, expected) = match sftp.realpath(&requested) {
+        Ok(path) => (path, canonical_root.join(relative)),
+        Err(error) if allow_missing && error.code() == ErrorCode::SFTP(2) => {
+            let parent = requested
+                .parent()
+                .ok_or_else(|| AppError::Validation("MCP 远端目标没有父目录".into()))?;
+            let relative_parent = parent
+                .strip_prefix(&requested_root)
+                .map_err(|_| AppError::PermissionDenied("MCP 远端目标父目录不在授权根内".into()))?;
+            (sftp.realpath(parent)?, canonical_root.join(relative_parent))
+        }
+        Err(error) => return Err(error.into()),
+    };
+    validate_mcp_resolved_path(&resolved, &expected)?;
+    Ok(())
+}
+
+fn validate_mcp_resolved_path(resolved: &Path, expected: &Path) -> AppResult<()> {
+    if resolved != expected {
+        return Err(AppError::PermissionDenied(
+            "MCP 远端路径不能经过符号链接或越过授权根".into(),
+        ));
+    }
+    Ok(())
+}
+
+pub async fn mkdir_for_mcp(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, true)?;
+        sftp.mkdir(&remote_path(&path)?, 0o755)?;
+        Ok(())
+    })
+    .await
+}
+
+pub fn validate_local_directory_tree_for_mcp(root: &Path, cancelled: &AtomicBool) -> AppResult<()> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut entries = 0_usize;
+    let mut bytes = 0_u64;
+    while let Some(path) = pending.pop() {
+        check_directory_transfer_cancelled(cancelled)?;
+        let metadata = std::fs::symlink_metadata(&path)?;
+        if metadata.file_type().is_symlink() || local_metadata_is_reparse_point(&metadata) {
+            return Err(AppError::PermissionDenied(
+                "MCP 文件夹传输不允许符号链接或重解析点".into(),
+            ));
+        }
+        entries += 1;
+        if entries > MCP_MAX_DIRECTORY_ENTRIES {
+            return Err(AppError::Validation(
+                "MCP 文件夹超过 100,000 个项目的首版限制".into(),
+            ));
+        }
+        if metadata.is_dir() {
+            for child in std::fs::read_dir(&path)? {
+                pending.push(child?.path());
+            }
+        } else if metadata.is_file() {
+            bytes = bytes.saturating_add(metadata.len());
+            if bytes > MCP_MAX_DIRECTORY_BYTES {
+                return Err(AppError::Validation(
+                    "MCP 文件夹超过 20 GiB 的首版限制".into(),
+                ));
+            }
+        } else {
+            return Err(AppError::Validation(
+                "MCP 文件夹传输不允许设备、socket 或其他特殊文件".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub async fn validate_remote_directory_tree_for_mcp(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    root: String,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        let mut pending = vec![remote_path(&root)?];
+        let mut entries = 0_usize;
+        let mut bytes = 0_u64;
+        while let Some(path) = pending.pop() {
+            check_directory_transfer_cancelled(&cancelled)?;
+            let stat = sftp.lstat(&path)?;
+            entries += 1;
+            if entries > MCP_MAX_DIRECTORY_ENTRIES {
+                return Err(AppError::Validation(
+                    "MCP 文件夹超过 100,000 个项目的首版限制".into(),
+                ));
+            }
+            match stat.file_type() {
+                ssh2::FileType::Directory => {
+                    for (child, _) in sftp.readdir(&path)? {
+                        pending.push(child);
+                    }
+                }
+                ssh2::FileType::RegularFile => {
+                    bytes = bytes.saturating_add(stat.size.unwrap_or(0));
+                    if bytes > MCP_MAX_DIRECTORY_BYTES {
+                        return Err(AppError::Validation(
+                            "MCP 文件夹超过 20 GiB 的首版限制".into(),
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(AppError::PermissionDenied(
+                        "MCP 文件夹传输不允许远端符号链接或特殊文件".into(),
+                    ));
+                }
+            }
+        }
+        Ok(())
+    })
+    .await
+}
+
+#[cfg(target_os = "windows")]
+fn local_metadata_is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    metadata.file_attributes() & 0x400 != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn local_metadata_is_reparse_point(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
 pub async fn mkdir(
     db: Database,
     manager: SessionManager,
@@ -282,11 +559,91 @@ pub async fn rename(
     validate_remote_path(&source)?;
     validate_remote_path(&destination)?;
     with_sftp(db, manager, session_id, move |sftp| {
-        sftp.rename(
-            &remote_path(&source)?,
-            &remote_path(&destination)?,
-            Some(RenameFlags::OVERWRITE | RenameFlags::ATOMIC),
-        )?;
+        atomic_replace(&sftp, &remote_path(&source)?, &remote_path(&destination)?)?;
+        Ok(())
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn rename_for_mcp(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    source: String,
+    destination: String,
+    source_root: String,
+    destination_root: String,
+    expected_sha256: Option<String>,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    validate_remote_path(&source)?;
+    validate_remote_path(&destination)?;
+    validate_remote_path(&source_root)?;
+    validate_remote_path(&destination_root)?;
+    if expected_sha256
+        .as_ref()
+        .is_some_and(|value| value.len() != 71 || !value.starts_with("sha256:"))
+    {
+        return Err(AppError::Validation("MCP expectedSha256 格式无效".into()));
+    }
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &source, &source_root, false)?;
+        validate_mcp_boundary_on_sftp(&sftp, &destination, &destination_root, true)?;
+        let source = remote_path(&source)?;
+        let destination = remote_path(&destination)?;
+        let source_stat = sftp.lstat(&source)?;
+        if !matches!(
+            source_stat.file_type(),
+            ssh2::FileType::RegularFile | ssh2::FileType::Directory
+        ) {
+            return Err(AppError::Validation(
+                "MCP 只能重命名普通文件或目录，不跟随符号链接".into(),
+            ));
+        }
+        match sftp.lstat(&destination) {
+            Ok(_) => {
+                return Err(AppError::Remote("MCP 重命名目标已经存在，拒绝覆盖".into()));
+            }
+            Err(error) if error.code() == ErrorCode::SFTP(2) => {}
+            Err(error) => return Err(error.into()),
+        }
+        if source_stat.file_type() == ssh2::FileType::RegularFile {
+            let expected = expected_sha256.as_deref().ok_or_else(|| {
+                AppError::Validation("重命名普通文件必须提供 expectedSha256".into())
+            })?;
+            if source_stat.size.unwrap_or(0) > 64 * 1024 * 1024 {
+                return Err(AppError::Validation(
+                    "MCP 重命名冲突检查只支持 64 MiB 以下普通文件".into(),
+                ));
+            }
+            let mut file = sftp.open(&source)?;
+            let mut digest = Sha256::new();
+            let mut buffer = vec![0_u8; 64 * 1024];
+            loop {
+                check_directory_transfer_cancelled(&cancelled)?;
+                let read = file.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                digest.update(&buffer[..read]);
+            }
+            let actual = format!("sha256:{:x}", digest.finalize());
+            if actual != expected {
+                return Err(AppError::Remote(
+                    "远端文件内容已变化，expectedSha256 不匹配".into(),
+                ));
+            }
+        } else if expected_sha256.is_some() {
+            return Err(AppError::Validation(
+                "目录重命名不接受 expectedSha256".into(),
+            ));
+        }
+        // The base SFTP RENAME operation must fail when the destination exists.
+        // Avoid the POSIX rename extension here because it permits replacement.
+        check_directory_transfer_cancelled(&cancelled)?;
+        sftp.rename(&source, &destination, Some(RenameFlags::empty()))?;
         Ok(())
     })
     .await
@@ -303,6 +660,77 @@ fn delete_recursive(sftp: &Sftp, path: &Path) -> AppResult<()> {
         sftp.unlink(path)?;
     }
     Ok(())
+}
+
+fn delete_recursive_for_mcp(
+    sftp: &Sftp,
+    path: &Path,
+    cancelled: &AtomicBool,
+    visited: &mut usize,
+) -> AppResult<()> {
+    check_directory_transfer_cancelled(cancelled)?;
+    *visited = visited.saturating_add(1);
+    if *visited > MCP_MAX_DIRECTORY_ENTRIES {
+        return Err(AppError::Validation(
+            "MCP 递归删除超过 100,000 个项目的首版限制".into(),
+        ));
+    }
+    let stat = sftp.lstat(path)?;
+    match stat.file_type() {
+        ssh2::FileType::Directory => {
+            for (child, _) in sftp.readdir(path)? {
+                delete_recursive_for_mcp(sftp, &child, cancelled, visited)?;
+            }
+            check_directory_transfer_cancelled(cancelled)?;
+            sftp.rmdir(path)?;
+        }
+        ssh2::FileType::RegularFile | ssh2::FileType::Symlink => {
+            check_directory_transfer_cancelled(cancelled)?;
+            sftp.unlink(path)?;
+        }
+        _ => {
+            return Err(AppError::PermissionDenied(
+                "MCP 递归删除不处理远端特殊文件".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+pub async fn delete_for_mcp(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    recursive: bool,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<()> {
+    validate_deletable_path(&path)?;
+    validate_remote_path(&root)?;
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, false)?;
+        let decoded = remote_path(&path)?;
+        let stat = sftp.lstat(&decoded)?;
+        if stat.file_type() == ssh2::FileType::Directory {
+            if recursive {
+                delete_recursive_for_mcp(&sftp, &decoded, &cancelled, &mut 0)
+            } else {
+                sftp.rmdir(&decoded).map_err(AppError::from)
+            }
+        } else if matches!(
+            stat.file_type(),
+            ssh2::FileType::RegularFile | ssh2::FileType::Symlink
+        ) {
+            sftp.unlink(&decoded).map_err(AppError::from)
+        } else {
+            Err(AppError::PermissionDenied(
+                "MCP 删除不处理远端特殊文件".into(),
+            ))
+        }
+    })
+    .await
 }
 
 pub async fn delete(
@@ -365,6 +793,232 @@ pub struct TextFile {
     pub modified_at: Option<u64>,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TextFileRange {
+    pub content: String,
+    pub size: u64,
+    pub next_offset: Option<u64>,
+    pub sha256: String,
+    pub modified_at: Option<u64>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AtomicTextWrite {
+    pub sha256: String,
+    pub created: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectTransferResult {
+    pub final_path: String,
+    pub transferred_bytes: u64,
+}
+
+#[expect(
+    clippy::too_many_arguments,
+    reason = "The MCP transfer boundary carries independently validated local and remote capabilities"
+)]
+pub async fn transfer_file_direct(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    direction: String,
+    source: String,
+    destination: String,
+    conflict_policy: String,
+    cancelled: Arc<AtomicBool>,
+    remote_root: String,
+) -> AppResult<DirectTransferResult> {
+    if !["upload", "download"].contains(&direction.as_str())
+        || !["overwrite", "skip", "rename"].contains(&conflict_policy.as_str())
+    {
+        return Err(AppError::Validation("MCP 文件传输参数无效".into()));
+    }
+    if direction == "upload" {
+        validate_local_path(&source)?;
+        validate_remote_path(&destination)?;
+    } else {
+        validate_remote_path(&source)?;
+        validate_local_path(&destination)?;
+    }
+    validate_remote_path(&remote_root)?;
+    let profile = manager.profile(&session_id)?;
+    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    tokio::task::spawn_blocking(move || {
+        let result = (|| {
+            let sftp = transport.connected().session.sftp()?;
+            let mut buffer = vec![0_u8; 256 * 1024];
+            if direction == "upload" {
+                validate_mcp_boundary_on_sftp(&sftp, &destination, &remote_root, true)?;
+                let metadata = std::fs::symlink_metadata(&source)?;
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(AppError::Validation(
+                        "MCP 只能上传普通本地文件，不跟随符号链接".into(),
+                    ));
+                }
+                let mut final_path = destination.clone();
+                if let Ok(stat) = sftp.lstat(Path::new(&final_path)) {
+                    if stat.file_type() != ssh2::FileType::RegularFile {
+                        return Err(AppError::Validation(
+                            "MCP 不能覆盖远端符号链接或特殊文件".into(),
+                        ));
+                    }
+                    match conflict_policy.as_str() {
+                        "skip" => {
+                            return Ok(DirectTransferResult {
+                                final_path,
+                                transferred_bytes: 0,
+                            });
+                        }
+                        "rename" => {
+                            let original = final_path.clone();
+                            let mut index = 1;
+                            while sftp.lstat(Path::new(&final_path)).is_ok() {
+                                final_path = renamed_remote_path(&original, index);
+                                index += 1;
+                            }
+                        }
+                        "overwrite" => {}
+                        _ => unreachable!(),
+                    }
+                }
+                let temporary =
+                    PathBuf::from(format!("{final_path}.cnshell-part-{}", Uuid::new_v4()));
+                let upload = (|| {
+                    let mut local = std::fs::File::open(&source)?;
+                    let total = local.metadata()?.len();
+                    let mut remote = sftp.open_mode(
+                        &temporary,
+                        OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                        0o600,
+                        OpenType::File,
+                    )?;
+                    let mut transferred = 0_u64;
+                    loop {
+                        check_directory_transfer_cancelled(&cancelled)?;
+                        let read = local.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        remote.write_all(&buffer[..read])?;
+                        transferred += read as u64;
+                    }
+                    remote.fsync()?;
+                    drop(remote);
+                    if transferred != total || sftp.stat(&temporary)?.size.unwrap_or(0) != total {
+                        return Err(AppError::Remote("MCP 上传大小校验失败".into()));
+                    }
+                    atomic_replace(&sftp, &temporary, Path::new(&final_path))?;
+                    Ok(DirectTransferResult {
+                        final_path,
+                        transferred_bytes: transferred,
+                    })
+                })();
+                if upload.is_err() {
+                    let _ = sftp.unlink(&temporary);
+                }
+                upload
+            } else {
+                validate_mcp_boundary_on_sftp(&sftp, &source, &remote_root, false)?;
+                let remote_path = remote_path(&source)?;
+                let stat = sftp.lstat(&remote_path)?;
+                if stat.file_type() != ssh2::FileType::RegularFile {
+                    return Err(AppError::Validation(
+                        "MCP 只能下载普通远端文件，不跟随符号链接".into(),
+                    ));
+                }
+                let mut final_path = PathBuf::from(&destination);
+                if final_path.exists() {
+                    let metadata = std::fs::symlink_metadata(&final_path)?;
+                    if metadata.file_type().is_symlink() || !metadata.is_file() {
+                        return Err(AppError::Validation(
+                            "MCP 不能覆盖本地符号链接或特殊文件".into(),
+                        ));
+                    }
+                    match conflict_policy.as_str() {
+                        "skip" => {
+                            return Ok(DirectTransferResult {
+                                final_path: final_path.to_string_lossy().into_owned(),
+                                transferred_bytes: 0,
+                            });
+                        }
+                        "rename" => {
+                            let original = destination.clone();
+                            let mut index = 1;
+                            while final_path.exists() {
+                                final_path = PathBuf::from(renamed_path(&original, index));
+                                index += 1;
+                            }
+                        }
+                        "overwrite" => {}
+                        _ => unreachable!(),
+                    }
+                }
+                let parent = final_path
+                    .parent()
+                    .ok_or_else(|| AppError::Validation("MCP 本地目标无父目录".into()))?;
+                let parent_metadata = std::fs::symlink_metadata(parent)?;
+                if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+                    return Err(AppError::Validation("MCP 本地目标目录无效".into()));
+                }
+                let part = parent.join(format!(".cnshell-part-{}", Uuid::new_v4()));
+                let backup = parent.join(format!(".cnshell-backup-{}", Uuid::new_v4()));
+                let download = (|| {
+                    let mut remote = sftp.open(&remote_path)?;
+                    let mut local = std::fs::File::create(&part)?;
+                    let mut transferred = 0_u64;
+                    loop {
+                        check_directory_transfer_cancelled(&cancelled)?;
+                        let read = remote.read(&mut buffer)?;
+                        if read == 0 {
+                            break;
+                        }
+                        local.write_all(&buffer[..read])?;
+                        transferred += read as u64;
+                    }
+                    local.sync_all()?;
+                    if transferred != stat.size.unwrap_or(0) {
+                        return Err(AppError::Remote("MCP 下载大小校验失败".into()));
+                    }
+                    let replacing = final_path.exists();
+                    if replacing {
+                        std::fs::rename(&final_path, &backup)?;
+                    }
+                    if let Err(error) = std::fs::rename(&part, &final_path) {
+                        if replacing {
+                            let _ = std::fs::rename(&backup, &final_path);
+                        }
+                        return Err(error.into());
+                    }
+                    if replacing {
+                        let _ = std::fs::remove_file(&backup);
+                    }
+                    Ok(DirectTransferResult {
+                        final_path: final_path.to_string_lossy().into_owned(),
+                        transferred_bytes: transferred,
+                    })
+                })();
+                if download.is_err() {
+                    let _ = std::fs::remove_file(&part);
+                    if backup.exists() && !final_path.exists() {
+                        let _ = std::fs::rename(&backup, &final_path);
+                    }
+                }
+                download
+            }
+        })();
+        if result.is_err() {
+            transport.discard();
+        }
+        result
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
 fn validate_text_size(size: usize) -> AppResult<()> {
     if size > 10 * 1024 * 1024 {
         Err(AppError::Validation(
@@ -395,6 +1049,188 @@ pub async fn open_text(
         Ok(TextFile {
             content,
             modified_at: stat.mtime,
+        })
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn read_text_range(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    offset: u64,
+    max_bytes: usize,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<TextFileRange> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    if max_bytes == 0 || max_bytes > 256 * 1024 {
+        return Err(AppError::Validation(
+            "MCP 文本读取范围必须在 1 到 256 KiB 之间".into(),
+        ));
+    }
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, false)?;
+        let decoded = remote_path(&path)?;
+        let stat = sftp.lstat(&decoded)?;
+        if stat.file_type() != ssh2::FileType::RegularFile {
+            return Err(AppError::Validation(
+                "MCP 只读取普通文本文件，不跟随符号链接".into(),
+            ));
+        }
+        let size = stat.size.unwrap_or(0);
+        if size > 64 * 1024 * 1024 {
+            return Err(AppError::Validation(
+                "MCP 文本读取只支持 64 MiB 以下文件".into(),
+            ));
+        }
+        if offset > size {
+            return Err(AppError::Validation("MCP 文本读取偏移超过文件大小".into()));
+        }
+        let mut file = sftp.open(&decoded)?;
+        let mut digest = Sha256::new();
+        let mut captured = Vec::with_capacity(max_bytes);
+        let mut position = 0_u64;
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            check_directory_transfer_cancelled(&cancelled)?;
+            let read = file.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            digest.update(&buffer[..read]);
+            let chunk_start = position;
+            let chunk_end = position + read as u64;
+            let requested_end = offset.saturating_add(max_bytes as u64);
+            if chunk_end > offset && chunk_start < requested_end {
+                let from = offset.saturating_sub(chunk_start) as usize;
+                let to = (requested_end.min(chunk_end) - chunk_start) as usize;
+                captured.extend_from_slice(&buffer[from..to]);
+            }
+            position = chunk_end;
+        }
+        let content = String::from_utf8(captured)
+            .map_err(|_| AppError::Validation("MCP 文件范围不是有效 UTF-8 文本".into()))?;
+        let next = offset.saturating_add(content.len() as u64);
+        Ok(TextFileRange {
+            content,
+            size,
+            next_offset: (next < size).then_some(next),
+            sha256: format!("sha256:{:x}", digest.finalize()),
+            modified_at: stat.mtime,
+        })
+    })
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+pub async fn write_text_atomic(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    path: String,
+    root: String,
+    content: String,
+    expected_sha256: Option<String>,
+    cancelled: Arc<AtomicBool>,
+) -> AppResult<AtomicTextWrite> {
+    validate_remote_path(&path)?;
+    validate_remote_path(&root)?;
+    if content.len() > 256 * 1024 {
+        return Err(AppError::Validation(
+            "MCP 单次文本写入不能超过 256 KiB".into(),
+        ));
+    }
+    if expected_sha256
+        .as_ref()
+        .is_some_and(|value| value.len() != 71 || !value.starts_with("sha256:"))
+    {
+        return Err(AppError::Validation("MCP expectedSha256 格式无效".into()));
+    }
+    with_sftp(db, manager, session_id, move |sftp| {
+        check_directory_transfer_cancelled(&cancelled)?;
+        validate_mcp_boundary_on_sftp(&sftp, &path, &root, true)?;
+        let target = remote_path(&path)?;
+        let existing = match sftp.lstat(&target) {
+            Ok(stat) => {
+                if stat.file_type() != ssh2::FileType::RegularFile {
+                    return Err(AppError::Validation(
+                        "MCP 只能覆盖普通文件，不跟随符号链接".into(),
+                    ));
+                }
+                Some(stat)
+            }
+            Err(error) if error.code() == ssh2::ErrorCode::SFTP(2) => None,
+            Err(error) => return Err(error.into()),
+        };
+        if let Some(expected) = expected_sha256.as_deref() {
+            let stat = existing.as_ref().ok_or_else(|| {
+                AppError::Remote("远端文件不存在，expectedSha256 无法匹配".into())
+            })?;
+            let mut file = sftp.open(&target)?;
+            let mut digest = Sha256::new();
+            let mut buffer = vec![0_u8; 64 * 1024];
+            let mut read_total = 0_u64;
+            loop {
+                check_directory_transfer_cancelled(&cancelled)?;
+                let read = file.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                read_total += read as u64;
+                if read_total > 10 * 1024 * 1024 {
+                    return Err(AppError::Validation(
+                        "MCP 冲突检查不处理超过 10 MiB 的文本文件".into(),
+                    ));
+                }
+                digest.update(&buffer[..read]);
+            }
+            let actual = format!("sha256:{:x}", digest.finalize());
+            if actual != expected {
+                return Err(AppError::Remote(
+                    "远端文件内容已变化，expectedSha256 不匹配".into(),
+                ));
+            }
+            let _ = stat;
+        } else if existing.is_some() {
+            return Err(AppError::Remote(
+                "覆盖已有文件必须提供 expectedSha256".into(),
+            ));
+        }
+        let mut temp = target.clone();
+        let mut name = target.file_name().unwrap_or_default().to_os_string();
+        name.push(format!(".cnshell-mcp-{}", Uuid::new_v4()));
+        temp.set_file_name(name);
+        let mode = existing
+            .as_ref()
+            .and_then(|stat| stat.perm)
+            .unwrap_or(0o644) as i32;
+        let write_result = (|| -> AppResult<()> {
+            check_directory_transfer_cancelled(&cancelled)?;
+            let mut file = sftp.open_mode(
+                &temp,
+                OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+                mode,
+                OpenType::File,
+            )?;
+            file.write_all(content.as_bytes())?;
+            file.fsync()?;
+            drop(file);
+            check_directory_transfer_cancelled(&cancelled)?;
+            atomic_replace(&sftp, &temp, &target)?;
+            Ok(())
+        })();
+        if write_result.is_err() {
+            let _ = sftp.unlink(&temp);
+        }
+        write_result?;
+        Ok(AtomicTextWrite {
+            sha256: format!("sha256:{:x}", Sha256::digest(content.as_bytes())),
+            created: existing.is_none(),
         })
     })
     .await
@@ -434,13 +1270,9 @@ pub async fn save_text(
             file.write_all(content.as_bytes())?;
             file.fsync()?;
         }
-        if let Err(error) = sftp.rename(
-            &temp,
-            &target,
-            Some(RenameFlags::OVERWRITE | RenameFlags::ATOMIC),
-        ) {
+        if let Err(error) = atomic_replace(&sftp, &temp, &target) {
             let _ = sftp.unlink(&temp);
-            return Err(AppError::from(error));
+            return Err(error);
         }
         Ok(())
     })
@@ -632,6 +1464,7 @@ pub async fn transfer_directory(
     destination: String,
     conflict_policy: String,
     cancelled: Arc<AtomicBool>,
+    remote_root: Option<String>,
 ) -> AppResult<String> {
     if !["upload", "download"].contains(&direction.as_str()) {
         return Err(AppError::Validation("文件夹传输方向无效".into()));
@@ -649,6 +1482,9 @@ pub async fn transfer_directory(
         validate_remote_path(&source)?;
         validate_local_path(&destination)?;
     }
+    if let Some(root) = remote_root.as_deref() {
+        validate_remote_path(root)?;
+    }
     if source.starts_with(RAW_PATH_PREFIX) || destination.starts_with(RAW_PATH_PREFIX) {
         return Err(AppError::Validation(
             "文件夹打包传输暂不支持非 UTF-8 路径".into(),
@@ -664,6 +1500,9 @@ pub async fn transfer_directory(
             check_directory_transfer_cancelled(&cancelled)?;
             let sftp = transport.connected().session.sftp()?;
             if direction == "upload" {
+                if let Some(root) = remote_root.as_deref() {
+                    validate_mcp_boundary_on_sftp(&sftp, &destination, root, true)?;
+                }
                 let source_path = Path::new(&source);
                 run_tar(&[
                     std::ffi::OsStr::new("-czf"),
@@ -774,6 +1613,9 @@ pub async fn transfer_directory(
                 }
                 transfer_result
             } else {
+                if let Some(root) = remote_root.as_deref() {
+                    validate_mcp_boundary_on_sftp(&sftp, &source, root, false)?;
+                }
                 let source_path = remote_path(&source)?;
                 if !sftp.lstat(&source_path)?.is_dir() {
                     return Err(AppError::Validation("下载源必须是远端文件夹".into()));
@@ -1227,7 +2069,7 @@ pub async fn enqueue(
                     loop { while token_clone.load(Ordering::Relaxed)==1{work_task.status="paused".into();let _=app_clone.emit("transfer-progress",work_task.clone());std::thread::sleep(Duration::from_millis(100));}work_task.status="running".into();if token_clone.load(Ordering::Relaxed)==2{return Err(AppError::Remote("传输已取消".into()));} let read=local.read(&mut buffer)?;if read==0{break;}remote.write_all(&buffer[..read])?;work_task.transferred_bytes+=read as i64;let _=app_clone.emit("transfer-progress",work_task.clone()); }
                     remote.fsync()?;drop(remote);
                     let actual=sftp.stat(&temporary)?.size.unwrap_or(0)as i64;if work_task.transferred_bytes!=work_task.total_bytes||actual!=work_task.total_bytes{return Err(AppError::Remote(format!("上传大小校验失败：预期 {} 字节，本地已发送 {} 字节，远端临时文件 {} 字节",work_task.total_bytes,work_task.transferred_bytes,actual)));}
-                    sftp.rename(&temporary,Path::new(&work_task.destination),Some(RenameFlags::OVERWRITE|RenameFlags::ATOMIC))?;Ok(())
+                    atomic_replace(&sftp, &temporary, Path::new(&work_task.destination))?;Ok(())
                 })();
                 if let Err(error)=upload{let _=sftp.unlink(&temporary);return Err(error);}
             }
@@ -1344,6 +2186,30 @@ mod tests {
             assert!(validate_deletable_path(path).is_err());
         }
         assert!(validate_deletable_path("/tmp/file").is_ok());
+    }
+    #[test]
+    fn mcp_canonical_path_must_match_the_authorized_relative_path() {
+        assert!(
+            validate_mcp_resolved_path(
+                Path::new("/srv/authorized/log/app.log"),
+                Path::new("/srv/authorized/log/app.log")
+            )
+            .is_ok()
+        );
+        assert!(matches!(
+            validate_mcp_resolved_path(
+                Path::new("/srv/private/app.log"),
+                Path::new("/srv/authorized/link/app.log")
+            ),
+            Err(AppError::PermissionDenied(_))
+        ));
+        assert!(matches!(
+            validate_mcp_resolved_path(
+                Path::new("/srv/authorized/real/app.log"),
+                Path::new("/srv/authorized/link/app.log")
+            ),
+            Err(AppError::PermissionDenied(_))
+        ));
     }
     #[cfg(unix)]
     #[test]

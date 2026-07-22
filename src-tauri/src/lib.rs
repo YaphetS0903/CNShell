@@ -12,6 +12,8 @@ mod error;
 mod external_edit;
 mod kermit;
 mod local_shell;
+pub mod mcp;
+mod mcp_protocol;
 mod models;
 mod monitor;
 mod mosh;
@@ -45,6 +47,7 @@ use collaboration::CollaborationManager;
 use db::Database;
 use external_edit::ExternalEditManager;
 use local_shell::LocalShellManager;
+use mcp::McpManager;
 use monitor::MonitorState;
 use mosh::MoshManager;
 use plugin::PluginManager;
@@ -84,6 +87,7 @@ pub struct AppState {
     team_shares: TeamShareManager,
     collaboration: CollaborationManager,
     relay_terminal: TeamRelayTerminalManager,
+    mcp: McpManager,
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -109,6 +113,24 @@ pub fn serial_devices_json() -> String {
 }
 
 pub use updater_verify::verify_updater_signature;
+
+fn cleanup_app_state(state: &AppState) {
+    state.rdp.close_all();
+    state.mosh.close_all();
+    state.local_shell.close_all();
+    state.telnet.close_all();
+    state.serial.close_all();
+    state.collaboration.close_all();
+    state.relay_terminal.close_all();
+    let manager = state.mcp.clone();
+    let sessions = state.sessions.clone();
+    let db = state.db.clone();
+    tauri::async_runtime::block_on(async move {
+        if let Err(error) = manager.stop(&sessions, &db).await {
+            tracing::error!("MCP Broker 退出清理失败：{error}");
+        }
+    });
+}
 
 #[cfg(target_os = "macos")]
 fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> {
@@ -212,7 +234,22 @@ pub fn run() {
                 team_shares: TeamShareManager::default(),
                 collaboration: CollaborationManager::default(),
                 relay_terminal: TeamRelayTerminalManager::default(),
+                mcp: McpManager::new(data_dir.clone()),
             });
+            let mcp_state = app.state::<AppState>();
+            let mcp_settings = tauri::async_runtime::block_on(McpManager::settings(&mcp_state.db))
+                .map_err(|error| Box::<dyn std::error::Error>::from(error.to_string()))?;
+            if mcp_settings.enabled {
+                let manager = mcp_state.mcp.clone();
+                let app_handle = handle.clone();
+                let db = mcp_state.db.clone();
+                let sessions = mcp_state.sessions.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = manager.start(app_handle, db, sessions).await {
+                        tracing::error!("MCP Broker 启动失败：{error}");
+                    }
+                });
+            }
             automation::start_scheduler(handle.clone(), db, tasks);
             let startup_db = app.state::<AppState>().db.clone();
             let startup_tasks = app.state::<AppState>().tasks.clone();
@@ -228,13 +265,7 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
-                window.state::<AppState>().rdp.close_all();
-                window.state::<AppState>().mosh.close_all();
-                window.state::<AppState>().local_shell.close_all();
-                window.state::<AppState>().telnet.close_all();
-                window.state::<AppState>().serial.close_all();
-                window.state::<AppState>().collaboration.close_all();
-                window.state::<AppState>().relay_terminal.close_all();
+                cleanup_app_state(&window.state::<AppState>());
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -436,10 +467,37 @@ pub fn run() {
             commands::rdp_hide,
             commands::settings_get,
             commands::settings_save,
+            commands::mcp_status,
+            commands::mcp_set_enabled,
+            commands::mcp_settings_save,
+            commands::mcp_client_list,
+            commands::mcp_client_create,
+            commands::mcp_client_grants_save,
+            commands::mcp_client_revoke,
+            commands::mcp_client_config,
+            commands::mcp_approval_list,
+            commands::mcp_approval_approve,
+            commands::mcp_approval_reject,
+            commands::mcp_approval_decide,
+            commands::mcp_approval_rule_list,
+            commands::mcp_approval_rule_revoke,
+            commands::mcp_audit_list,
+            commands::mcp_audit_export,
+            commands::mcp_local_grant_list,
+            commands::mcp_local_grant_create,
+            commands::mcp_local_grant_revoke,
             commands::diagnostics_export,
             commands::diagnostics_environment,
             commands::diagnostics_reveal
         ])
-        .run(tauri::generate_context!())
-        .expect("CNshell 启动失败");
+        .build(tauri::generate_context!())
+        .expect("CNshell 构建失败")
+        .run(|app, event| {
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
+                cleanup_app_state(&app.state::<AppState>());
+            }
+        });
 }

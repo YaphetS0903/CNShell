@@ -178,4 +178,10 @@ jobs:
           kermit_source="$app/Contents/Resources/kermit/source/gku201.tar.gz"
           echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $kermit_source" | shasum -a 256 -c -
           "$kermit" -h 2>&1 | grep -F 'G-Kermit 2.01' >/dev/null
+          mcp="$app/Contents/Resources/mcp/cnshell-mcp"
+          test -x "$mcp"
+          mcp_architectures="$(lipo -archs "$mcp")"
+          [[ " $mcp_architectures " == *" arm64 "* && " $mcp_architectures " == *" x86_64 "* ]]
+          codesign -dv --verbose=4 "$mcp" 2>&1 | grep -E 'flags=.*runtime' >/dev/null
+          test "$(wc -c < "$app/Contents/Resources/licenses/rmcp-Apache-2.0.txt")" -gt 10000
           codesign --verify --deep --strict --verbose=2 "$app"

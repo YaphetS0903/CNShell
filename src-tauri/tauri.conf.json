@@ -36,6 +36,7 @@
       "resources/freerdp/": "freerdp/",
       "resources/mosh/": "mosh/",
       "resources/kermit/": "kermit/",
+      "resources/mcp/": "mcp/",
       "resources/licenses/": "licenses/"
     }
   },

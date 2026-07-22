@@ -17,6 +17,7 @@ import { mapLayoutSessions } from "./features/terminal/terminal-layout";
 import { ErrorToast } from "./components/ErrorToast";
 import { createWorkspaceSnapshot, saveBeforeWindowClose, saveWorkspaceIfChanged, type WorkspaceSnapshot } from "./lib/workspace-persistence";
 import { primaryShortcutPressed, usePlatformCapabilities } from "./lib/platform";
+import { McpApprovalCenter } from "./features/mcp/McpApprovalCenter";
 
 const TerminalWorkspace = lazy(() => import("./features/terminal/TerminalWorkspace"));
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
@@ -75,6 +76,7 @@ export default function App() {
     <div className="app-body">{connectionsOpen&&<><ConnectionSidebar connect={connect}/><div className="panel-resizer vertical connections-resizer" role="separator" aria-label="调整连接库宽度" aria-orientation="vertical" aria-valuemin={210} aria-valuemax={420} aria-valuenow={connectionWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,connectionWidth,setConnectionWidth,210,420)} onKeyDown={(event)=>resizeKey(event,connectionWidth,setConnectionWidth,210,420)}/></>} {monitorOpen&&<><MonitorSidebar/><div className="panel-resizer vertical monitor-resizer" role="separator" aria-label="调整监控栏宽度" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={360} aria-valuenow={monitorWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,monitorWidth,setMonitorWidth,200,360)} onKeyDown={(event)=>resizeKey(event,monitorWidth,setMonitorWidth,200,360)}/></>}<Suspense fallback={<main className="loading-state"><LoaderCircle className="spin"/>加载终端工作区…</main>}><TerminalWorkspace connect={connect}/></Suspense></div>
     {connecting&&<div className="connection-overlay"><LoaderCircle className="spin"/><span>正在安全连接 {connections.find((item)=>item.id===connecting)?.name}…</span></div>}
     {error&&<ErrorToast message={error} onClose={()=>setError(null)}/>}
+    <McpApprovalCenter onError={(message)=>setError(message)}/>
     <ConnectionEditor/><Suspense fallback={null}><SettingsModal/><HelpModal/></Suspense>
     {hostPrompt&&<Modal title="核对服务器身份" onClose={()=>setHostPrompt(null)}><div className="host-key-prompt"><div className="host-key-icon"><TerminalSquare size={27}/></div><h3>{hostPrompt.connection.name}</h3><p>这是首次连接。请通过服务器控制台或管理员核对下面的主机密钥指纹。确认后 CNshell 会保存记录，今后若发生变化将阻止连接。</p><dl><div><dt>主机</dt><dd>{hostPrompt.connection.host}:{hostPrompt.connection.port}</dd></div><div><dt>算法</dt><dd>{hostPrompt.algorithm}</dd></div><div><dt>SHA-256 指纹</dt><dd><code>{hostPrompt.fingerprint}</code></dd></div></dl><footer className="form-actions"><button className="button secondary" onClick={()=>setHostPrompt(null)}>取消</button><button className="button primary" onClick={trustAndConnect}>我已核对，信任并连接</button></footer></div></Modal>}
   </div>;

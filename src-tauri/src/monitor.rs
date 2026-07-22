@@ -5,7 +5,7 @@ use crate::{
     ssh::SessionManager,
 };
 use parking_lot::Mutex;
-use std::{collections::HashMap, io::Read, path::Path, sync::Arc, time::Instant};
+use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 
 type CpuSnapshot = (u64, u64);
 type NetworkCounters = HashMap<String, (u64, u64)>;
@@ -50,24 +50,35 @@ async fn exec(
     session_id: &str,
     command: &'static str,
 ) -> AppResult<String> {
-    let profile = manager.profile(session_id)?;
-    let mut transport = manager.acquire_transport(db, &profile, true).await?;
-    tokio::task::spawn_blocking(move || {
-        let result = (|| {
-            let mut channel = transport.connected().session.channel_session()?;
-            channel.exec(command)?;
-            let mut output = String::new();
-            channel.read_to_string(&mut output)?;
-            channel.wait_close()?;
-            Ok(output)
-        })();
-        if result.is_err() {
-            transport.discard();
-        }
-        result
-    })
+    exec_cancelable(
+        db,
+        manager,
+        session_id,
+        command,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
     .await
-    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+async fn exec_cancelable(
+    db: &Database,
+    manager: &SessionManager,
+    session_id: &str,
+    command: &'static str,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> AppResult<String> {
+    let profile = manager.profile(session_id)?;
+    let result = crate::ssh::execute_pooled_command(
+        db,
+        manager,
+        &profile,
+        command,
+        cancelled,
+        std::time::Duration::from_secs(30),
+        5 * 1024 * 1024,
+    )
+    .await?;
+    Ok(result.stdout)
 }
 
 fn section<'a>(text: &'a str, name: &str, next: &str) -> &'a str {
@@ -520,7 +531,22 @@ pub async fn system_info(
     manager: SessionManager,
     session_id: String,
 ) -> AppResult<SystemInfo> {
-    let output = exec(&db, &manager, &session_id, SYSTEM_COMMAND).await?;
+    system_info_cancelable(
+        db,
+        manager,
+        session_id,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
+    .await
+}
+
+pub async fn system_info_cancelable(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> AppResult<SystemInfo> {
+    let output = exec_cancelable(&db, &manager, &session_id, SYSTEM_COMMAND, cancelled).await?;
     let basic = section(&output, "__BASIC__", "__CPU__")
         .lines()
         .collect::<Vec<_>>();

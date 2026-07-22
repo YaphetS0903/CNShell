@@ -16,6 +16,7 @@ const requiredDeliverables = [
   "docs/BETA_TESTING.md",
   "docs/UPDATER_KEY_MANAGEMENT.md",
   "src-tauri/resources/licenses/serialport-MPL-2.0.txt",
+  "src-tauri/resources/licenses/rmcp-Apache-2.0.txt",
   "src-tauri/resources/kermit/licenses/G-Kermit-GPL-2.0.txt",
   "src-tauri/resources/kermit/THIRD_PARTY_NOTICES.md",
   ".github/workflows/ci.yml",
@@ -26,6 +27,8 @@ const requiredDeliverables = [
   "src-tauri/tauri.beta.json",
   "scripts/external-acceptance-preflight.sh",
   "scripts/test-windows-installer.ps1",
+  "scripts/build-mcp-sidecar.sh",
+  "scripts/build-mcp-sidecar.ps1",
   "scripts/verify-windows-pe.ps1",
 ];
 

@@ -18,6 +18,10 @@ pub fn rdp_drive_bookmark_ref(connection_id: &str) -> String {
     format!("rdp-drive-bookmark:{connection_id}")
 }
 
+pub fn mcp_local_grant_ref(grant_id: &str) -> String {
+    format!("mcp-local-grant:{grant_id}")
+}
+
 pub fn save(connection_id: &str, path: &Path) -> AppResult<()> {
     save_value(&bookmark_ref(connection_id), path, "私钥")
 }
@@ -63,6 +67,22 @@ pub fn save_rdp_drive(connection_id: &str, path: &Path) -> AppResult<()> {
     save_path_record(&reference, &encoded, "RDP 映射目录")
 }
 
+pub fn save_mcp_local_grant(grant_id: &str, path: &Path, read_only: bool) -> AppResult<()> {
+    if !path.is_absolute() || (!path.is_file() && !path.is_dir()) {
+        return Err(AppError::Validation(
+            "MCP 本地授权必须是存在的绝对文件或文件夹".into(),
+        ));
+    }
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || is_windows_reparse_point(&metadata) {
+        return Err(AppError::Validation(
+            "MCP 本地授权不能指向符号链接或重解析点".into(),
+        ));
+    }
+    let encoded = STANDARD.encode(create(path, "MCP 本地路径", read_only)?);
+    save_path_record(&mcp_local_grant_ref(grant_id), &encoded, "MCP 本地路径")
+}
+
 pub fn load(connection_id: &str) -> AppResult<Option<String>> {
     load_value(&bookmark_ref(connection_id), "私钥")
 }
@@ -73,6 +93,10 @@ pub fn load_certificate(connection_id: &str) -> AppResult<Option<String>> {
 
 pub fn load_rdp_drive(connection_id: &str) -> AppResult<Option<String>> {
     load_value(&rdp_drive_bookmark_ref(connection_id), "RDP 映射目录")
+}
+
+pub fn load_mcp_local_grant(grant_id: &str) -> AppResult<Option<String>> {
+    load_value(&mcp_local_grant_ref(grant_id), "MCP 本地路径")
 }
 
 fn load_value(reference: &str, label: &str) -> AppResult<Option<String>> {
@@ -156,6 +180,10 @@ pub fn delete_rdp_drive(connection_id: &str) -> AppResult<()> {
     delete_value(&rdp_drive_bookmark_ref(connection_id), "RDP 映射目录")
 }
 
+pub fn delete_mcp_local_grant(grant_id: &str) -> AppResult<()> {
+    delete_value(&mcp_local_grant_ref(grant_id), "MCP 本地路径")
+}
+
 fn delete_value(reference: &str, label: &str) -> AppResult<()> {
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, reference)
         .map_err(|error| AppError::Storage(error.to_string()))?;
@@ -214,6 +242,34 @@ pub fn access_rdp_drive(connection_id: &str, fallback: &Path) -> AppResult<Priva
     )
 }
 
+pub fn access_mcp_local_grant(grant_id: &str) -> AppResult<PrivateKeyAccess> {
+    let encoded = load_mcp_local_grant(grant_id)?
+        .ok_or_else(|| AppError::PermissionDenied("MCP 本地路径授权已失效".into()))?;
+    access_value(Some(encoded), Path::new(""), "MCP 本地路径", false).and_then(|access| {
+        let metadata = std::fs::symlink_metadata(access.path())?;
+        if metadata.file_type().is_symlink()
+            || is_windows_reparse_point(&metadata)
+            || (!metadata.is_file() && !metadata.is_dir())
+        {
+            return Err(AppError::PermissionDenied(
+                "MCP 本地路径授权类型已变化，请重新选择".into(),
+            ));
+        }
+        Ok(access)
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn is_windows_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    metadata.file_attributes() & 0x400 != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_windows_reparse_point(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
 pub fn access_selected_directory(path: &Path) -> AppResult<PrivateKeyAccess> {
     if !path.is_absolute() || path.to_string_lossy().len() > 16 * 1024 {
         return Err(AppError::Validation(
@@ -260,7 +316,9 @@ fn access_value(
 }
 
 fn validate_access_path(path: &Path, label: &str, directory: bool) -> AppResult<()> {
-    let valid_kind = if directory {
+    let valid_kind = if label == "MCP 本地路径" {
+        path.is_file() || path.is_dir()
+    } else if directory {
         path.is_dir()
     } else {
         path.is_file()

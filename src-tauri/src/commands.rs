@@ -2511,6 +2511,7 @@ pub async fn sftp_directory_transfer_start(
                 destination,
                 conflict_policy,
                 cancelled,
+                None,
             )
             .await?;
             Ok(serde_json::Value::String(result))
@@ -2979,6 +2980,152 @@ pub async fn settings_save(
     crate::db::validate_settings(&settings)?;
     state.db.save_settings(&settings).await?;
     Ok(settings)
+}
+
+#[tauri::command]
+pub async fn mcp_status(state: State<'_, AppState>) -> AppResult<McpStatus> {
+    state.mcp.status(&state.db).await
+}
+
+#[tauri::command]
+pub async fn mcp_set_enabled(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    enabled: bool,
+) -> AppResult<McpStatus> {
+    state
+        .mcp
+        .set_enabled(app, state.db.clone(), state.sessions.clone(), enabled)
+        .await
+}
+
+#[tauri::command]
+pub async fn mcp_settings_save(
+    state: State<'_, AppState>,
+    settings: McpSettings,
+) -> AppResult<McpSettings> {
+    crate::mcp::McpManager::save_settings(&state.db, &settings).await?;
+    Ok(settings)
+}
+
+#[tauri::command]
+pub async fn mcp_client_list(state: State<'_, AppState>) -> AppResult<Vec<McpClient>> {
+    crate::mcp::list_clients(&state.db).await
+}
+
+#[tauri::command]
+pub async fn mcp_client_create(state: State<'_, AppState>, name: String) -> AppResult<McpClient> {
+    crate::mcp::create_client(&state.db, &name).await
+}
+
+#[tauri::command]
+pub async fn mcp_client_grants_save(
+    state: State<'_, AppState>,
+    input: McpClientGrantInput,
+) -> AppResult<McpClient> {
+    let client = crate::mcp::save_grants(&state.db, &input).await?;
+    state
+        .mcp
+        .invalidate_client_authorizations(&state.sessions, &input.client_id);
+    Ok(client)
+}
+
+#[tauri::command]
+pub async fn mcp_client_revoke(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<()> {
+    crate::mcp::revoke_client(&app, &state.db, &state.mcp, &state.sessions, &id).await
+}
+
+#[tauri::command]
+pub async fn mcp_client_config(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> AppResult<McpClientConfig> {
+    let client = crate::mcp::list_clients(&state.db)
+        .await?
+        .into_iter()
+        .find(|client| client.id == id)
+        .ok_or_else(|| AppError::NotFound(format!("MCP 客户端 {id}")))?;
+    crate::mcp::client_config(&app, &state.mcp, &state.db, &client).await
+}
+
+#[tauri::command]
+pub fn mcp_approval_list(state: State<'_, AppState>) -> Vec<McpApproval> {
+    state.mcp.approvals()
+}
+
+#[tauri::command]
+pub fn mcp_approval_approve(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.mcp.decide(&id, "once")
+}
+
+#[tauri::command]
+pub fn mcp_approval_reject(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    state.mcp.decide(&id, "reject")
+}
+
+#[tauri::command]
+pub fn mcp_approval_decide(
+    state: State<'_, AppState>,
+    id: String,
+    decision: String,
+) -> AppResult<()> {
+    state.mcp.decide(&id, &decision)
+}
+
+#[tauri::command]
+pub async fn mcp_approval_rule_list(
+    state: State<'_, AppState>,
+    client_id: String,
+) -> AppResult<Vec<McpApprovalRule>> {
+    crate::mcp::list_approval_rules(&state.db, &client_id).await
+}
+
+#[tauri::command]
+pub async fn mcp_approval_rule_revoke(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::mcp::revoke_approval_rule(&state.db, &id).await
+}
+
+#[tauri::command]
+pub async fn mcp_audit_list(state: State<'_, AppState>) -> AppResult<Vec<McpAuditEvent>> {
+    crate::mcp::list_audit(&state.db).await
+}
+
+#[tauri::command]
+pub async fn mcp_audit_export(state: State<'_, AppState>, path: String) -> AppResult<usize> {
+    crate::mcp::export_audit(&state.db, &path).await
+}
+
+#[tauri::command]
+pub async fn mcp_local_grant_list(
+    state: State<'_, AppState>,
+    client_id: String,
+) -> AppResult<Vec<McpLocalGrant>> {
+    crate::mcp::list_local_grants(&state.db, &client_id).await
+}
+
+#[tauri::command]
+pub async fn mcp_local_grant_create(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    client_id: String,
+    direction: String,
+    selection: String,
+    persistent: bool,
+) -> AppResult<Option<McpLocalGrant>> {
+    crate::mcp::create_local_grant(
+        &app, &state.db, &client_id, &direction, &selection, persistent,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn mcp_local_grant_revoke(state: State<'_, AppState>, id: String) -> AppResult<()> {
+    crate::mcp::revoke_local_grant(&state.db, &id).await
 }
 
 #[tauri::command]

@@ -17,6 +17,10 @@ describe("release script gates", () => {
     resolve("scripts/build-kermit-sidecar.sh"),
     "utf8",
   );
+  const mcpBuildScript = readFileSync(
+    resolve("scripts/build-mcp-sidecar.sh"),
+    "utf8",
+  );
   const signingScript = readFileSync(
     resolve("scripts/sign-macos-binary.sh"),
     "utf8",
@@ -74,6 +78,8 @@ describe("release script gates", () => {
     expect(script).toContain('"$BUNDLE_ROOT/latest.json"');
     expect(script).toContain('lipo -archs "$MOSH_CLIENT"');
     expect(script).toContain("Mosh-GPL-3.0-or-later.txt");
+    expect(script).toContain('lipo -archs "$MCP_HELPER"');
+    expect(script).toContain("rmcp-Apache-2.0.txt");
   });
 
   it("validates Mosh with an explicit terminal in non-interactive environments", () => {
@@ -201,11 +207,12 @@ describe("release script gates", () => {
 
   it("rebuilds and Developer ID signs every bundled sidecar", () => {
     expect(packageJson.scripts["build:desktop"]).toContain("build-desktop.mjs");
-    expect(desktopBuildScript).toContain('["freerdp", "mosh", "kermit"]');
+    expect(desktopBuildScript).toContain('["freerdp", "mosh", "kermit", "mcp"]');
     for (const buildScript of [
       freeRdpBuildScript,
       moshBuildScript,
       kermitBuildScript,
+      mcpBuildScript,
     ]) {
       expect(buildScript).toContain("sign-macos-binary.sh");
     }
@@ -214,6 +221,16 @@ describe("release script gates", () => {
     expect(script).toContain('verify_developer_id_signature "$FREERDP_HELPER"');
     expect(script).toContain('verify_developer_id_signature "$MOSH_CLIENT"');
     expect(script).toContain('verify_developer_id_signature "$KERMIT_HELPER"');
+    expect(script).toContain('verify_developer_id_signature "$MCP_HELPER"');
+  });
+
+  it("stages the MCP binary where Tauri expects universal Cargo binaries", () => {
+    expect(mcpBuildScript).toContain(
+      'TAURI_UNIVERSAL_OUTPUT="$TARGET/universal-apple-darwin/release/cnshell-mcp"',
+    );
+    expect(mcpBuildScript).toContain(
+      'cp "$OUTPUT/cnshell-mcp" "$TAURI_UNIVERSAL_OUTPUT"',
+    );
   });
 
   it("uses only system text tools in macOS packaging and release gates", () => {

@@ -6,6 +6,7 @@ import "./styles.css";
 import "./advanced.css";
 import "./roadmap.css";
 import "./platform.css";
+import "./mcp.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(

@@ -12,6 +12,16 @@ use std::sync::Arc;
 use util;
 use {raw, Error, ErrorCode, SessionInner};
 
+extern "C" {
+    fn libssh2_sftp_posix_rename_ex(
+        sftp: *mut raw::LIBSSH2_SFTP,
+        source_filename: *const libc::c_char,
+        source_filename_len: size_t,
+        dest_filename: *const libc::c_char,
+        dest_filename_len: size_t,
+    ) -> c_int;
+}
+
 /// A handle to a remote filesystem over SFTP.
 ///
 /// Instances are created through the `sftp` method on a `Session`.
@@ -251,6 +261,51 @@ impl Sftp {
         Ok(ret)
     }
 
+    /// Read a directory without allowing an unbounded result allocation.
+    ///
+    /// The boolean is true when at least one additional entry exists beyond
+    /// `max_entries`. This is useful to callers that need a hard directory
+    /// size boundary but still want to distinguish an empty directory from a
+    /// rejected oversized one.
+    pub fn readdir_limited<T: AsRef<Path>>(
+        &self,
+        dirname: T,
+        max_entries: usize,
+        max_path_bytes: usize,
+    ) -> Result<(Vec<(PathBuf, FileStat)>, bool), Error> {
+        let mut dir = self.opendir(dirname.as_ref())?;
+        let mut ret = Vec::with_capacity(max_entries.min(1024));
+        let mut path_bytes = 0_usize;
+        loop {
+            match dir.readdir() {
+                Ok((filename, stat)) => {
+                    if &*filename == Path::new(".") || &*filename == Path::new("..") {
+                        continue;
+                    }
+                    if ret.len() >= max_entries {
+                        return Ok((ret, true));
+                    }
+                    path_bytes = path_bytes.saturating_add(
+                        dirname.as_ref().to_string_lossy().len()
+                            + filename.to_string_lossy().len(),
+                    );
+                    if path_bytes > max_path_bytes {
+                        return Ok((ret, true));
+                    }
+                    ret.push((dirname.as_ref().join(&filename), stat));
+                }
+                Err(ref e) if e.code() == ErrorCode::Session(raw::LIBSSH2_ERROR_FILE) => {
+                    return Ok((ret, false));
+                }
+                Err(e) => {
+                    if e.code() != ErrorCode::Session(raw::LIBSSH2_ERROR_EAGAIN) {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+    }
+
     /// Create a directory on the remote file system.
     ///
     /// The mode will set the permissions of the new directory ([Wikipedia](<https://en.wikipedia.org/wiki/File-system_permissions#Numeric_notation>)).
@@ -418,6 +473,28 @@ impl Sftp {
                 dst.as_ptr() as *const _,
                 dst.as_bytes().len() as c_uint,
                 flags.bits(),
+            )
+        })
+    }
+
+    /// Atomically rename a filesystem object using OpenSSH's
+    /// `posix-rename@openssh.com` extension.
+    ///
+    /// Unlike `rename`, this operation replaces an existing destination on
+    /// SFTP v3 servers while preserving POSIX atomic rename semantics. It
+    /// returns an SFTP operation-not-supported error when the server does not
+    /// advertise the extension.
+    pub fn posix_rename(&self, src: &Path, dst: &Path) -> Result<(), Error> {
+        let src = CString::new(util::path2bytes(src)?)?;
+        let dst = CString::new(util::path2bytes(dst)?)?;
+        let locked = self.lock()?;
+        Self::rc(&locked, unsafe {
+            libssh2_sftp_posix_rename_ex(
+                locked.raw,
+                src.as_ptr() as *const _,
+                src.as_bytes().len(),
+                dst.as_ptr() as *const _,
+                dst.as_bytes().len(),
             )
         })
     }

@@ -1194,6 +1194,133 @@ pub struct RdpPreflight {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpSettings {
+    pub enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpStatus {
+    pub enabled: bool,
+    pub running: bool,
+    pub address: Option<String>,
+    pub generation: Option<String>,
+    pub client_count: usize,
+    pub session_count: usize,
+    pub pending_approval_count: usize,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpClient {
+    pub id: String,
+    pub name: String,
+    pub status: String,
+    pub executable_path: Option<String>,
+    pub executable_sha256: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+    pub last_used_at: Option<String>,
+    pub revoked_at: Option<String>,
+    pub show_hostnames: bool,
+    pub connection_ids: Vec<String>,
+    pub tools: Vec<String>,
+    pub remote_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpClientGrantInput {
+    pub client_id: String,
+    pub connection_ids: Vec<String>,
+    pub tools: Vec<String>,
+    #[serde(default = "default_mcp_remote_root")]
+    pub remote_root: String,
+    #[serde(default)]
+    pub show_hostnames: bool,
+}
+
+fn default_mcp_remote_root() -> String {
+    "/".into()
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpApproval {
+    pub id: String,
+    pub request_id: String,
+    pub client_id: String,
+    pub client_name: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub tool: String,
+    pub risk: String,
+    pub target: String,
+    pub preview: String,
+    pub can_allow_session: bool,
+    pub can_save_rule: bool,
+    pub created_at: String,
+    pub expires_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpApprovalRule {
+    pub id: String,
+    pub client_id: String,
+    pub connection_id: String,
+    pub connection_name: String,
+    pub tool: String,
+    pub target_summary: String,
+    pub created_at: String,
+    pub last_used_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpAuditEvent {
+    pub id: String,
+    pub request_id: Option<String>,
+    pub client_id: Option<String>,
+    pub connection_id: Option<String>,
+    pub tool: String,
+    pub target_summary: String,
+    pub risk: String,
+    pub outcome: String,
+    pub duration_ms: Option<i64>,
+    pub transferred_bytes: Option<i64>,
+    pub truncated: bool,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpClientConfig {
+    pub client_id: String,
+    pub client_name: String,
+    pub command: String,
+    pub args: Vec<String>,
+    pub codex_toml: String,
+    pub json: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpLocalGrant {
+    pub id: String,
+    pub client_id: String,
+    pub direction: String,
+    pub display_name: String,
+    pub path_hint: String,
+    pub persistent: bool,
+    pub created_at: String,
+    pub expires_at: Option<String>,
+    pub revoked_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct RdpConnectionOptions {

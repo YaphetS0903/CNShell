@@ -73,7 +73,8 @@ jobs:
             "$executable" \
             "$app/Contents/Resources/freerdp/sdl-freerdp" \
             "$app/Contents/Resources/mosh/mosh-client" \
-            "$app/Contents/Resources/kermit/gkermit"; do
+            "$app/Contents/Resources/kermit/gkermit" \
+            "$app/Contents/Resources/mcp/cnshell-mcp"; do
             test -x "$binary"
             architectures="$(lipo -archs "$binary")"
             [[ " $architectures " == *" arm64 "* && " $architectures " == *" x86_64 "* ]]
@@ -86,6 +87,7 @@ jobs:
           printf '%s\n' "$rdp_preflight" | grep -F '"available":true' >/dev/null
           env TERM=xterm-256color "$app/Contents/Resources/mosh/mosh-client" -c >/dev/null
           "$app/Contents/Resources/kermit/gkermit" -h 2>&1 | grep -F 'G-Kermit 2.01' >/dev/null
+          test "$(wc -c < "$app/Contents/Resources/licenses/rmcp-Apache-2.0.txt")" -gt 10000
           dmgs=("$bundle"/dmg/*.dmg)
           archives=()
           signatures=()
@@ -169,6 +171,7 @@ jobs:
             "scripts/build-mosh-sidecar.ps1",
             "scripts/test-mosh-windows.ps1",
             "scripts/build-kermit-sidecar.ps1",
+            "scripts/build-mcp-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
             "scripts/verify-windows-pe.ps1"
           )) {
@@ -210,6 +213,13 @@ jobs:
             & src-tauri/resources/freerdp/sdl-freerdp.exe /version
             if ($LASTEXITCODE -ne 0) { throw "FreeRDP x64 runtime smoke failed" }
           }
+      - name: Build and verify Windows MCP sidecar
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: |
+          npm run build:mcp
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }}
       - name: Build updater-signed unsigned NSIS Beta
         shell: powershell
         env:

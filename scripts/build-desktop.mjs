@@ -18,13 +18,14 @@ if (process.env.CNSHELL_SIDECARS_PREBUILT === "1") {
     resolve("src-tauri", "resources", "freerdp", "sdl-freerdp.exe"),
     resolve("src-tauri", "resources", "mosh", "mosh-client.exe"),
     resolve("src-tauri", "resources", "kermit", "gkermit.exe"),
+    resolve("src-tauri", "resources", "mcp", "cnshell-mcp.exe"),
   ]) {
     if (!existsSync(helper) || !statSync(helper).isFile() || statSync(helper).size === 0) {
       throw new Error(`Prebuilt Windows helper is missing or empty: ${helper}`);
     }
   }
 } else {
-  for (const sidecar of ["freerdp", "mosh", "kermit"]) {
+  for (const sidecar of ["freerdp", "mosh", "kermit", "mcp"]) {
     run(process.execPath, ["scripts/build-sidecar.mjs", sidecar]);
   }
 }

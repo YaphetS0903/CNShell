@@ -13,6 +13,7 @@ on:
       - "scripts/build-mosh-sidecar.ps1"
       - "scripts/test-mosh-windows.ps1"
       - "scripts/build-kermit-sidecar.ps1"
+      - "scripts/build-mcp-sidecar.ps1"
       - "scripts/mosh-windows/**"
       - "scripts/kermit-windows/**"
       - "scripts/patches/**"
@@ -83,6 +84,7 @@ jobs:
             "scripts/build-mosh-sidecar.ps1",
             "scripts/test-mosh-windows.ps1",
             "scripts/build-kermit-sidecar.ps1",
+            "scripts/build-mcp-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
             "scripts/verify-windows-pe.ps1"
           )) {
@@ -131,6 +133,13 @@ jobs:
             & src-tauri/resources/freerdp/sdl-freerdp.exe /version
             if ($LASTEXITCODE -ne 0) { throw "FreeRDP x64 runtime smoke failed" }
           }
+      - name: Build and verify Windows MCP sidecar
+        shell: powershell
+        env:
+          CNSHELL_WINDOWS_ARCH: ${{ matrix.architecture }}
+        run: |
+          npm run build:mcp
+          ./scripts/verify-windows-pe.ps1 src-tauri/resources/mcp/cnshell-mcp.exe ${{ matrix.architecture }}
       - name: Build NSIS installer
         shell: powershell
         env:

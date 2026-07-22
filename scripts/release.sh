@@ -131,8 +131,24 @@ echo "19f9ac00d7b230d0a841928a25676269363c2925afc23e62704cde516fc1abbd  $KERMIT_
 "$KERMIT_HELPER" -h 2>&1 | grep -F "G-Kermit 2.01" >/dev/null
 verify_developer_id_signature "$KERMIT_HELPER" "G-Kermit helper"
 
+MCP_HELPER="$APP_PATH/Contents/Resources/mcp/cnshell-mcp"
+[[ -x "$MCP_HELPER" ]] || {
+  echo "发布失败：应用未包含 MCP helper。" >&2
+  exit 1
+}
+MCP_ARCHITECTURES="$(lipo -archs "$MCP_HELPER")"
+[[ " $MCP_ARCHITECTURES " == *" arm64 "* && " $MCP_ARCHITECTURES " == *" x86_64 "* ]] || {
+  echo "发布失败：MCP helper 不是 arm64 + x86_64 universal binary：$MCP_ARCHITECTURES" >&2
+  exit 1
+}
+verify_developer_id_signature "$MCP_HELPER" "MCP helper"
+
 [[ -s "$APP_PATH/Contents/Resources/licenses/serialport-MPL-2.0.txt" ]] || {
   echo "发布失败：serialport-rs MPL-2.0 许可证缺失。" >&2
+  exit 1
+}
+[[ $(wc -c < "$APP_PATH/Contents/Resources/licenses/rmcp-Apache-2.0.txt") -gt 10000 ]] || {
+  echo "发布失败：rmcp Apache-2.0 完整许可证缺失。" >&2
   exit 1
 }
 

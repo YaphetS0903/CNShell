@@ -17,6 +17,7 @@ import { PluginSettings } from "./PluginSettings";
 import { TeamSettings } from "./TeamSettings";
 import { TerminalPreferencesFields } from "./TerminalPreferencesFields";
 import { usePlatformCapabilities } from "../../lib/platform";
+import { McpSettings } from "./McpSettings";
 
 export default function SettingsModal() {
   const platform = usePlatformCapabilities();
@@ -159,6 +160,7 @@ export default function SettingsModal() {
         <EncryptedSyncSettings onError={(message) => setError(message)} />
         <WebDavSyncSettings onError={(message) => setError(message)} />
         <AiSettings onError={(message) => setError(message)} />
+        <McpSettings connections={connections} onError={(message) => setError(message)} />
         <PluginSettings connections={connections} onError={(message) => setError(message)} />
         <TeamSettings
           connections={connections}

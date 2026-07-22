@@ -944,6 +944,109 @@ export interface RdpPreflight {
   message: string;
 }
 
+export interface McpSettings {
+  enabled: boolean;
+}
+
+export interface McpStatus {
+  enabled: boolean;
+  running: boolean;
+  address: string | null;
+  generation: string | null;
+  clientCount: number;
+  sessionCount: number;
+  pendingApprovalCount: number;
+  message: string;
+}
+
+export interface McpClient {
+  id: string;
+  name: string;
+  status: string;
+  executablePath: string | null;
+  executableSha256: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+  revokedAt: string | null;
+  showHostnames: boolean;
+  connectionIds: string[];
+  tools: string[];
+  remoteRoot: string;
+}
+
+export interface McpClientGrantInput {
+  clientId: string;
+  connectionIds: string[];
+  tools: string[];
+  remoteRoot: string;
+  showHostnames: boolean;
+}
+
+export interface McpApproval {
+  id: string;
+  requestId: string;
+  clientId: string;
+  clientName: string;
+  connectionId: string;
+  connectionName: string;
+  tool: string;
+  risk: string;
+  target: string;
+  preview: string;
+  canAllowSession: boolean;
+  canSaveRule: boolean;
+  createdAt: string;
+  expiresAt: string;
+}
+
+export interface McpApprovalRule {
+  id: string;
+  clientId: string;
+  connectionId: string;
+  connectionName: string;
+  tool: string;
+  targetSummary: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+}
+
+export interface McpAuditEvent {
+  id: string;
+  requestId: string | null;
+  clientId: string | null;
+  connectionId: string | null;
+  tool: string;
+  targetSummary: string;
+  risk: string;
+  outcome: string;
+  durationMs: number | null;
+  transferredBytes: number | null;
+  truncated: boolean;
+  createdAt: string;
+}
+
+export interface McpClientConfig {
+  clientId: string;
+  clientName: string;
+  command: string;
+  args: string[];
+  codexToml: string;
+  json: string;
+}
+
+export interface McpLocalGrant {
+  id: string;
+  clientId: string;
+  direction: string;
+  displayName: string;
+  pathHint: string;
+  persistent: boolean;
+  createdAt: string;
+  expiresAt: string | null;
+  revokedAt: string | null;
+}
+
 export interface RdpConnectionOptions {
   connectionId: string;
   displayMode: string;

@@ -88,7 +88,9 @@ function Assert-BundledResources {
     "mosh\source\mosh-1.4.0.tar.gz",
     "kermit\gkermit.exe",
     "kermit\licenses\G-Kermit-GPL-2.0.txt",
-    "kermit\source\gku201.tar.gz"
+    "kermit\source\gku201.tar.gz",
+    "mcp\cnshell-mcp.exe",
+    "licenses\rmcp-Apache-2.0.txt"
   )) {
     $path = Join-Path $InstallDirectory $relativePath
     $file = Get-Item -LiteralPath $path -ErrorAction SilentlyContinue

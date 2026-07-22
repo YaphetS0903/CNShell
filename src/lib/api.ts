@@ -55,6 +55,15 @@ import type {
   Folder,
   GeneratedSshKey,
   MonitorSnapshot,
+  McpApproval,
+  McpApprovalRule,
+  McpAuditEvent,
+  McpClient,
+  McpClientConfig,
+  McpClientGrantInput,
+  McpLocalGrant,
+  McpSettings,
+  McpStatus,
   OpenSshHost,
   NetworkSocketReport,
   ProcessInfo,
@@ -434,6 +443,34 @@ export const api = {
   async saveSettings(settings: AppSettings): Promise<AppSettings> {
     if (!isTauri()) { localStorage.setItem("cnshell-settings", JSON.stringify(settings)); return settings; }
     return invoke("settings_save", { settings });
+  },
+  async mcpStatus(): Promise<McpStatus> {
+    return isTauri() ? invoke("mcp_status") : { enabled: false, running: false, address: null, generation: null, clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
+  },
+  async mcpSetEnabled(enabled: boolean): Promise<McpStatus> {
+    return isTauri() ? invoke("mcp_set_enabled", { enabled }) : { enabled, running: false, address: null, generation: null, clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
+  },
+  async mcpSaveSettings(settings: McpSettings): Promise<McpSettings> {
+    return isTauri() ? invoke("mcp_settings_save", { settings }) : settings;
+  },
+  async mcpListClients(): Promise<McpClient[]> { return isTauri() ? invoke("mcp_client_list") : []; },
+  async mcpCreateClient(name: string): Promise<McpClient> { return invoke("mcp_client_create", { name }); },
+  async mcpSaveClientGrants(input: McpClientGrantInput): Promise<McpClient> { return invoke("mcp_client_grants_save", { input }); },
+  async mcpRevokeClient(id: string): Promise<void> { return invoke("mcp_client_revoke", { id }); },
+  async mcpClientConfig(id: string): Promise<McpClientConfig> { return invoke("mcp_client_config", { id }); },
+  async mcpListApprovals(): Promise<McpApproval[]> { return isTauri() ? invoke("mcp_approval_list") : []; },
+  async mcpApprove(id: string): Promise<void> { return invoke("mcp_approval_approve", { id }); },
+  async mcpReject(id: string): Promise<void> { return invoke("mcp_approval_reject", { id }); },
+  async mcpDecide(id: string, decision: "reject" | "once" | "session" | "persistent"): Promise<void> { return invoke("mcp_approval_decide", { id, decision }); },
+  async mcpListApprovalRules(clientId: string): Promise<McpApprovalRule[]> { return isTauri() ? invoke("mcp_approval_rule_list", { clientId }) : []; },
+  async mcpRevokeApprovalRule(id: string): Promise<void> { return invoke("mcp_approval_rule_revoke", { id }); },
+  async mcpListAudit(): Promise<McpAuditEvent[]> { return isTauri() ? invoke("mcp_audit_list") : []; },
+  async mcpExportAudit(path: string): Promise<number> { return invoke("mcp_audit_export", { path }); },
+  async mcpListLocalGrants(clientId: string): Promise<McpLocalGrant[]> { return isTauri() ? invoke("mcp_local_grant_list", { clientId }) : []; },
+  async mcpCreateLocalGrant(clientId: string, direction: "upload" | "download", selection: "file" | "directory", persistent: boolean): Promise<McpLocalGrant | null> { return invoke("mcp_local_grant_create", { clientId, direction, selection, persistent }); },
+  async mcpRevokeLocalGrant(id: string): Promise<void> { return invoke("mcp_local_grant_revoke", { id }); },
+  async onMcpApprovalChanged(handler: () => void): Promise<UnlistenFn> {
+    return isTauri() ? listen("mcp-approval-changed", () => handler()) : () => undefined;
   },
   async listSnippets(): Promise<CommandSnippet[]> { return isTauri() ? invoke("snippet_list") : browserSnippets; },
   async saveSnippet(input: CommandSnippet): Promise<CommandSnippet> { if(isTauri())return invoke("snippet_save", { input });browserSnippets=[...browserSnippets.filter((item)=>item.id!==input.id),input];return input; },

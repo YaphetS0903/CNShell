@@ -5,8 +5,8 @@ import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 
 const name = process.argv[2];
-if (!new Set(["freerdp", "mosh", "kermit"]).has(name)) {
-  console.error("Usage: node scripts/build-sidecar.mjs <freerdp|mosh|kermit>");
+if (!new Set(["freerdp", "mosh", "kermit", "mcp"]).has(name)) {
+  console.error("Usage: node scripts/build-sidecar.mjs <freerdp|mosh|kermit|mcp>");
   process.exit(2);
 }
 

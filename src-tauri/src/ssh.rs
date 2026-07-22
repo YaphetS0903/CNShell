@@ -1780,13 +1780,85 @@ pub async fn execute_profile_command(
     cancelled: Arc<std::sync::atomic::AtomicBool>,
     timeout: Duration,
 ) -> AppResult<RemoteCommandResult> {
-    let connected = verified_connection(db, profile, false).await?;
+    execute_command_with_transport(
+        verified_connection(db, profile, false).await?,
+        command,
+        cancelled,
+        timeout,
+        5 * 1024 * 1024,
+    )
+    .await
+}
+
+pub async fn execute_pooled_command(
+    db: &Database,
+    manager: &SessionManager,
+    profile: &ConnectionProfile,
+    command: &str,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    timeout: Duration,
+    output_limit: usize,
+) -> AppResult<RemoteCommandResult> {
+    if output_limit == 0 || output_limit > 5 * 1024 * 1024 {
+        return Err(AppError::Validation(
+            "远端命令输出上限必须在 1 字节到 5 MiB 之间".into(),
+        ));
+    }
+    let mut transport = manager.acquire_transport(db, profile, true).await?;
     let command = command.to_owned();
     tokio::task::spawn_blocking(move || {
-        let mut channel = connected.session.channel_session()?;
-        channel.exec(&command)?;
-        connected.transport.set_nonblocking(true)?;
-        connected.session.set_blocking(false);
+        let result = execute_command_on_session(
+            &transport.connected().session,
+            &transport.connected().transport,
+            &command,
+            &cancelled,
+            timeout,
+            output_limit,
+        );
+        if result.is_err() {
+            transport.discard();
+        }
+        result
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+async fn execute_command_with_transport(
+    connected: ConnectedSsh,
+    command: &str,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+    timeout: Duration,
+    output_limit: usize,
+) -> AppResult<RemoteCommandResult> {
+    let command = command.to_owned();
+    tokio::task::spawn_blocking(move || {
+        execute_command_on_session(
+            &connected.session,
+            &connected.transport,
+            &command,
+            &cancelled,
+            timeout,
+            output_limit,
+        )
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?
+}
+
+fn execute_command_on_session(
+    session: &Session,
+    transport: &TcpStream,
+    command: &str,
+    cancelled: &Arc<std::sync::atomic::AtomicBool>,
+    timeout: Duration,
+    output_limit: usize,
+) -> AppResult<RemoteCommandResult> {
+    let mut channel = session.channel_session()?;
+    channel.exec(command)?;
+    transport.set_nonblocking(true)?;
+    session.set_blocking(false);
+    let result = (|| {
         let mut stdout = Vec::new();
         let mut stderr_bytes = Vec::new();
         let mut truncated = false;
@@ -1795,16 +1867,21 @@ pub async fn execute_profile_command(
         loop {
             if cancelled.load(std::sync::atomic::Ordering::Acquire) {
                 let _ = channel.close();
-                return Err(AppError::Unavailable("批量命令已取消".into()));
+                return Err(AppError::Unavailable("远端命令已取消".into()));
             }
             if started.elapsed() > timeout {
                 let _ = channel.close();
-                return Err(AppError::Unavailable("批量命令执行超时".into()));
+                return Err(AppError::Unavailable("远端命令执行超时".into()));
             }
             let mut progress = false;
             match channel.read(&mut buffer) {
                 Ok(size) if size > 0 => {
-                    append_limited(&mut stdout, &buffer[..size], &mut truncated);
+                    append_limited(
+                        &mut stdout,
+                        &buffer[..size],
+                        &mut truncated,
+                        output_limit.saturating_sub(stderr_bytes.len()),
+                    );
                     progress = true;
                 }
                 Ok(_) => {}
@@ -1814,7 +1891,12 @@ pub async fn execute_profile_command(
             let mut stderr = channel.stderr();
             match stderr.read(&mut buffer) {
                 Ok(size) if size > 0 => {
-                    append_limited(&mut stderr_bytes, &buffer[..size], &mut truncated);
+                    append_limited(
+                        &mut stderr_bytes,
+                        &buffer[..size],
+                        &mut truncated,
+                        output_limit.saturating_sub(stdout.len()),
+                    );
                     progress = true;
                 }
                 Ok(_) => {}
@@ -1828,24 +1910,21 @@ pub async fn execute_profile_command(
                 std::thread::sleep(Duration::from_millis(10));
             }
         }
-        connected.transport.set_nonblocking(false)?;
-        connected.session.set_blocking(true);
         channel.wait_close()?;
-        let exit_code = channel.exit_status()?;
         Ok(RemoteCommandResult {
             stdout: String::from_utf8_lossy(&stdout).into_owned(),
             stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
-            exit_code,
+            exit_code: channel.exit_status()?,
             truncated,
         })
-    })
-    .await
-    .map_err(|error| AppError::Internal(error.to_string()))?
+    })();
+    let _ = transport.set_nonblocking(false);
+    session.set_blocking(true);
+    result
 }
 
-fn append_limited(target: &mut Vec<u8>, data: &[u8], truncated: &mut bool) {
-    const LIMIT: usize = 5 * 1024 * 1024;
-    let remaining = LIMIT.saturating_sub(target.len());
+fn append_limited(target: &mut Vec<u8>, data: &[u8], truncated: &mut bool, limit: usize) {
+    let remaining = limit.saturating_sub(target.len());
     if remaining > 0 {
         target.extend_from_slice(&data[..data.len().min(remaining)]);
     }
@@ -3071,6 +3150,7 @@ mod tests {
             remote.clone(),
             "overwrite".into(),
             Arc::new(AtomicBool::new(false)),
+            None,
         )
         .await
         .unwrap();
@@ -3084,6 +3164,7 @@ mod tests {
             remote.clone(),
             "overwrite".into(),
             Arc::new(AtomicBool::new(false)),
+            None,
         )
         .await
         .unwrap();
@@ -3099,6 +3180,7 @@ mod tests {
             downloaded.to_string_lossy().into_owned(),
             "overwrite".into(),
             Arc::new(AtomicBool::new(false)),
+            None,
         )
         .await
         .unwrap();

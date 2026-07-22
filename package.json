@@ -9,6 +9,7 @@
     "build:freerdp": "node scripts/build-sidecar.mjs freerdp",
     "build:mosh": "node scripts/build-sidecar.mjs mosh",
     "build:kermit": "node scripts/build-sidecar.mjs kermit",
+    "build:mcp": "node scripts/build-sidecar.mjs mcp",
     "build:desktop": "node scripts/build-desktop.mjs",
     "preview": "vite preview",
     "test": "vitest run",
