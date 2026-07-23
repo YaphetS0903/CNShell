@@ -256,20 +256,21 @@
 
 ## 3. 必验场景与发布门槛
 
-### 2026-07-22 MCP 实现基线
+### 2026-07-23 MCP 首版功能验收
 
 | 项目 | 结果 |
 | --- | --- |
-| 协议与边界 | `rmcp 2.2.0` stdio sidecar 与 loopback Broker 已实现；9 项 sidecar 测试覆盖 13 个严格工具 schema、4 个 Resources、2 个 Prompts、能力声明、连续消息、超大输入/响应、未知资源错误、凭据管理参数边界，以及 Tool 结果同时提供标准文本 `content` 与 `structuredContent` 的 Host 兼容性。重复数据超过 1 MiB 时保留有界文本结果，否则返回结构化溢出错误。后端测试覆盖路径越界、symlink、并发、传输目标互斥、重复 request ID、取消传播、目录响应限长、discovery `0600`、幂等退出清理、最终实例释放兜底、动态 Resource 授权过滤、审计脱敏、精确规则撤销及升级后凭据清理；全量 Rust 主程序 247 项与严格 Clippy 通过 |
+| 协议与边界 | `rmcp 2.2.0` stdio sidecar 与 loopback Broker 已实现；9 项 sidecar 测试覆盖 13 个严格工具 schema、4 个 Resources、2 个 Prompts、能力声明、连续消息、超大输入/响应、未知资源错误、凭据管理参数边界，以及 Tool 结果同时提供标准文本 `content` 与 `structuredContent` 的 Host 兼容性。重复数据超过 1 MiB 时保留有界文本结果，否则返回结构化溢出错误。后端测试覆盖路径越界、symlink、并发、传输目标互斥、重复 request ID、取消传播、目录响应限长、discovery `0600`、幂等退出清理、最终实例释放兜底、动态 Resource 授权过滤、审计脱敏、精确规则撤销及升级后凭据清理；GitHub CI run [`29941059465`](https://github.com/YaphetS0903/CNShell/actions/runs/29941059465) 已通过 Windows x64 Rust 测试、严格 Clippy 和 ARM64 编译 |
 | stdio 实证 | 真实 `cnshell-mcp` 二进制已通过 `initialize`、`tools/list`、`resources/list/read`、`prompts/list/get`，返回 13 个工具、4 个 Resources（2 个静态、2 个动态）和 2 个安全 Prompts；包内静态安全资源读取已通过，动态资源仍需携带隔离客户端凭据完成授权过滤实测。重新打包的 universal 隔离 App 已用新的 sidecar 摘要重新绑定；真实 MCP Host 调用确认结果同时含标准文本 `content` 与 `structuredContent`，不再出现 Host 仅收到空 `content` 的兼容性问题 |
 | 真实 Host/SSH 实证 | 当前 universal 测试 App 内 sidecar 已重新生成配置并完成 executable path/SHA-256 绑定。隔离客户端实际完成 stdio 初始化、Resources/Tools/Prompts 列表、动态连接/审计 Resource 读取，并确认内部 `resource:*` 不能作为 Tool 调用；短期会话审批可见且批准生效。用户更新隔离 App 的腾讯云密码后，真实 `cnshell_system_info`、验收根目录列表、`normal/readme.txt` 35 字节读取与短期会话关闭均通过；symlink、`..` 根逃逸和未授权写入均被拒绝。真实单次审批还完成低风险命令、原子写入、错误 SHA-256 冲突拒绝、新建目录、重命名、删除、82 字节上传和 35 字节下载；下载 SHA-256 与远端基准一致且无 `.part` 残留。验收产生的远端文件和目录已清理，根目录只保留原有 fixture。Codex CLI 与官方 MCP Inspector CLI 均已有腾讯云 SSH 的连接清单、短期会话、系统信息、目录分页和关闭证据；Inspector 另完成 Resources/Prompts 列表、读取和获取 |
 | 前端 | 设置页与审批抽屉已接入，组件测试覆盖隐私开关状态恢复、浅色/深色主题挂载、Escape 收起、单次批准，以及精确命令规则列表和撤销；审计 JSON 原子导出已接入；全量前端 205 项测试、生产构建与 IPC 类型检查通过 |
-| 打包与许可证 | macOS universal、Windows x64/ARM64 sidecar 构建入口已接入 CI/Beta/Release；发布门禁验证架构、签名、安装资源与 11 KB 完整 Apache-2.0 文本，58 项发布静态测试通过 |
+| Windows x64 ACL 与本地路径边界 | Windows 专属测试通过系统 API 读取 discovery 的实际 DACL，确认受保护 Owner Rights SDDL 为 `D:P(A;;FA;;;OW)`；另覆盖 junction/reparse 组件拒绝。已安装的 Windows MCP sidecar 在 Parallels 中完成临时 Credential Manager provision/revoke 清理检查与静态 CRT 副本检查，均通过且未暴露任何秘密 |
+| 打包与许可证 | macOS universal、Windows x64/ARM64 sidecar 构建入口已接入 CI/Beta/Release；发布门禁验证架构、签名、安装资源与 11 KB 完整 Apache-2.0 文本，58 项发布静态测试通过。Windows Packaging run [`29941061193`](https://github.com/YaphetS0903/CNShell/actions/runs/29941061193) 的 x64 job 已通过 MCP sidecar、NSIS、PE 校验、安装、覆盖升级、卸载和重装 |
 | sidecar 凭据生命周期 | 客户端长期 secret 由 sidecar 自己创建，SQLite 只保存 SHA-256。撤销先立即关闭数据库/运行时权限，再校验受管 sidecar 的规范化路径与二进制 SHA-256，由 sidecar 自验 secret 摘要后删除 Keychain/Credential Manager 项；清理失败不会恢复客户端权限 |
 | Broker 生命周期 | 通过。红叉关闭与应用级 `ExitRequested`/`Exit` 均进入同一幂等清理路径，最终 `McpManager` 释放再兜底删除 discovery。隔离测试 App 使用 `Command+Q` 退出后已确认 `mcp-broker.json` 消失、审计写入 `broker stopped`，主程序与 `cnshell-mcp` 进程均无残留 |
 | macOS 本地授权与传输 | 原生文件选择器已创建精确的一次性上传文件授权和下载目录授权；真实 MCP Host 经 CNshell 单次审批完成 82 字节上传和 35 字节下载，上传/下载授权使用后立即失效。下载结果 SHA-256 与远端 fixture 一致，目录没有 `.part` 残留；客户端超时会撤销待审批下载，不消费一次性授权 |
 | P2 Resources 与规则 | 4 个 Resources、2 个 Prompts、动态 Broker 操作隔离和精确命令规则查看/撤销/每客户端 256 条上限已实现；自动化测试确认连接资源只服从 `cnshell_list_connections` 授权，审计资源不泄露 request ID、目标、命令或路径，规则列表不返回命令明文，撤销后规则失效并写入脱敏审计 |
-| 尚未通过 | 动态 Resources、隔离客户端腾讯云只读与路径拒绝、命令/写入审批、macOS 上传下载往返与 SHA-256 一致性、远端冲突和删除均已通过。隔离客户端已在真实 CNshell 审批中保存一条精确命令 SHA-256 规则，设置页只显示摘要；同一命令的后续真实调用未再出现命令审批卡且正常完成。规则撤销后，同一命令重新出现审批并在单次批准后完成。隔离客户端及其 Keychain secret 已撤销删除；`Codex MCP Acceptance` 未受影响。测试 App 退出后 discovery 不存在，Broker/sidecar 无残留。Windows 安装包/ACL/local grant 真机仍待验，因此本节不标记 MCP 最终验收完成 |
+| MCP 首版结论与边界 | MCP 首版功能验收通过：动态 Resources、隔离客户端腾讯云只读与路径拒绝、命令/写入审批、macOS 上传下载往返与 SHA-256 一致性、远端冲突和删除均已通过；精确命令 SHA-256 规则保存、自动匹配、撤销后重新审批均有真实证据。Windows x64 已完成 ACL/reparse 自动化、Credential Manager 生命周期 smoke、当前 sidecar/NSIS 安装生命周期验证。尚未声明 Windows 原生文件选择器的人工端到端交互、Windows ARM64 原生运行、Developer ID/公证、Authenticode 或正式更新服务通过 |
 
 | 场景 | 状态 | 说明 |
 | --- | --- | --- |
