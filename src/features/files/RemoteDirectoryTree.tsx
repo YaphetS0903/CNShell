@@ -1,5 +1,6 @@
-import { ChevronRight, Folder, LoaderCircle } from "lucide-react";
+import { ChevronRight, Folder, LoaderCircle, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DIRECTORY_REQUEST_TIMEOUT_MS, withTimeout } from "../../lib/async-timeout";
 
 type DirectoryNode = { name: string; path: string };
 
@@ -16,6 +17,7 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
   const [expanded, setExpanded] = useState(() => new Set(["/", ...(initialExpanded ?? [])]));
   const [children, setChildren] = useState<Record<string, DirectoryNode[]>>({});
   const [loading, setLoading] = useState(() => new Set<string>());
+  const [loadErrors, setLoadErrors] = useState(() => new Set<string>());
   const loadedPaths = useRef(new Set<string>());
   const loadingPaths = useRef(new Set<string>());
 
@@ -27,15 +29,24 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
     if (loadingPaths.current.has(path) || (!force && loadedPaths.current.has(path))) return;
     loadingPaths.current.add(path);
     setLoading((current) => new Set(current).add(path));
+    setLoadErrors((current) => {
+      const next = new Set(current);
+      next.delete(path);
+      return next;
+    });
     try {
-      const result = await listDirectories(path);
+      const result = await withTimeout(
+        listDirectories(path),
+        DIRECTORY_REQUEST_TIMEOUT_MS,
+        `目录树读取 ${path} 超时，请重试`,
+      );
       loadedPaths.current.add(path);
       setChildren((current) => ({ ...current, [path]: result }));
     } catch (reason) {
       onError(reason);
-      setExpanded((current) => {
+      setLoadErrors((current) => {
         const next = new Set(current);
-        next.delete(path);
+        next.add(path);
         return next;
       });
     } finally {
@@ -50,7 +61,10 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
 
   useEffect(() => {
     void loadChildren("/");
-  }, [loadChildren]);
+    for (const path of initialExpanded ?? []) {
+      if (path !== "/") void loadChildren(path);
+    }
+  }, [initialExpanded, loadChildren]);
 
   useEffect(() => {
     const segments = activePath.split("/").filter(Boolean);
@@ -68,6 +82,11 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
   }, [expanded, loadChildren]);
 
   const toggle = (path: string) => {
+    if (loadErrors.has(path)) {
+      setExpanded((current) => new Set(current).add(path));
+      void loadChildren(path, true);
+      return;
+    }
     if (expanded.has(path)) {
       setExpanded((current) => {
         const next = new Set(current);
@@ -88,10 +107,11 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
   const renderNode = (node: DirectoryNode, depth: number) => {
     const isExpanded = expanded.has(node.path);
     const isLoading = loading.has(node.path);
+    const loadFailed = loadErrors.has(node.path);
     return <div key={node.path} role="treeitem" aria-expanded={isExpanded} aria-selected={activePath === node.path}>
       <div className={`remote-tree-row ${activePath === node.path ? "active" : ""}`} style={{ paddingLeft: `${5 + depth * 12}px` }}>
-        <button className="remote-tree-toggle" aria-label={`${isExpanded ? "折叠" : "展开"} ${node.name}`} onClick={() => toggle(node.path)}>
-          {isLoading ? <LoaderCircle className="spin" size={12} /> : <ChevronRight className={isExpanded ? "expanded" : ""} size={13} />}
+        <button className={`remote-tree-toggle ${loadFailed ? "failed" : ""}`} aria-label={loadFailed ? `重试加载 ${node.name}` : `${isExpanded ? "折叠" : "展开"} ${node.name}`} title={loadFailed ? "目录读取失败，点击重试" : undefined} onClick={() => toggle(node.path)}>
+          {isLoading ? <LoaderCircle className="spin" size={12} /> : loadFailed ? <RotateCcw size={12} /> : <ChevronRight className={isExpanded ? "expanded" : ""} size={13} />}
         </button>
         <button className="remote-tree-name" onClick={() => open(node.path)} title={node.path}>
           <Folder size={13} aria-hidden="true" />

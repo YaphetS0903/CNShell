@@ -102,18 +102,20 @@ impl TransportPool {
     ) -> AppResult<TransportLease> {
         let key = transport_pool_key(profile);
         let connected = if reusable {
-            let mut idle = self.idle.lock();
-            idle.get_mut(&key)
-                .and_then(|transports| {
-                    transports.retain(|transport| {
-                        transport.idle_since.elapsed() <= MAX_IDLE_TRANSPORT_AGE
-                    });
-                    transports.pop()
-                })
-                .map(|idle| idle.connected)
-                .filter(|connected| {
-                    connected.session.authenticated() && connected.session.keepalive_send().is_ok()
-                })
+            let candidate = {
+                let mut idle = self.idle.lock();
+                idle.get_mut(&key)
+                    .and_then(|transports| {
+                        transports.retain(|transport| {
+                            transport.idle_since.elapsed() <= MAX_IDLE_TRANSPORT_AGE
+                        });
+                        transports.pop()
+                    })
+                    .map(|idle| idle.connected)
+            };
+            candidate.filter(|connected| {
+                connected.session.authenticated() && connected.session.keepalive_send().is_ok()
+            })
         } else {
             None
         };
@@ -155,6 +157,10 @@ impl TransportLease {
 
     pub fn discard(&mut self) {
         self.reusable = false;
+    }
+
+    pub fn try_clone_transport(&self) -> std::io::Result<TcpStream> {
+        self.connected().transport.try_clone()
     }
 }
 

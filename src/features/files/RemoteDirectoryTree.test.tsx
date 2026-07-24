@@ -40,4 +40,23 @@ describe("RemoteDirectoryTree", () => {
     expect(screen.getByRole("button", { name: "折叠 home" })).toBeVisible();
     expect(screen.getByTitle("/home/ubuntu").closest('[role="treeitem"]')).toHaveAttribute("aria-selected", "true");
   });
+
+  it("stops the spinner after an error and lets the user retry the node", async () => {
+    const listDirectories = vi.fn()
+      .mockRejectedValueOnce(new Error("SFTP 目录读取超时"))
+      .mockResolvedValueOnce([{ name: "home", path: "/home" }]);
+    const onError = vi.fn();
+
+    render(<RemoteDirectoryTree activePath="/" listDirectories={listDirectories} onNavigate={vi.fn()} onError={onError} />);
+
+    const retry = await screen.findByRole("button", { name: "重试加载 /" });
+    expect(retry).toBeVisible();
+    expect(onError).toHaveBeenCalledOnce();
+
+    await userEvent.click(retry);
+
+    expect(await screen.findByText("home")).toBeVisible();
+    expect(listDirectories).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("button", { name: "重试加载 /" })).not.toBeInTheDocument();
+  });
 });

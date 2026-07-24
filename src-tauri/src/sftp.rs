@@ -12,6 +12,7 @@ use ssh2::{ErrorCode, FileStat, OpenFlags, OpenType, RenameFlags, Sftp};
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 use std::{
     io::{Read, Write},
+    net::Shutdown,
     path::{Path, PathBuf},
     process::Command,
     sync::{
@@ -22,6 +23,8 @@ use std::{
 };
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
+
+const DIRECTORY_READ_TIMEOUT: Duration = Duration::from_secs(20);
 
 fn atomic_replace(sftp: &Sftp, source: &Path, destination: &Path) -> AppResult<()> {
     match sftp.posix_rename(source, destination) {
@@ -231,22 +234,56 @@ where
     T: Send + 'static,
     F: FnOnce(Sftp) -> AppResult<T> + Send + 'static,
 {
+    with_sftp_timeout(db, manager, session_id, None, operation).await
+}
+
+async fn with_sftp_timeout<T, F>(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    timeout: Option<(&'static str, Duration)>,
+    operation: F,
+) -> AppResult<T>
+where
+    T: Send + 'static,
+    F: FnOnce(Sftp) -> AppResult<T> + Send + 'static,
+{
     let profile = manager.profile(&session_id)?;
     let mut transport = manager.acquire_transport(&db, &profile, true).await?;
-    tokio::task::spawn_blocking(move || {
+    let interrupt = transport.try_clone_transport().ok();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let timed_out_in_task = Arc::clone(&timed_out);
+    let mut task = tokio::task::spawn_blocking(move || {
         let result = transport
             .connected()
             .session
             .sftp()
             .map_err(AppError::from)
             .and_then(operation);
-        if result.is_err() {
+        if result.is_err() || timed_out_in_task.load(Ordering::Acquire) {
             transport.discard();
         }
         result
-    })
-    .await
-    .map_err(|error| AppError::Internal(error.to_string()))?
+    });
+    let joined = if let Some((operation_name, duration)) = timeout {
+        match tokio::time::timeout(duration, &mut task).await {
+            Ok(joined) => joined,
+            Err(_) => {
+                timed_out.store(true, Ordering::Release);
+                if let Some(stream) = interrupt {
+                    let _ = stream.shutdown(Shutdown::Both);
+                }
+                manager.invalidate_transport(&profile.id);
+                let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+                return Err(AppError::Unavailable(format!(
+                    "{operation_name}超时，已重置 SFTP 文件连接，请重试"
+                )));
+            }
+        }
+    } else {
+        task.await
+    };
+    joined.map_err(|error| AppError::Internal(error.to_string()))?
 }
 
 pub async fn list(
@@ -257,36 +294,42 @@ pub async fn list(
     show_hidden: bool,
 ) -> AppResult<Vec<RemoteFile>> {
     validate_remote_path(&path)?;
-    with_sftp(db, manager, session_id, move |sftp| {
-        let directory = remote_path(&path)?;
-        let mut entries = sftp
-            .readdir(&directory)?
-            .into_iter()
-            .filter_map(|(entry_path, stat)| {
-                let name = display_name(&entry_path);
-                if !show_hidden && name.starts_with('.') {
-                    return None;
-                }
-                let kind = remote_kind(&stat).to_string();
-                Some(RemoteFile {
-                    name,
-                    path: wire_path(&entry_path),
-                    kind: kind.clone(),
-                    size: stat.size.unwrap_or(0),
-                    modified_at: stat.mtime,
-                    permissions: permission_string(stat.perm, &kind),
-                    owner: stat.uid,
-                    group: stat.gid,
+    with_sftp_timeout(
+        db,
+        manager,
+        session_id,
+        Some(("目录读取", DIRECTORY_READ_TIMEOUT)),
+        move |sftp| {
+            let directory = remote_path(&path)?;
+            let mut entries = sftp
+                .readdir(&directory)?
+                .into_iter()
+                .filter_map(|(entry_path, stat)| {
+                    let name = display_name(&entry_path);
+                    if !show_hidden && name.starts_with('.') {
+                        return None;
+                    }
+                    let kind = remote_kind(&stat).to_string();
+                    Some(RemoteFile {
+                        name,
+                        path: wire_path(&entry_path),
+                        kind: kind.clone(),
+                        size: stat.size.unwrap_or(0),
+                        modified_at: stat.mtime,
+                        permissions: permission_string(stat.perm, &kind),
+                        owner: stat.uid,
+                        group: stat.gid,
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
-        entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
-            ("directory", "file") => std::cmp::Ordering::Less,
-            ("file", "directory") => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        });
-        Ok(entries)
-    })
+                .collect::<Vec<_>>();
+            entries.sort_by(|a, b| match (a.kind.as_str(), b.kind.as_str()) {
+                ("directory", "file") => std::cmp::Ordering::Less,
+                ("file", "directory") => std::cmp::Ordering::Greater,
+                _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+            });
+            Ok(entries)
+        },
+    )
     .await
 }
 

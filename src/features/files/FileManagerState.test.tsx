@@ -168,4 +168,19 @@ describe("FileManager navigation state", () => {
     );
     expect(screen.queryByText("拖放上传到 /")).not.toBeInTheDocument();
   });
+
+  it("shows an actionable directory error and retries without remounting", async () => {
+    const listFiles = vi.spyOn(api, "listFiles").mockRejectedValue(new Error("目录读取超时，已重置 SFTP 文件连接，请重试"));
+    const user = userEvent.setup();
+
+    render(<FileManager session={session("one")} />);
+
+    expect(await screen.findByText("无法读取目录")).toBeVisible();
+    const retry = screen.getByRole("button", { name: "重试读取目录" });
+    const callsBeforeRetry = listFiles.mock.calls.length;
+    await user.click(retry);
+
+    await waitFor(() => expect(listFiles.mock.calls.length).toBeGreaterThan(callsBeforeRetry));
+    expect(await screen.findByText("无法读取目录")).toBeVisible();
+  });
 });
