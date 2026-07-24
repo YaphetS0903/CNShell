@@ -249,7 +249,9 @@ where
     F: FnOnce(Sftp) -> AppResult<T> + Send + 'static,
 {
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .await?;
     let interrupt = transport.try_clone_transport().ok();
     let session_timeout = timeout.map(|(_, duration)| {
         u32::try_from(duration.as_millis())
@@ -912,7 +914,9 @@ pub async fn transfer_file_direct(
     }
     validate_remote_path(&remote_root)?;
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
             let sftp = transport.connected().session.sftp()?;
@@ -1390,7 +1394,9 @@ pub async fn archive(
         ));
     }
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
             let mut channel = transport.connected().session.channel_session()?;
@@ -1443,7 +1449,9 @@ pub async fn open_local(
 ) -> AppResult<String> {
     validate_remote_path(&path)?;
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
             let decoded = remote_path(&path)?;
@@ -1557,7 +1565,9 @@ pub async fn transfer_directory(
         ));
     }
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager.acquire_transport(&db, &profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .await?;
     tokio::task::spawn_blocking(move || {
         let identifier = Uuid::new_v4().to_string();
         let local_archive =
@@ -2097,7 +2107,10 @@ pub async fn enqueue(
                 return;
             }
         };
-        let transport = match manager.acquire_transport(&db, &profile, true).await {
+        let transport = match manager
+            .acquire_auxiliary_transport(&db, &profile, "sftp")
+            .await
+        {
             Ok(value) => value,
             Err(error) => {
                 task.status = "failed".into();
