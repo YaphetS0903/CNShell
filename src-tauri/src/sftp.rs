@@ -175,6 +175,18 @@ fn validate_local_path(path: &str) -> AppResult<()> {
         Ok(())
     }
 }
+
+fn validate_upload_source(path: &str) -> AppResult<()> {
+    validate_local_path(path)?;
+    if std::fs::metadata(path)?.is_file() {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "拖入文件夹请使用“上传文件夹”按钮".into(),
+        ))
+    }
+}
+
 fn validate_deletable_path(path: &str) -> AppResult<()> {
     let decoded = remote_path(path)?;
     if [Path::new("/"), Path::new("/."), Path::new("/..")].contains(&decoded.as_path()) {
@@ -838,7 +850,7 @@ pub async fn transfer_file_direct(
         return Err(AppError::Validation("MCP 文件传输参数无效".into()));
     }
     if direction == "upload" {
-        validate_local_path(&source)?;
+        validate_upload_source(&source)?;
         validate_remote_path(&destination)?;
     } else {
         validate_remote_path(&source)?;
@@ -1990,7 +2002,7 @@ pub async fn enqueue(
         return Err(AppError::Validation("同名冲突策略无效".into()));
     }
     if input.direction == "upload" {
-        validate_local_path(&input.source)?;
+        validate_upload_source(&input.source)?;
         validate_remote_path(&input.destination)?;
     } else {
         validate_remote_path(&input.source)?;
@@ -2163,6 +2175,15 @@ mod tests {
             wire_path(&remote_parent_path("/var/log/system.log").unwrap()),
             "/var/log"
         );
+    }
+    #[test]
+    fn file_transfer_rejects_directory_sources() {
+        let directory = tempfile::tempdir().unwrap();
+        assert!(validate_upload_source(directory.path().to_str().unwrap()).is_err());
+
+        let file = directory.path().join("upload.txt");
+        std::fs::write(&file, b"CNshell").unwrap();
+        assert!(validate_upload_source(file.to_str().unwrap()).is_ok());
     }
     #[cfg(target_os = "macos")]
     #[test]

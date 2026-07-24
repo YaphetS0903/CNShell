@@ -1,10 +1,16 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
 import { workspaceRuntime } from "../../lib/workspace-runtime";
 import type { RemoteFile, TerminalSession } from "../../types";
 import { FileManager } from "./FileManager";
+
+const nativeDrop = vi.hoisted(() => ({ onDragDropEvent: vi.fn() }));
+
+vi.mock("@tauri-apps/api/webview", () => ({
+  getCurrentWebview: () => ({ onDragDropEvent: nativeDrop.onDragDropEvent }),
+}));
 
 const session = (id: string): TerminalSession => ({
   id,
@@ -48,6 +54,8 @@ describe("FileManager navigation state", () => {
       },
     );
     workspaceRuntime.remoteFileBrowserBySession.clear();
+    nativeDrop.onDragDropEvent.mockReset();
+    nativeDrop.onDragDropEvent.mockResolvedValue(vi.fn());
     vi.spyOn(api, "listFiles").mockImplementation(async (_sessionId, path) => {
       if (path === "/") return [directory("home", "/home"), file("notes.txt", "/notes.txt")];
       if (path === "/home") return [directory("ubuntu", "/home/ubuntu")];
@@ -111,5 +119,53 @@ describe("FileManager navigation state", () => {
     await user.click(more);
     await user.click(screen.getByRole("button", { name: "复制路径" }));
     expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+  });
+
+  it("queues files dropped through Tauri's native desktop event", async () => {
+    vi.spyOn(api, "isDesktop").mockReturnValue(true);
+    const enqueue = vi.spyOn(api, "enqueueTransfer").mockResolvedValue({} as never);
+    const { container } = render(<FileManager session={session("one")} />);
+    await screen.findByRole("row", { name: /notes\.txt/ });
+    const browser = container.querySelector<HTMLDivElement>(".file-browser");
+    expect(browser).not.toBeNull();
+    vi.spyOn(browser!, "getBoundingClientRect").mockReturnValue({
+      left: 0,
+      top: 0,
+      right: 800,
+      bottom: 500,
+    } as DOMRect);
+
+    await waitFor(() => expect(nativeDrop.onDragDropEvent).toHaveBeenCalledOnce());
+    const handler = nativeDrop.onDragDropEvent.mock.calls[0][0] as (event: {
+      payload:
+        | { type: "enter" | "over"; position: { x: number; y: number } }
+        | { type: "drop"; paths: string[]; position: { x: number; y: number } }
+        | { type: "leave" };
+    }) => void;
+
+    await act(async () => {
+      handler({ payload: { type: "over", position: { x: 200, y: 300 } } });
+    });
+    expect(screen.getByText("拖放上传到 /")).toBeVisible();
+
+    await act(async () => {
+      handler({
+        payload: {
+          type: "drop",
+          paths: ["/tmp/cnshell native drop.txt"],
+          position: { x: 200, y: 300 },
+        },
+      });
+    });
+    await waitFor(() =>
+      expect(enqueue).toHaveBeenCalledWith({
+        sessionId: "one",
+        direction: "upload",
+        source: "/tmp/cnshell native drop.txt",
+        destination: "/cnshell native drop.txt",
+        conflictPolicy: "ask",
+      }),
+    );
+    expect(screen.queryByText("拖放上传到 /")).not.toBeInTheDocument();
   });
 });
