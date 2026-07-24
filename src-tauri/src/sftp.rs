@@ -251,15 +251,26 @@ where
     let profile = manager.profile(&session_id)?;
     let mut transport = manager.acquire_transport(&db, &profile, true).await?;
     let interrupt = transport.try_clone_transport().ok();
+    let session_timeout = timeout.map(|(_, duration)| {
+        u32::try_from(duration.as_millis())
+            .unwrap_or(u32::MAX)
+            .max(1)
+    });
     let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_in_task = Arc::clone(&timed_out);
     let mut task = tokio::task::spawn_blocking(move || {
+        if let Some(duration) = session_timeout {
+            transport.connected().session.set_timeout(duration);
+        }
         let result = transport
             .connected()
             .session
             .sftp()
             .map_err(AppError::from)
             .and_then(operation);
+        if session_timeout.is_some() {
+            transport.connected().session.set_timeout(0);
+        }
         if result.is_err() || timed_out_in_task.load(Ordering::Acquire) {
             transport.discard();
         }

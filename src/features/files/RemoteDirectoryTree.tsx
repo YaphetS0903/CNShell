@@ -20,6 +20,7 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
   const [loadErrors, setLoadErrors] = useState(() => new Set<string>());
   const loadedPaths = useRef(new Set<string>());
   const loadingPaths = useRef(new Set<string>());
+  const requestQueue = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     onExpandedChange?.([...expanded]);
@@ -34,29 +35,33 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
       next.delete(path);
       return next;
     });
-    try {
-      const result = await withTimeout(
-        listDirectories(path),
-        DIRECTORY_REQUEST_TIMEOUT_MS,
-        `目录树读取 ${path} 超时，请重试`,
-      );
-      loadedPaths.current.add(path);
-      setChildren((current) => ({ ...current, [path]: result }));
-    } catch (reason) {
-      onError(reason);
-      setLoadErrors((current) => {
-        const next = new Set(current);
-        next.add(path);
-        return next;
-      });
-    } finally {
-      loadingPaths.current.delete(path);
-      setLoading((current) => {
-        const next = new Set(current);
-        next.delete(path);
-        return next;
-      });
-    }
+    const request = requestQueue.current.then(async () => {
+      try {
+        const result = await withTimeout(
+          listDirectories(path),
+          DIRECTORY_REQUEST_TIMEOUT_MS,
+          `目录树读取 ${path} 超时，请重试`,
+        );
+        loadedPaths.current.add(path);
+        setChildren((current) => ({ ...current, [path]: result }));
+      } catch (reason) {
+        onError(reason);
+        setLoadErrors((current) => {
+          const next = new Set(current);
+          next.add(path);
+          return next;
+        });
+      } finally {
+        loadingPaths.current.delete(path);
+        setLoading((current) => {
+          const next = new Set(current);
+          next.delete(path);
+          return next;
+        });
+      }
+    });
+    requestQueue.current = request.catch(() => undefined);
+    await request;
   }, [listDirectories, onError]);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { RemoteDirectoryTree } from "./RemoteDirectoryTree";
@@ -58,5 +58,48 @@ describe("RemoteDirectoryTree", () => {
     expect(await screen.findByText("home")).toBeVisible();
     expect(listDirectories).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("button", { name: "重试加载 /" })).not.toBeInTheDocument();
+  });
+
+  it("serializes rapid directory expansions so only one SFTP request runs at a time", async () => {
+    let active = 0;
+    let started = 0;
+    let maxActive = 0;
+    const releases: Array<() => void> = [];
+    const listDirectories = vi.fn(async (path: string) => {
+      if (path === "/") {
+        return [
+          { name: "dev", path: "/dev" },
+          { name: "etc", path: "/etc" },
+          { name: "home", path: "/home" },
+        ];
+      }
+      started += 1;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise<void>((resolve) => releases.push(() => {
+        active -= 1;
+        resolve();
+      }));
+      return [];
+    });
+    const user = userEvent.setup();
+
+    render(<RemoteDirectoryTree activePath="/" listDirectories={listDirectories} onNavigate={vi.fn()} onError={vi.fn()} />);
+    await screen.findByText("dev");
+
+    await user.click(screen.getByRole("button", { name: "展开 dev" }));
+    await user.click(screen.getByRole("button", { name: "展开 etc" }));
+    await user.click(screen.getByRole("button", { name: "展开 home" }));
+
+    expect(started).toBe(1);
+    expect(maxActive).toBe(1);
+    releases.shift()?.();
+    await waitFor(() => expect(started).toBe(2));
+    expect(maxActive).toBe(1);
+    releases.shift()?.();
+    await waitFor(() => expect(started).toBe(3));
+    expect(maxActive).toBe(1);
+    releases.shift()?.();
+    await waitFor(() => expect(active).toBe(0));
   });
 });

@@ -183,4 +183,21 @@ describe("FileManager navigation state", () => {
     await waitFor(() => expect(listFiles.mock.calls.length).toBeGreaterThan(callsBeforeRetry));
     expect(await screen.findByText("无法读取目录")).toBeVisible();
   });
+
+  it("shares an in-flight listing between the main table and directory tree", async () => {
+    let resolveRoot: ((files: RemoteFile[]) => void) | undefined;
+    const listFiles = vi.spyOn(api, "listFiles").mockImplementation((_sessionId, path) => {
+      if (path !== "/") return Promise.resolve([]);
+      return new Promise<RemoteFile[]>((resolve) => {
+        resolveRoot = resolve;
+      });
+    });
+
+    render(<FileManager session={session("one")} />);
+
+    await waitFor(() => expect(listFiles).toHaveBeenCalledTimes(1));
+    resolveRoot?.([directory("home", "/home")]);
+    expect(await screen.findByRole("row", { name: /home/ })).toBeVisible();
+    expect(listFiles.mock.calls.filter(([, target]) => target === "/")).toHaveLength(1);
+  });
 });

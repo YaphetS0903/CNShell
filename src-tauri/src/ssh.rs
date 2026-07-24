@@ -26,7 +26,7 @@ use std::{
     path::Path,
     sync::{
         Arc, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -1811,23 +1811,40 @@ pub async fn execute_pooled_command(
         ));
     }
     let mut transport = manager.acquire_transport(db, profile, true).await?;
+    let interrupt = transport.try_clone_transport().ok();
+    let timed_out = Arc::new(AtomicBool::new(false));
+    let timed_out_in_task = Arc::clone(&timed_out);
+    let cancelled_in_task = Arc::clone(&cancelled);
     let command = command.to_owned();
-    tokio::task::spawn_blocking(move || {
+    let mut task = tokio::task::spawn_blocking(move || {
         let result = execute_command_on_session(
             &transport.connected().session,
             &transport.connected().transport,
             &command,
-            &cancelled,
+            &cancelled_in_task,
             timeout,
             output_limit,
         );
-        if result.is_err() {
+        if result.is_err() || timed_out_in_task.load(Ordering::Acquire) {
             transport.discard();
         }
         result
-    })
-    .await
-    .map_err(|error| AppError::Internal(error.to_string()))?
+    });
+    match tokio::time::timeout(timeout, &mut task).await {
+        Ok(joined) => joined.map_err(|error| AppError::Internal(error.to_string()))?,
+        Err(_) => {
+            timed_out.store(true, Ordering::Release);
+            cancelled.store(true, Ordering::Release);
+            if let Some(stream) = interrupt {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+            manager.invalidate_transport(&profile.id);
+            let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+            Err(AppError::Unavailable(
+                "远端命令执行超时，已重置 SSH 辅助连接".into(),
+            ))
+        }
+    }
 }
 
 async fn execute_command_with_transport(
@@ -1837,19 +1854,32 @@ async fn execute_command_with_transport(
     timeout: Duration,
     output_limit: usize,
 ) -> AppResult<RemoteCommandResult> {
+    let interrupt = connected.transport.try_clone().ok();
+    let cancelled_in_task = Arc::clone(&cancelled);
     let command = command.to_owned();
-    tokio::task::spawn_blocking(move || {
+    let mut task = tokio::task::spawn_blocking(move || {
         execute_command_on_session(
             &connected.session,
             &connected.transport,
             &command,
-            &cancelled,
+            &cancelled_in_task,
             timeout,
             output_limit,
         )
-    })
-    .await
-    .map_err(|error| AppError::Internal(error.to_string()))?
+    });
+    match tokio::time::timeout(timeout, &mut task).await {
+        Ok(joined) => joined.map_err(|error| AppError::Internal(error.to_string()))?,
+        Err(_) => {
+            cancelled.store(true, Ordering::Release);
+            if let Some(stream) = interrupt {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
+            let _ = tokio::time::timeout(Duration::from_secs(1), &mut task).await;
+            Err(AppError::Unavailable(
+                "远端命令执行超时，已重置 SSH 辅助连接".into(),
+            ))
+        }
+    }
 }
 
 fn execute_command_on_session(
@@ -1860,11 +1890,15 @@ fn execute_command_on_session(
     timeout: Duration,
     output_limit: usize,
 ) -> AppResult<RemoteCommandResult> {
-    let mut channel = session.channel_session()?;
-    channel.exec(command)?;
-    transport.set_nonblocking(true)?;
-    session.set_blocking(false);
+    let session_timeout = u32::try_from(timeout.as_millis())
+        .unwrap_or(u32::MAX)
+        .max(1);
+    session.set_timeout(session_timeout);
     let result = (|| {
+        let mut channel = session.channel_session()?;
+        channel.exec(command)?;
+        transport.set_nonblocking(true)?;
+        session.set_blocking(false);
         let mut stdout = Vec::new();
         let mut stderr_bytes = Vec::new();
         let mut truncated = false;
@@ -1926,6 +1960,7 @@ fn execute_command_on_session(
     })();
     let _ = transport.set_nonblocking(false);
     session.set_blocking(true);
+    session.set_timeout(0);
     result
 }
 
