@@ -1,11 +1,17 @@
 import { AlertTriangle, Check, Clock3, ShieldAlert, X, XCircle } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconButton } from "../../components/IconButton";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
-import type { McpApproval } from "../../types";
+import type { McpApproval, McpRequestNotice } from "../../types";
 
 const TOOL_LABELS: Record<string, string> = {
+  cnshell_list_connections: "列出授权连接",
+  cnshell_open_session: "打开短期会话",
+  cnshell_close_session: "关闭短期会话",
+  cnshell_file_list: "列出远端目录",
+  cnshell_file_read: "读取远端文本",
+  cnshell_system_info: "读取系统信息",
   cnshell_run_command: "执行远端命令",
   cnshell_file_write: "写入远端文件",
   cnshell_file_mkdir: "新建远端目录",
@@ -15,11 +21,15 @@ const TOOL_LABELS: Record<string, string> = {
   cnshell_file_download: "下载远端文件",
 };
 
+type VisibleNotice = McpRequestNotice & { id: string };
+
 export function McpApprovalCenter({ onError }: { onError: (message: string) => void }) {
   const [approvals, setApprovals] = useState<McpApproval[]>([]);
   const [open, setOpen] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [notices, setNotices] = useState<VisibleNotice[]>([]);
+  const noticeTimers = useRef(new Set<number>());
 
   const refresh = useCallback(async () => {
     try {
@@ -34,6 +44,24 @@ export function McpApprovalCenter({ onError }: { onError: (message: string) => v
     const listener = api.onMcpApprovalChanged(() => void refresh());
     return () => { void listener.then((unlisten) => unlisten()); };
   }, [refresh]);
+
+  useEffect(() => {
+    const timers = noticeTimers.current;
+    const listener = api.onMcpRequestCompleted((notice) => {
+      const id = crypto.randomUUID();
+      setNotices((current) => [...current.slice(-3), { ...notice, id }]);
+      const timer = window.setTimeout(() => {
+        setNotices((current) => current.filter((item) => item.id !== id));
+        timers.delete(timer);
+      }, 5000);
+      timers.add(timer);
+    });
+    return () => {
+      void listener.then((unlisten) => unlisten());
+      for (const timer of timers) window.clearTimeout(timer);
+      timers.clear();
+    };
+  }, []);
 
   useEffect(() => {
     if (!approvals.length) return;
@@ -68,9 +96,11 @@ export function McpApprovalCenter({ onError }: { onError: (message: string) => v
     finally { setBusyId(null); }
   };
 
-  if (!open) return activeApprovals.length ? <button className="mcp-approval-fab" aria-label={`打开 MCP 审批中心，${activeApprovals.length} 项待处理`} onClick={() => setOpen(true)}><ShieldAlert size={18}/><b>{activeApprovals.length}</b></button> : null;
+  const noticeView = notices.length ? <div className="mcp-request-notices" aria-live="polite">{notices.map((notice) => <div key={notice.id} className={notice.outcome === "completed" ? "success" : "failed"}><Check size={14}/><span><strong>{TOOL_LABELS[notice.tool] ?? notice.tool}</strong><small>{notice.clientName} · {notice.outcome === "completed" ? "已完成" : "失败或被拒绝"} · {notice.durationMs} ms</small></span></div>)}</div> : null;
 
-  return <aside className="mcp-approval-drawer" aria-label="MCP 审批中心">
+  if (!open) return <>{noticeView}{activeApprovals.length ? <button className="mcp-approval-fab" aria-label={`打开 MCP 审批中心，${activeApprovals.length} 项待处理`} onClick={() => setOpen(true)}><ShieldAlert size={18}/><b>{activeApprovals.length}</b></button> : null}</>;
+
+  return <>{noticeView}<aside className="mcp-approval-drawer" aria-label="MCP 审批中心">
     <header><div><ShieldAlert size={18}/><span><strong>MCP 审批</strong><small aria-live="polite">{activeApprovals.length} 项待处理</small></span></div><IconButton icon={X} label="关闭 MCP 审批中心" onClick={() => setOpen(false)}/></header>
     <div className="mcp-approval-body">
       {!activeApprovals.length ? <div className="mcp-approval-empty"><Check size={25}/><strong>没有待审批请求</strong><span>新的敏感操作会在这里显示。</span></div> : activeApprovals.map((approval) => {
@@ -86,5 +116,5 @@ export function McpApprovalCenter({ onError }: { onError: (message: string) => v
         </article>;
       })}
     </div>
-  </aside>;
+  </aside></>;
 }

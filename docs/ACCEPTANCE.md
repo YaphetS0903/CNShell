@@ -1,6 +1,6 @@
-# CNshell v0.2.0-beta.2 验收矩阵
+# CNshell v0.2.0-beta.4 验收矩阵
 
-> 最后核验：2026-07-18（macOS 本机与 GitHub Windows CI）
+> 最后核验：2026-07-25（macOS 本机、GitHub Windows CI 与 MCP 全量质量门禁）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -260,10 +260,10 @@
 
 | 项目 | 结果 |
 | --- | --- |
-| 协议与边界 | `rmcp 2.2.0` stdio sidecar 与 loopback Broker 已实现；9 项 sidecar 测试覆盖 13 个严格工具 schema、4 个 Resources、2 个 Prompts、能力声明、连续消息、超大输入/响应、未知资源错误、凭据管理参数边界，以及 Tool 结果同时提供标准文本 `content` 与 `structuredContent` 的 Host 兼容性。重复数据超过 1 MiB 时保留有界文本结果，否则返回结构化溢出错误。后端测试覆盖路径越界、symlink、并发、传输目标互斥、重复 request ID、取消传播、目录响应限长、discovery `0600`、幂等退出清理、最终实例释放兜底、动态 Resource 授权过滤、审计脱敏、精确规则撤销及升级后凭据清理；GitHub CI run [`29941059465`](https://github.com/YaphetS0903/CNShell/actions/runs/29941059465) 已通过 Windows x64 Rust 测试、严格 Clippy 和 ARM64 编译 |
-| stdio 实证 | 真实 `cnshell-mcp` 二进制已通过 `initialize`、`tools/list`、`resources/list/read`、`prompts/list/get`，返回 13 个工具、4 个 Resources（2 个静态、2 个动态）和 2 个安全 Prompts；包内静态安全资源读取已通过，动态资源仍需携带隔离客户端凭据完成授权过滤实测。重新打包的 universal 隔离 App 已用新的 sidecar 摘要重新绑定；真实 MCP Host 调用确认结果同时含标准文本 `content` 与 `structuredContent`，不再出现 Host 仅收到空 `content` 的兼容性问题 |
+| 协议与边界 | `rmcp 2.2.0` stdio sidecar 与 loopback Broker 已实现；10 项 sidecar 测试覆盖 13 个严格工具 schema、4 个 Resources、2 个 Prompts、能力声明、连续消息、超大输入/响应、未知资源错误、凭据管理参数边界、严格 `--self-check`，以及 Tool 结果同时提供标准文本 `content` 与 `structuredContent` 的 Host 兼容性。`cnshell_system_info.fields` 仅接受六个无重复白名单字段，固定采集快照不接受客户端 shell 输入。重复数据超过 1 MiB 时保留有界文本结果，否则返回结构化溢出错误。后端测试覆盖路径越界、symlink、并发、传输目标互斥、重复 request ID、取消传播、目录响应限长、discovery `0600`、幂等退出清理、最终实例释放兜底、动态 Resource 授权过滤、审计脱敏、精确规则撤销及升级后凭据清理；本机全量 Rust 测试为 251 个库测试和 10 个 sidecar 测试全通过，严格 Clippy 与格式检查通过；GitHub CI run [`29941059465`](https://github.com/YaphetS0903/CNShell/actions/runs/29941059465) 已通过 Windows x64 Rust 测试、严格 Clippy 和 ARM64 编译 |
+| stdio 实证 | 真实 `cnshell-mcp` 二进制已通过 `initialize`、`tools/list`、`resources/list/read`、`prompts/list/get` 与 `--self-check`，返回 13 个工具、4 个 Resources（2 个静态、2 个动态）、2 个安全 Prompts 和受限 server 元数据；隔离客户端已完成动态 Resources 的授权过滤实测。重新打包的 universal 隔离 App 已用新的 sidecar 摘要重新绑定；真实 MCP Host 调用确认结果同时含标准文本 `content` 与 `structuredContent`，不再出现 Host 仅收到空 `content` 的兼容性问题 |
 | 真实 Host/SSH 实证 | 当前 universal 测试 App 内 sidecar 已重新生成配置并完成 executable path/SHA-256 绑定。隔离客户端实际完成 stdio 初始化、Resources/Tools/Prompts 列表、动态连接/审计 Resource 读取，并确认内部 `resource:*` 不能作为 Tool 调用；短期会话审批可见且批准生效。用户更新隔离 App 的腾讯云密码后，真实 `cnshell_system_info`、验收根目录列表、`normal/readme.txt` 35 字节读取与短期会话关闭均通过；symlink、`..` 根逃逸和未授权写入均被拒绝。真实单次审批还完成低风险命令、原子写入、错误 SHA-256 冲突拒绝、新建目录、重命名、删除、82 字节上传和 35 字节下载；下载 SHA-256 与远端基准一致且无 `.part` 残留。验收产生的远端文件和目录已清理，根目录只保留原有 fixture。Codex CLI 与官方 MCP Inspector CLI 均已有腾讯云 SSH 的连接清单、短期会话、系统信息、目录分页和关闭证据；Inspector 另完成 Resources/Prompts 列表、读取和获取 |
-| 前端 | 设置页与审批抽屉已接入，组件测试覆盖隐私开关状态恢复、浅色/深色主题挂载、Escape 收起、单次批准，以及精确命令规则列表和撤销；审计 JSON 原子导出已接入；全量前端 205 项测试、生产构建与 IPC 类型检查通过 |
+| 前端 | 设置页与审批抽屉已接入，组件测试覆盖隐私开关状态恢复、浅色/深色主题挂载、Escape 收起、单次批准、持久本地授权的显式选择、完成/失败的脱敏通知和 5 秒自动消失，以及精确命令规则列表和撤销；设置页显示版本、discovery、受管 sidecar 身份、最后使用时间和自检命令。审计 JSON 原子导出已接入；全量前端 219 项测试、生产构建与 IPC 类型检查通过 |
 | Windows x64 ACL 与本地路径边界 | Windows 专属测试通过系统 API 读取 discovery 的实际 DACL，确认受保护 Owner Rights SDDL 为 `D:P(A;;FA;;;OW)`；另覆盖 junction/reparse 组件拒绝。已安装的 Windows MCP sidecar 在 Parallels 中完成临时 Credential Manager provision/revoke 清理检查与静态 CRT 副本检查，均通过且未暴露任何秘密 |
 | 打包与许可证 | macOS universal、Windows x64/ARM64 sidecar 构建入口已接入 CI/Beta/Release；发布门禁验证架构、签名、安装资源与 11 KB 完整 Apache-2.0 文本，58 项发布静态测试通过。Windows Packaging run [`29941061193`](https://github.com/YaphetS0903/CNShell/actions/runs/29941061193) 的 x64 job 已通过 MCP sidecar、NSIS、PE 校验、安装、覆盖升级、卸载和重装 |
 | sidecar 凭据生命周期 | 客户端长期 secret 由 sidecar 自己创建，SQLite 只保存 SHA-256。撤销先立即关闭数据库/运行时权限，再校验受管 sidecar 的规范化路径与二进制 SHA-256，由 sidecar 自验 secret 摘要后删除 Keychain/Credential Manager 项；清理失败不会恢复客户端权限 |

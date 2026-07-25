@@ -1,6 +1,6 @@
 # CNshell MCP 开发规划
 
-> 文档状态：v0.5，P0/P1/P1.5 与 P2 首版功能已实现；macOS/腾讯云补充验收及跨平台真机验收进行中
+> 文档状态：v0.6，P0/P1/P1.5 与 P2 首版功能已实现；本轮补齐系统信息字段筛选、sidecar 自检、持久本地授权显式确认与请求完成反馈，跨平台真机与发行验收仍按下文边界执行
 >
 > 制定日期：2026-07-21
 >
@@ -128,6 +128,8 @@ P0 约束：
 - `file_list` 每页最多 500 项，序列化结果不超过 512 KiB，不递归遍历目录。
 - `file_read` 首版只读普通文本文件，单次最多 256 KiB；二进制、设备、FIFO、socket 和符号链接
   默认拒绝。大文本通过 offset 分页，返回实际字节区间和 SHA-256。
+- `system_info.fields` 只接受 `os`、`cpu`、`memory`、`load`、`disks`、`network` 这六个无重复字段；
+  空列表返回完整固定快照，非空列表始终附带采集时间，不接受客户端提供的 shell 或探测脚本。
 - 所有工具结果包含 `requestId`，但不包含内部数据库路径、凭据引用或 Rust 调试信息。
 
 ### 4.2 P1：需审批的命令与远端写操作
@@ -289,7 +291,9 @@ client × connection × tool × remote-root × local-grant × rule × expiry
 在“设置”增加“MCP 与外部工具”页面：
 
 - MCP 总开关、Broker 状态、当前版本、配置目录和“复制客户端配置”入口。
-- 已登记客户端列表：在线状态、最后使用、可执行文件身份、连接数、工具数、撤销和重新授权。
+- 已登记客户端列表：授权状态、最后使用、可执行文件身份、连接数、工具数、撤销和重新授权；Broker
+  区域显示全局会话数与待审批数。stdio Host 在空闲时没有可信的“进程在线”心跳，因此界面不把
+  “最后使用”伪装成在线状态。
 - 授权详情：连接、工具、远端根、本地 grant、规则、有效期和立即撤销。
 - 审计列表与脱敏导出。
 
@@ -297,7 +301,8 @@ client × connection × tool × remote-root × local-grant × rule × expiry
 
 - 显示待审批数量，默认不遮挡终端输入和文件操作。
 - 命令使用等宽文本完整展示；文件写入展示有界 diff；删除展示目标和递归范围。
-- 提供批准、拒绝和展开详情；请求完成后显示结果，但普通成功提示 5 秒自动消失。
+- 提供批准、拒绝和展开详情；请求完成后仅显示客户端、工具、结果和耗时，不显示命令、路径、输出或凭据；
+  普通成功/失败提示 5 秒自动消失。
 - 窗口关闭时若 Broker、隧道或任务仍在运行，沿用统一后台运行决策；系统托盘作为独立阶段实现，
   不让 MCP 功能偷偷改变当前退出语义。
 
@@ -339,23 +344,23 @@ discovery，并在每次启动轮换；应用退出或关闭 MCP 后删除。客
 
 ## 九、分阶段实施计划
 
-### 当前进度（2026-07-23）
+### 当前进度（2026-07-25）
 
 | 阶段 | 状态 | 已有证据 | 剩余验收 |
 | --- | --- | --- | --- |
 | 0 协议与安全验证 | 已完成，macOS 与 Windows x64 验证通过 | 固定 `rmcp 2.2.0`；stdio/Broker 1 MiB 上限、严格 schema、重复 request ID 拒绝、断开/撤销/关闭取消、loopback、generation/token、macOS `0600`、Windows Owner-only ACL；Windows x64 测试以系统 API 读取实际 DACL 并确认 SDDL 为 `D:P(A;;FA;;;OW)`，同时验证 junction/reparse 组件拒绝。客户端 secret 由 sidecar 自有凭据项保存；Windows 实装 sidecar 已验证 provision/revoke 后不残留凭据，且静态 CRT 副本不依赖 VC runtime。隔离 App `Command+Q` 后 discovery 与进程无残留 | Windows ARM64 原生运行；正式签名与公证 |
-| 1 P0 只读 | 已完成，隔离客户端腾讯云复验通过 | Codex CLI 与官方 MCP Inspector CLI 均完成连接清单、短期会话、系统信息、目录分页和关闭；腾讯云 SSH/SFTP 真实读操作通过；客户端/连接/工具/远端根授权和设置 UI 已完成；本轮隔离 sidecar 已真实完成初始化、连接清单、动态 Resources、短期会话审批、系统信息、3 项目录分页、35 字节文本读取和关闭。远端 symlink、`..` 越界均被拒绝，未授予写工具时文件写入也被拒绝；目录扫描先以 10 万项/8 MiB 路径预算限界，再将 MCP 响应缩至 512 KiB 并保持正确游标 | 其他 Host 互操作可作为扩展覆盖 |
+| 1 P0 只读 | 已完成，隔离客户端腾讯云复验通过 | Codex CLI 与官方 MCP Inspector CLI 均完成连接清单、短期会话、系统信息、目录分页和关闭；腾讯云 SSH/SFTP 真实读操作通过；客户端/连接/工具/远端根授权和设置 UI 已完成；本轮隔离 sidecar 已真实完成初始化、连接清单、动态 Resources、短期会话审批、系统信息、3 项目录分页、35 字节文本读取和关闭。`system_info` 的六组字段可严格筛选，固定白名单采集负载、运行时间、已用/总内存与 Swap，并带采集时间。远端 symlink、`..` 越界均被拒绝，未授予写工具时文件写入也被拒绝；目录扫描先以 10 万项/8 MiB 路径预算限界，再将 MCP 响应缩至 512 KiB 并保持正确游标 | Claude Code/Desktop 的真实请求可在有目标 Host 会话时补充；协议互操作已由 Codex CLI 与官方 Inspector 覆盖 |
 | 2 P1 写入与审批 | 已完成，腾讯云真实验收通过 | 真实 MCP 客户端已完成命令、原子文本写入、错误 SHA-256 冲突、mkdir、rename 和删除；120 秒内存审批、风险预览、请求取消、每客户端 2 并发、输出总上限与审批 UI 已完成；真实客户端超时会撤销待审批请求 | Windows 原生 UI 审批和断网恢复属于后续桌面体验覆盖 |
 | 3 P1.5 上传下载 | 已完成，macOS 真实验收与 Windows x64 安全/包验证通过 | 原生选择器已创建精确文件/目录授权；真实 MCP Host 完成 82 字节上传和 35 字节下载，SHA-256 与远端 fixture 一致，一次性授权随后失效且无 `.part` 残留；相对路径、symlink/reparse 拒绝、目录预检和原子替换已有自动化。Windows x64 CI 已验证 junction 拒绝及 MCP sidecar/NSIS 安装生命周期 | Windows 原生文件选择器的人工端到端走查，以及 Windows ARM64 真机 |
 | 4 P2 首版 | 已完成，动态 Resource 与规则真实 stdio 验收通过 | stdio 已提供 4 个 Resources（2 个静态、2 个经 Broker 授权过滤的动态资源）与 2 个安全 Prompts；隔离客户端真实返回 4/13/2 项目录，连接 Resource 仅显示一条授权连接且隐藏主机/用户名，审计 Resource 无命令/路径泄露，`resource:*` 内部操作不能经 `tools/call` 调用；精确命令规则支持摘要查看、最近使用时间、单条撤销和每客户端 256 条上限。保存、自动匹配、撤销后重新审批均已真实验证；规则资格现收紧为保守低风险白名单 | 其他 Host 与 Windows 原生 UI 属扩展覆盖 |
-| 发布与文档 | MCP 首版功能门禁完成 | macOS universal 与 Windows x64/ARM64 构建入口、安装资源检查、完整 Apache-2.0 与用户/安全/隐私/排障文档已接入。GitHub CI run `29941059465` 已通过 Windows x64 测试、严格 Clippy 和 ARM64 编译；Windows Packaging run `29941061193` 的 x64 job 已通过 MCP sidecar、NSIS、PE 校验、安装、覆盖升级、卸载和重装 | Developer ID、公证、Authenticode、Windows ARM64 真机和正式更新服务仍属发行环境 |
+| 发布与文档 | MCP 首版功能门禁完成 | macOS universal 与 Windows x64/ARM64 构建入口、安装资源检查、完整 Apache-2.0 与用户/安全/隐私/排障文档已接入。sidecar 提供严格 `--self-check`（版本、stdio、13 tools、4 Resources、2 Prompts），配置页显示版本、discovery、受管 sidecar 身份和可复制的自检命令；GitHub CI run `29941059465` 已通过 Windows x64 测试、严格 Clippy 和 ARM64 编译；Windows Packaging run `29941061193` 的 x64 job 已通过 MCP sidecar、NSIS、PE 校验、安装、覆盖升级、卸载和重装 | Developer ID、公证、Authenticode、Windows ARM64 真机和正式更新服务仍属发行环境 |
 
-MCP 首版功能验收现已完成。Codex CLI 与官方 MCP Inspector CLI 的真实互操作、腾讯云 SSH/SFTP 读写、macOS 原生授权与真实上传下载、Windows x64 DACL/junction 安全测试和 Windows 安装包生命周期均有证据。当前配置生成会显式绑定受管 sidecar 的规范化路径与 SHA-256，未知可执行文件不能通过首次请求自行认领身份；客户端撤销先使数据库与运行时授权失效，再由已验证 sidecar 自验摘要并清理自身凭据，清理失败不会恢复授权。隔离客户端已完成动态 Resources 授权过滤、审计隔离、精确规则保存/撤销后重新审批，以及退出后的 discovery/Broker/sidecar 清理验收。Windows 原生文件选择器人工走查、Windows ARM64 真机、父 MCP Host 平台签名身份强化和正式发行凭据仍保持明确的后续边界。
+MCP 首版功能验收现已完成。Codex CLI 与官方 MCP Inspector CLI 的真实互操作、腾讯云 SSH/SFTP 读写、macOS 原生授权与真实上传下载、Windows x64 DACL/junction 安全测试和 Windows 安装包生命周期均有证据。当前配置生成会显式绑定受管 sidecar 的规范化路径与 SHA-256，未知可执行文件不能通过首次请求自行认领身份；客户端撤销先使数据库与运行时授权失效，再由已验证 sidecar 自验摘要并清理自身凭据，清理失败不会恢复授权。本轮已增加系统信息字段白名单、固定采集快照、显式持久 local grant 选择、sidecar 自检与 5 秒自动消失的脱敏完成反馈。隔离客户端已完成动态 Resources 授权过滤、审计隔离、精确规则保存/撤销后重新审批，以及退出后的 discovery/Broker/sidecar 清理验收。Windows 原生文件选择器人工走查、Windows ARM64 真机、Claude Code/Desktop 的独立真实调用、父 MCP Host 平台签名身份强化和正式发行凭据仍保持明确的后续边界。
 
 | 阶段 | 交付内容 | 前置条件 | 完成定义 |
 | --- | --- | --- | --- |
 | 0 | 协议与安全技术验证 | 选定 Rust MCP SDK | stdio 握手、Broker 鉴权、限长与错误模型测试通过 |
-| 1 | P0 只读 MCP | 客户端登记与连接授权 | 六个 P0 工具可用，Codex/Claude 至少各一条真实调用证据 |
+| 1 | P0 只读 MCP | 客户端登记与连接授权 | 六个 P0 工具可用，Codex 与至少一个独立 MCP Host 完成真实调用；Claude 配置保持可复制并在有本机 Host 会话时单独记录实测 |
 | 2 | P1 审批与远端写入 | 后端 capability 和审批 UI | 命令、写入、mkdir/rename/delete 有界执行并完成异常测试 |
 | 3 | P1.5 上传下载 | 本地 grant 与跨平台路径安全 | macOS/Windows 授权、取消、冲突和原子保存通过 |
 | 4 | P2 精细规则与扩展 | P0/P1 稳定性数据 | 规则、审计、Resources/Prompts 按评审结果交付 |

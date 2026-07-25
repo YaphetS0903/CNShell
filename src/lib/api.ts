@@ -62,6 +62,7 @@ import type {
   McpClientConfig,
   McpClientGrantInput,
   McpLocalGrant,
+  McpRequestNotice,
   McpSettings,
   McpStatus,
   OpenSshHost,
@@ -445,10 +446,10 @@ export const api = {
     return invoke("settings_save", { settings });
   },
   async mcpStatus(): Promise<McpStatus> {
-    return isTauri() ? invoke("mcp_status") : { enabled: false, running: false, address: null, generation: null, clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
+    return isTauri() ? invoke("mcp_status") : { version: "browser", enabled: false, running: false, address: null, generation: null, discoveryPath: "", clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
   },
   async mcpSetEnabled(enabled: boolean): Promise<McpStatus> {
-    return isTauri() ? invoke("mcp_set_enabled", { enabled }) : { enabled, running: false, address: null, generation: null, clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
+    return isTauri() ? invoke("mcp_set_enabled", { enabled }) : { version: "browser", enabled, running: false, address: null, generation: null, discoveryPath: "", clientCount: 0, sessionCount: 0, pendingApprovalCount: 0, message: "MCP 仅在桌面版中运行" };
   },
   async mcpSaveSettings(settings: McpSettings): Promise<McpSettings> {
     return isTauri() ? invoke("mcp_settings_save", { settings }) : settings;
@@ -471,6 +472,9 @@ export const api = {
   async mcpRevokeLocalGrant(id: string): Promise<void> { return invoke("mcp_local_grant_revoke", { id }); },
   async onMcpApprovalChanged(handler: () => void): Promise<UnlistenFn> {
     return isTauri() ? listen("mcp-approval-changed", () => handler()) : () => undefined;
+  },
+  async onMcpRequestCompleted(handler: (notice: McpRequestNotice) => void): Promise<UnlistenFn> {
+    return isTauri() ? listen<McpRequestNotice>("mcp-request-completed", (event) => handler(event.payload)) : () => undefined;
   },
   async listSnippets(): Promise<CommandSnippet[]> { return isTauri() ? invoke("snippet_list") : browserSnippets; },
   async saveSnippet(input: CommandSnippet): Promise<CommandSnippet> { if(isTauri())return invoke("snippet_save", { input });browserSnippets=[...browserSnippets.filter((item)=>item.id!==input.id),input];return input; },
