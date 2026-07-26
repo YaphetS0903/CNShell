@@ -2,6 +2,27 @@
 
 本项目采用语义化版本号。Beta 使用独立 updater 签名与更新通道；正式签名、公证与稳定更新通道完成前不标记为正式稳定版。
 
+## 0.2.0-beta.5（SFTP 与 MCP 稳定版）
+
+### 新增
+
+- 完成本机 MCP Server 首版：提供 13 个受控 SSH/SFTP Tools、4 个 Resources、2 个安全 Prompts、客户端/连接/远端根授权、短期会话、审批、取消、限流、脱敏审计与原生选择器本地文件授权。
+- MCP 设置页显示版本、discovery 路径、受管 sidecar 路径与 SHA-256、客户端最后使用状态，并提供不接触远端凭据的 `--self-check` 安装自检命令。
+- MCP 系统信息支持 `os`、`cpu`、`memory`、`load`、`disks`、`network` 六组严格字段筛选；请求完成或失败后显示只含客户端、工具、结果与耗时的提示，并在 5 秒后自动消失。
+- macOS 与 Windows 文件面板支持把系统文件直接拖入当前远端目录；Windows x64/ARM64 安装包随包提供对应架构的静态 MCP sidecar。
+
+### 修复
+
+- 将命令/监控和 SFTP 分配到独立的辅助 SSH transport lane，避免 Exec Channel 结束后复用同一 libssh2 Session 导致 `libssh2_sftp_init` 卡住、文件夹持续转圈或超时变红。
+- SFTP 目录读取增加有界超时与失效 transport 恢复；同一通道操作串行、不同通道互不阻塞，关闭连接后重新进入文件面板不再依赖重启应用恢复。
+- MCP 精确命令规则继续限制为保守低风险完整命令；持久本地文件授权必须由用户单独勾选，未知、重复或过量的系统信息字段会被拒绝。
+- 更新前端构建依赖并消除 moderate 及以上 npm audit 漏洞，同时保持 macOS、Windows x64 和 Windows ARM64 构建门禁通过。
+
+### 已知限制
+
+- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。
+- Windows ARM64 原生运行、Windows 原生文件选择器人工端到端、Claude Code/Desktop 独立真实调用及完整辅助功能/弱网矩阵仍按验收文档标记为外部验证边界。
+
 ## 0.2.0-beta.4（Windows 桌面体验修复版）
 
 ### 新增
