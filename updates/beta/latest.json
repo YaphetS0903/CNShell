@@ -1,23 +1,23 @@
 {
-  "version": "0.2.0-beta.4",
-  "notes": "### 新增\n\n- 新增 Windows Beta.4 桌面启动与主题回归验证项，覆盖 GUI 子系统、原生标题栏、菜单行为和终端配色。\n\n### 修复\n\n- Windows release 程序使用 GUI 子系统启动，不再额外弹出黑色控制台窗口。\n- Windows 原生窗口标题统一为 `CNshell`，移除与浅色界面不协调的 macOS 风格菜单栏；原菜单快捷键改由 Windows 前端快捷键保留。\n- Windows 浅色主题下默认终端跟随浅色配色，不再残留黑色背景。\n- Windows 安装器门禁改用显式标准输出重定向验证 GUI 子系统程序，避免把没有控制台附着误判为启动失败。\n\n### 已知限制\n\n- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。\n- Windows 真机体验仍需用户安装本版本后验证，当前开发环境无法直接运行 Windows。",
-  "pub_date": "2026-07-20T03:01:40.947Z",
+  "version": "0.2.0-beta.5",
+  "notes": "### 新增\n\n- 完成本机 MCP Server 首版：提供 13 个受控 SSH/SFTP Tools、4 个 Resources、2 个安全 Prompts、客户端/连接/远端根授权、短期会话、审批、取消、限流、脱敏审计与原生选择器本地文件授权。\n- MCP 设置页显示版本、discovery 路径、受管 sidecar 路径与 SHA-256、客户端最后使用状态，并提供不接触远端凭据的 `--self-check` 安装自检命令。\n- MCP 系统信息支持 `os`、`cpu`、`memory`、`load`、`disks`、`network` 六组严格字段筛选；请求完成或失败后显示只含客户端、工具、结果与耗时的提示，并在 5 秒后自动消失。\n- macOS 与 Windows 文件面板支持把系统文件直接拖入当前远端目录；Windows x64/ARM64 安装包随包提供对应架构的静态 MCP sidecar。\n\n### 修复\n\n- 将命令/监控和 SFTP 分配到独立的辅助 SSH transport lane，避免 Exec Channel 结束后复用同一 libssh2 Session 导致 `libssh2_sftp_init` 卡住、文件夹持续转圈或超时变红。\n- SFTP 目录读取增加有界超时与失效 transport 恢复；同一通道操作串行、不同通道互不阻塞，关闭连接后重新进入文件面板不再依赖重启应用恢复。\n- MCP 精确命令规则继续限制为保守低风险完整命令；持久本地文件授权必须由用户单独勾选，未知、重复或过量的系统信息字段会被拒绝。\n- 更新前端构建依赖并消除 moderate 及以上 npm audit 漏洞，同时保持 macOS、Windows x64 和 Windows ARM64 构建门禁通过。\n\n### 已知限制\n\n- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。\n- Windows ARM64 原生运行、Windows 原生文件选择器人工端到端、Claude Code/Desktop 独立真实调用及完整辅助功能/弱网矩阵仍按验收文档标记为外部验证边界。",
+  "pub_date": "2026-07-26T02:49:53.621Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.4/CNshell_0.2.0-beta.4_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVFiQ2RaOWpoZjNLYkE3MmlwMGN2c2dBT3JkcmpFMVBlSSs2NGxvTENaRDZUN1VLWGFtK0d2L0lwc0grM01qWGpiNkNFUmVEb0lwS3Q0UW80TGlqZFFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTE0OTUzCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cmt5YjkreWVSZ0JwcTl6WHVEeFJDVWNvdmE5bXV0OVJURjM0UkoyOFhWQWFxNTEzS1YvM0RJSkJPR2ltVW1RN0RXbzZUYVBlNzUwR09xdS9iNG81YUF3PT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.5/CNshell_0.2.0-beta.5_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVpyVk9Mb2pSbTJyY3NwNDBrdEFuRDhFWi9CU1dGOVI5L3V6TzVleDI0SFJRWmVUQ3VIdER2Q1pJSHMvOW0wYVpzb3JKeHBwN25Edkl6bS84VXBjRlE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDMxODgwCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6CmxlUmpSR3BhVUpkR0dmR3VER0g5UGJWa0NabUpLYS9vZjVkN1Y2UzJWRE9VenRBRXA1eEJYMXFHQnJaV2JaMUpCWURkT3VPRlRmU20zNjZQbWpsQUFRPT0K"
     },
     "darwin-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.4/CNshell_0.2.0-beta.4_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVFiQ2RaOWpoZjNLYkE3MmlwMGN2c2dBT3JkcmpFMVBlSSs2NGxvTENaRDZUN1VLWGFtK0d2L0lwc0grM01qWGpiNkNFUmVEb0lwS3Q0UW80TGlqZFFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTE0OTUzCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cmt5YjkreWVSZ0JwcTl6WHVEeFJDVWNvdmE5bXV0OVJURjM0UkoyOFhWQWFxNTEzS1YvM0RJSkJPR2ltVW1RN0RXbzZUYVBlNzUwR09xdS9iNG81YUF3PT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.5/CNshell_0.2.0-beta.5_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVpyVk9Mb2pSbTJyY3NwNDBrdEFuRDhFWi9CU1dGOVI5L3V6TzVleDI0SFJRWmVUQ3VIdER2Q1pJSHMvOW0wYVpzb3JKeHBwN25Edkl6bS84VXBjRlE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDMxODgwCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6CmxlUmpSR3BhVUpkR0dmR3VER0g5UGJWa0NabUpLYS9vZjVkN1Y2UzJWRE9VenRBRXA1eEJYMXFHQnJaV2JaMUpCWURkT3VPRlRmU20zNjZQbWpsQUFRPT0K"
     },
     "windows-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.4/CNshell_0.2.0-beta.4_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWJMTFpGUzFLYXBDcWhDWWlnM1RWa2RCMnFzbm5YdHZTVTVuNVhqcHo0RVMrNnFHRmhzK2dyMnJGQWJsbjBrMGhUV0JhL1pDZ2tiaktRK1NOb3VRaVFvPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTE2MTczCWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjRfeDY0LXNldHVwLmV4ZQpxMzNaUDZYTG5jOU1oRE1icVQxKzVtTzIxdFJDUENLUTJxcjNJT2MxTm5ZZ0E1WUFpaTBNQUJ4SzJsWFBPVEdsbnQwVVpybDlyOWpCQUd0T3U4ek9EUT09Cg=="
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.5/CNshell_0.2.0-beta.5_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVQxcWNPc2hPTVZuT0dHTThMTDgyTWVkQVViV3EwRXpPMERyekNjQ3o2Q1pSUXZDUkJEb3M1VXo3cFBFRWlueFJla0JiOWVFOEF2SGIvSVA3cU5YVXd3PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDMzODI0CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjVfeDY0LXNldHVwLmV4ZQpRVDBvS2N2M3U3MkFhbmRMZVZSczFLWktLeit6SzZwR0dJeUYzbzE3TDNXUlNOd3hGelZCOGMzTkgwWloybkVRSzJ1TG1saCtQZ2NwdXJsbjdzSEFEUT09Cg=="
     },
     "windows-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.4/CNshell_0.2.0-beta.4_arm64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVZ6eEx5OTFMWW5iUmx6cklyZGJIMlJYTVpLMWJMcTYwVDhaV20zNkE2MzVUSnBtZURJSTd3b0o3QXo5Z0tmeGkyV3l4MEhxRnc1UWlqcDhMcXI4UHdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg0NTE1MTM3CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjRfYXJtNjQtc2V0dXAuZXhlCkNBUWduS092MkhaaFdrMGZYNXljRkR1R2t1VTdNTjZ0Q3NLeUVqc3FQeU15UFY4emZOMnU3eGtJYVM2cWd5Mjgvb1IvV29RMTUyWFBUNTlrRDAyVUNBPT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.5/CNshell_0.2.0-beta.5_arm64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWVjd1Q4Q056Y3JTUERZdllSV3VUZm5XS3huRDNoM0tac3E4Znh6alNRN1RJNCtwWDdENzkvRzlnZDFYTGlpSklRZFBpN1NBU3ZSNTlXQVhaY0twR0FBPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg1MDMyNzQ1CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjVfYXJtNjQtc2V0dXAuZXhlCmJlTmpaS3Qydkdja2gyRUdwZmIxTmlaeE9wRW5hZW9aWkxOVjBRK3FZNVJJeDVuNXhJbi9ZWE1KNFpENzFwT080THRtdWVHL05vMzk3TmVvbGZtOURnPT0K"
     }
   }
 }
