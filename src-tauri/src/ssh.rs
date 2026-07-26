@@ -31,7 +31,10 @@ use std::{
     time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
-use tokio::time::sleep;
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore},
+    time::sleep,
+};
 use uuid::Uuid;
 
 const KEYCHAIN_SERVICE: &str = "com.cnshell.desktop";
@@ -83,6 +86,7 @@ struct IdleTransport {
 #[derive(Clone, Default)]
 pub struct TransportPool {
     idle: Arc<Mutex<HashMap<String, Vec<IdleTransport>>>>,
+    operation_gates: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
     created: Arc<AtomicUsize>,
 }
 
@@ -91,16 +95,49 @@ pub struct TransportLease {
     key: String,
     connected: Option<ConnectedSsh>,
     reusable: bool,
+    _operation_permit: Option<OwnedSemaphorePermit>,
 }
 
 impl TransportPool {
+    async fn operation_permit(
+        &self,
+        key: &str,
+        reusable: bool,
+    ) -> AppResult<Option<OwnedSemaphorePermit>> {
+        if !reusable {
+            return Ok(None);
+        }
+        let gate = self
+            .operation_gates
+            .lock()
+            .entry(key.to_owned())
+            .or_insert_with(|| Arc::new(Semaphore::new(1)))
+            .clone();
+        gate.acquire_owned()
+            .await
+            .map(Some)
+            .map_err(|_| AppError::Unavailable("SSH 辅助连接调度已关闭".into()))
+    }
+
     pub async fn acquire(
         &self,
         db: &Database,
         profile: &ConnectionProfile,
         reusable: bool,
     ) -> AppResult<TransportLease> {
-        let key = transport_pool_key(profile);
+        self.acquire_in_lane(db, profile, reusable.then_some("default"))
+            .await
+    }
+
+    async fn acquire_in_lane(
+        &self,
+        db: &Database,
+        profile: &ConnectionProfile,
+        lane: Option<&str>,
+    ) -> AppResult<TransportLease> {
+        let reusable = lane.is_some();
+        let key = transport_pool_key_for_lane(profile, lane.unwrap_or("exclusive"));
+        let operation_permit = self.operation_permit(&key, reusable).await?;
         let connected = if reusable {
             let candidate = {
                 let mut idle = self.idle.lock();
@@ -131,6 +168,7 @@ impl TransportPool {
             key,
             connected: Some(connected),
             reusable,
+            _operation_permit: operation_permit,
         })
     }
 
@@ -183,8 +221,13 @@ impl Drop for TransportLease {
     }
 }
 
+#[cfg(test)]
 fn transport_pool_key(profile: &ConnectionProfile) -> String {
-    format!("{}:{}", profile.id, profile.updated_at)
+    transport_pool_key_for_lane(profile, "default")
+}
+
+fn transport_pool_key_for_lane(profile: &ConnectionProfile, lane: &str) -> String {
+    format!("{}:{}:{lane}", profile.id, profile.updated_at)
 }
 
 pub struct TerminalHandle {
@@ -254,6 +297,17 @@ impl SessionManager {
         reusable: bool,
     ) -> AppResult<TransportLease> {
         self.transports.acquire(db, profile, reusable).await
+    }
+
+    pub async fn acquire_auxiliary_transport(
+        &self,
+        db: &Database,
+        profile: &ConnectionProfile,
+        lane: &'static str,
+    ) -> AppResult<TransportLease> {
+        self.transports
+            .acquire_in_lane(db, profile, Some(lane))
+            .await
     }
 
     pub fn invalidate_transport(&self, connection_id: &str) {
@@ -1810,7 +1864,9 @@ pub async fn execute_pooled_command(
             "远端命令输出上限必须在 1 字节到 5 MiB 之间".into(),
         ));
     }
-    let mut transport = manager.acquire_transport(db, profile, true).await?;
+    let mut transport = manager
+        .acquire_auxiliary_transport(db, profile, "command")
+        .await?;
     let interrupt = transport.try_clone_transport().ok();
     let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_in_task = Arc::clone(&timed_out);
@@ -2095,6 +2151,50 @@ mod tests {
             matches!(result, Err(AppError::Unavailable(message)) if message.contains("系统凭据授权") && message.contains("重试"))
         );
         assert!(started.elapsed() < Duration::from_millis(100));
+    }
+
+    #[tokio::test]
+    async fn auxiliary_transport_operations_are_serialized_per_profile_and_lane() {
+        let pool = TransportPool::default();
+        let first = pool
+            .operation_permit("connection:version:command", true)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(20),
+                pool.operation_permit("connection:version:command", true),
+            )
+            .await
+            .is_err()
+        );
+        let sftp_lane = tokio::time::timeout(
+            Duration::from_millis(20),
+            pool.operation_permit("connection:version:sftp", true),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        drop(sftp_lane);
+        drop(first);
+        assert!(
+            tokio::time::timeout(
+                Duration::from_millis(20),
+                pool.operation_permit("connection:version:command", true),
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            pool.operation_permit("connection:version:command", false)
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
@@ -3329,7 +3429,7 @@ mod tests {
         assert!(diagnostics[1].message.contains("SOCKS5 test"));
     }
     #[tokio::test]
-    async fn live_ssh_transport_pool_reuses_idle_and_expands_when_busy() {
+    async fn live_ssh_transport_pool_reuses_idle_and_serializes_when_busy() {
         let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
             return;
         };
@@ -3374,29 +3474,35 @@ mod tests {
         assert_eq!(pool.created(), 1);
         let first = pool.acquire(&db, &profile, true).await.unwrap();
         assert_eq!(pool.created(), 1);
-        let second = pool.acquire(&db, &profile, true).await.unwrap();
-        assert_eq!(pool.created(), 2);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), pool.acquire(&db, &profile, true))
+                .await
+                .is_err()
+        );
+        assert_eq!(pool.created(), 1);
         drop(first);
+        let second = pool.acquire(&db, &profile, true).await.unwrap();
+        assert_eq!(pool.created(), 1);
         drop(second);
         pool.invalidate(&profile.id);
         let third = pool.acquire(&db, &profile, true).await.unwrap();
-        assert_eq!(pool.created(), 3);
+        assert_eq!(pool.created(), 2);
         drop(third);
         let key = transport_pool_key(&profile);
         pool.idle.lock().get_mut(&key).unwrap()[0].idle_since =
             Instant::now() - MAX_IDLE_TRANSPORT_AGE - Duration::from_secs(1);
         let fourth = pool.acquire(&db, &profile, true).await.unwrap();
-        assert_eq!(pool.created(), 4);
+        assert_eq!(pool.created(), 3);
         drop(fourth);
         let exclusive = pool.acquire(&db, &profile, false).await.unwrap();
-        assert_eq!(pool.created(), 5);
+        assert_eq!(pool.created(), 4);
         let mut first_terminal =
             open_pty(exclusive, profile.clone(), 80, 24, false, false, false).unwrap();
         let _ = first_terminal.channel.send_eof();
         let _ = first_terminal.channel.close();
         drop(first_terminal);
         let next_exclusive = pool.acquire(&db, &profile, false).await.unwrap();
-        assert_eq!(pool.created(), 6);
+        assert_eq!(pool.created(), 5);
         let mut next_terminal =
             open_pty(next_exclusive, profile.clone(), 80, 24, false, false, false).unwrap();
         write_channel_input(&mut next_terminal.channel, b"exit\n").unwrap();

@@ -1203,10 +1203,12 @@ pub struct McpSettings {
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct McpStatus {
+    pub version: String,
     pub enabled: bool,
     pub running: bool,
     pub address: Option<String>,
     pub generation: Option<String>,
+    pub discovery_path: String,
     pub client_count: usize,
     pub session_count: usize,
     pub pending_approval_count: usize,
@@ -1305,6 +1307,16 @@ pub struct McpClientConfig {
     pub args: Vec<String>,
     pub codex_toml: String,
     pub json: String,
+    pub self_check_command: String,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct McpRequestNotice {
+    pub client_name: String,
+    pub tool: String,
+    pub outcome: String,
+    pub duration_ms: i64,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]

@@ -440,8 +440,19 @@ fn tool_definitions() -> Vec<Tool> {
         ),
         tool(
             "cnshell_system_info",
-            "Read bounded OS, CPU, memory, interface and disk information from the SSH host.",
-            object_schema(json!({"sessionId": session()}), &["sessionId"]),
+            "Read bounded OS, CPU, memory, load, interface and disk information from the SSH host. Optionally select field groups.",
+            object_schema(
+                json!({
+                    "sessionId": session(),
+                    "fields": {
+                        "type": "array",
+                        "items": {"type":"string","enum":["os","cpu","memory","load","disks","network"]},
+                        "uniqueItems": true,
+                        "maxItems": 6
+                    }
+                }),
+                &["sessionId"],
+            ),
             true,
             false,
         ),
@@ -541,6 +552,7 @@ fn tool_definitions() -> Vec<Tool> {
 }
 
 enum SidecarMode {
+    SelfCheck,
     Serve {
         client_id: String,
         client_name: String,
@@ -561,6 +573,9 @@ fn parse_arguments_from(
     arguments: impl IntoIterator<Item = String>,
 ) -> Result<SidecarMode, String> {
     let raw_arguments = arguments.into_iter().collect::<Vec<_>>();
+    if raw_arguments.as_slice() == ["--self-check"] {
+        return Ok(SidecarMode::SelfCheck);
+    }
     if let Some(mode) = raw_arguments.first()
         && mode == "--provision-client-secret"
     {
@@ -616,6 +631,10 @@ async fn main() {
         }
     };
     let (client_id, client_name, discovery) = match mode {
+        SidecarMode::SelfCheck => {
+            println!("{}", self_check_result());
+            return;
+        }
         SidecarMode::Provision(client_id) => {
             match cnshell_lib::mcp::provision_client_secret(&client_id) {
                 Ok(digest) => {
@@ -661,6 +680,18 @@ async fn main() {
     }
 }
 
+fn self_check_result() -> Value {
+    json!({
+        "name": "CNshell MCP",
+        "version": env!("CARGO_PKG_VERSION"),
+        "transport": "stdio",
+        "tools": tool_definitions().len(),
+        "resources": resource_definitions().len(),
+        "prompts": prompt_definitions().len(),
+        "status": "ok",
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -672,6 +703,11 @@ mod tests {
 
     #[test]
     fn credential_modes_require_exact_arguments() {
+        assert!(matches!(
+            parse_arguments_from(arguments(&["--self-check"])),
+            Ok(SidecarMode::SelfCheck)
+        ));
+        assert!(parse_arguments_from(arguments(&["--self-check", "extra"])).is_err());
         assert!(matches!(
             parse_arguments_from(arguments(&["--provision-client-secret", "client-id"])),
             Ok(SidecarMode::Provision(id)) if id == "client-id"
@@ -696,6 +732,21 @@ mod tests {
                 "unexpected",
             ]))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn self_check_reports_the_bounded_server_catalog() {
+        let result = self_check_result();
+        assert_eq!(result["status"], "ok");
+        assert_eq!(result["transport"], "stdio");
+        assert_eq!(result["tools"], 13);
+        assert_eq!(result["resources"], 4);
+        assert_eq!(result["prompts"], 2);
+        assert!(
+            result["version"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
         );
     }
 

@@ -949,10 +949,12 @@ export interface McpSettings {
 }
 
 export interface McpStatus {
+  version: string;
   enabled: boolean;
   running: boolean;
   address: string | null;
   generation: string | null;
+  discoveryPath: string;
   clientCount: number;
   sessionCount: number;
   pendingApprovalCount: number;
@@ -1033,6 +1035,14 @@ export interface McpClientConfig {
   args: string[];
   codexToml: string;
   json: string;
+  selfCheckCommand: string;
+}
+
+export interface McpRequestNotice {
+  clientName: string;
+  tool: string;
+  outcome: string;
+  durationMs: number;
 }
 
 export interface McpLocalGrant {

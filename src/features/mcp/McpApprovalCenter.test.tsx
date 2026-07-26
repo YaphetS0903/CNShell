@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { McpApproval } from "../../types";
+import type { McpApproval, McpRequestNotice } from "../../types";
 import { McpApprovalCenter } from "./McpApprovalCenter";
 
 const approval: McpApproval = {
@@ -18,7 +18,10 @@ describe("McpApprovalCenter", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api, "onMcpApprovalChanged").mockResolvedValue(() => undefined);
+    vi.spyOn(api, "onMcpRequestCompleted").mockResolvedValue(() => undefined);
   });
+
+  afterEach(() => vi.useRealTimers());
 
   it("supports Escape without losing a pending approval", async () => {
     vi.spyOn(api, "mcpListApprovals").mockResolvedValue([approval]);
@@ -56,5 +59,22 @@ describe("McpApprovalCenter", () => {
     render(<McpApprovalCenter onError={vi.fn()} />);
     await screen.findByRole("complementary", { name: "MCP 审批中心" });
     expect(screen.queryByRole("button", { name: "保存精确规则" })).not.toBeInTheDocument();
+  });
+
+  it("shows a sanitized completion result for five seconds", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(api, "mcpListApprovals").mockResolvedValue([]);
+    let handler: ((notice: McpRequestNotice) => void) | undefined;
+    vi.spyOn(api, "onMcpRequestCompleted").mockImplementation(async (next) => {
+      handler = next;
+      return () => undefined;
+    });
+    render(<McpApprovalCenter onError={vi.fn()} />);
+    await act(async () => undefined);
+    act(() => handler?.({ clientName: "Codex", tool: "cnshell_file_read", outcome: "completed", durationMs: 42 }));
+    expect(screen.getByText("读取远端文本")).toBeVisible();
+    expect(screen.getByText("Codex · 已完成 · 42 ms")).toBeVisible();
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(screen.queryByText("读取远端文本")).not.toBeInTheDocument();
   });
 });

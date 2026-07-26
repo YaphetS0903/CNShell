@@ -6,10 +6,12 @@ import type { ConnectionProfile, McpApprovalRule, McpClient, McpClientConfig, Mc
 import { McpSettings } from "./McpSettings";
 
 const status: McpStatus = {
+  version: "0.2.0-beta.4",
   enabled: true,
   running: true,
   address: "127.0.0.1:43100",
   generation: "generation",
+  discoveryPath: "/tmp/cnshell/mcp-broker.json",
   clientCount: 1,
   sessionCount: 0,
   pendingApprovalCount: 0,
@@ -52,6 +54,7 @@ const clientConfig: McpClientConfig = {
   args: [],
   codexToml: "[mcp_servers.cnshell]",
   json: '{"mcpServers":{"cnshell":{}}}',
+  selfCheckCommand: "'cnshell-mcp' --self-check",
 };
 
 describe("McpSettings", () => {
@@ -109,6 +112,8 @@ describe("McpSettings", () => {
     expect(await screen.findByText("Broker 正在运行")).toBeVisible();
     expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
     expect(screen.getByRole("checkbox", { name: "启用 MCP" })).toBeChecked();
+    expect(screen.getByText("0.2.0-beta.4")).toBeVisible();
+    expect(screen.getByText("/tmp/cnshell/mcp-broker.json")).toBeVisible();
     delete document.documentElement.dataset.theme;
   });
 
@@ -123,5 +128,24 @@ describe("McpSettings", () => {
     expect(await screen.findByText(approvalRule.targetSummary)).toBeVisible();
     await user.click(screen.getByRole("button", { name: "撤销精确规则 测试服务器" }));
     expect(revoke).toHaveBeenCalledWith(approvalRule.id);
+  });
+
+  it("creates a persistent local grant only after explicit selection", async () => {
+    const create = vi.spyOn(api, "mcpCreateLocalGrant").mockResolvedValue(null);
+    const user = userEvent.setup();
+    render(<McpSettings connections={[connection]} onError={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /^Codex/ }));
+    await user.click(screen.getByRole("checkbox", { name: "创建持久授权（仅用于这一个客户端，可随时撤销）" }));
+    await user.click(screen.getByRole("button", { name: "授权上传文件" }));
+    expect(create).toHaveBeenCalledWith("client-1", "upload", "file", true);
+  });
+
+  it("labels Claude configuration and exposes the sidecar self-check command", async () => {
+    const user = userEvent.setup();
+    render(<McpSettings connections={[connection]} onError={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /^Codex/ }));
+    await user.click(screen.getByRole("button", { name: "查看现有配置" }));
+    expect(await screen.findByText("复制 Claude / 通用 JSON")).toBeVisible();
+    expect(screen.getByText(clientConfig.selfCheckCommand)).toBeVisible();
   });
 });

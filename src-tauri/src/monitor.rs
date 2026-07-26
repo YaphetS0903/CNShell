@@ -5,6 +5,7 @@ use crate::{
     ssh::SessionManager,
 };
 use parking_lot::Mutex;
+use serde::Serialize;
 use std::{collections::HashMap, path::Path, sync::Arc, time::Instant};
 
 type CpuSnapshot = (u64, u64);
@@ -43,6 +44,34 @@ echo __CPU__; grep -m1 'model name\|Hardware' /proc/cpuinfo 2>/dev/null | cut -d
 echo __MEM__; awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null; \
 echo __ADDR__; ip -o addr show 2>/dev/null; \
 echo __DISK__; df -Pk 2>/dev/null; echo __END__"#;
+
+const MCP_SYSTEM_COMMAND: &str = r#"LC_ALL=C; \
+echo __BASIC__; hostname 2>/dev/null; . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown Linux}"; uname -r 2>/dev/null; uname -m 2>/dev/null; \
+echo __CPU__; grep -m1 'model name\|Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2-; grep -c '^processor' /proc/cpuinfo 2>/dev/null; \
+echo __MEM__; cat /proc/meminfo 2>/dev/null; \
+echo __LOAD__; cat /proc/uptime 2>/dev/null; cat /proc/loadavg 2>/dev/null; \
+echo __ADDR__; ip -o addr show 2>/dev/null; \
+echo __DISK__; df -Pk 2>/dev/null; echo __END__"#;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpSystemInfo {
+    pub collected_at: String,
+    pub hostname: String,
+    pub os: String,
+    pub kernel: String,
+    pub architecture: String,
+    pub cpu_model: String,
+    pub cpu_cores: u32,
+    pub memory_used_bytes: u64,
+    pub memory_total_bytes: u64,
+    pub swap_used_bytes: u64,
+    pub swap_total_bytes: u64,
+    pub uptime_seconds: u64,
+    pub load: [f64; 3],
+    pub interfaces: Vec<NetworkInterface>,
+    pub disks: Vec<DiskInfo>,
+}
 
 async fn exec(
     db: &Database,
@@ -584,6 +613,77 @@ pub async fn system_info_cancelable(
     })
 }
 
+pub async fn mcp_system_info_cancelable(
+    db: Database,
+    manager: SessionManager,
+    session_id: String,
+    cancelled: Arc<std::sync::atomic::AtomicBool>,
+) -> AppResult<McpSystemInfo> {
+    let output = exec_cancelable(&db, &manager, &session_id, MCP_SYSTEM_COMMAND, cancelled).await?;
+    Ok(parse_mcp_system_info(&output))
+}
+
+fn parse_mcp_system_info(output: &str) -> McpSystemInfo {
+    let basic = section(output, "__BASIC__", "__CPU__")
+        .lines()
+        .collect::<Vec<_>>();
+    let cpu = section(output, "__CPU__", "__MEM__")
+        .lines()
+        .collect::<Vec<_>>();
+    let (memory_used_bytes, memory_total_bytes, swap_used_bytes, swap_total_bytes) =
+        parse_memory(section(output, "__MEM__", "__LOAD__"));
+    let load = section(output, "__LOAD__", "__ADDR__")
+        .lines()
+        .collect::<Vec<_>>();
+    let uptime_seconds = load
+        .first()
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(0.0) as u64;
+    let load_values = load
+        .get(1)
+        .into_iter()
+        .flat_map(|value| value.split_whitespace().take(3))
+        .map(|value| value.parse::<f64>().unwrap_or(0.0))
+        .collect::<Vec<_>>();
+    let mut interface_map: HashMap<String, Vec<String>> = HashMap::new();
+    for line in section(output, "__ADDR__", "__DISK__").lines() {
+        let columns = line.split_whitespace().collect::<Vec<_>>();
+        if columns.len() >= 4 {
+            interface_map
+                .entry(columns[1].into())
+                .or_default()
+                .push(columns[3].into());
+        }
+    }
+    let mut interfaces = interface_map
+        .into_iter()
+        .map(|(name, addresses)| NetworkInterface { name, addresses })
+        .collect::<Vec<_>>();
+    interfaces.sort_by(|left, right| left.name.cmp(&right.name));
+    McpSystemInfo {
+        collected_at: chrono::Utc::now().to_rfc3339(),
+        hostname: basic.first().unwrap_or(&"").to_string(),
+        os: basic.get(1).unwrap_or(&"Unknown Linux").to_string(),
+        kernel: basic.get(2).unwrap_or(&"").to_string(),
+        architecture: basic.get(3).unwrap_or(&"").to_string(),
+        cpu_model: cpu.first().unwrap_or(&"").trim().to_string(),
+        cpu_cores: cpu.get(1).and_then(|value| value.parse().ok()).unwrap_or(0),
+        memory_used_bytes,
+        memory_total_bytes,
+        swap_used_bytes,
+        swap_total_bytes,
+        uptime_seconds,
+        load: [
+            *load_values.first().unwrap_or(&0.0),
+            *load_values.get(1).unwrap_or(&0.0),
+            *load_values.get(2).unwrap_or(&0.0),
+        ],
+        interfaces,
+        disks: parse_disks(section(output, "__DISK__", "__END__")),
+    }
+}
+
 pub fn export_system_info(path: &Path, info: &SystemInfo) -> AppResult<()> {
     let temp = path.with_extension(format!(
         "{}.tmp",
@@ -612,6 +712,18 @@ mod tests {
             "MemTotal: 1000 kB\nMemAvailable: 250 kB\nSwapTotal: 500 kB\nSwapFree: 400 kB",
         );
         assert_eq!((m, t, s, st), (768000, 1024000, 102400, 512000));
+    }
+    #[test]
+    fn parses_bounded_mcp_system_snapshot() {
+        let output = "__BASIC__\nserver\nUbuntu 24.04\n6.8.0\nx86_64\n__CPU__\nExample CPU\n4\n__MEM__\nMemTotal: 1000 kB\nMemAvailable: 250 kB\nSwapTotal: 500 kB\nSwapFree: 400 kB\n__LOAD__\n120.50 0.00\n0.10 0.20 0.30 1/10 1\n__ADDR__\n2: eth0 inet 10.0.0.2/24 scope global eth0\n__DISK__\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda 1000 400 600 40% /\n__END__\n";
+        let info = parse_mcp_system_info(output);
+        assert_eq!(info.hostname, "server");
+        assert_eq!(info.cpu_cores, 4);
+        assert_eq!(info.memory_used_bytes, 768_000);
+        assert_eq!(info.uptime_seconds, 120);
+        assert_eq!(info.load, [0.1, 0.2, 0.3]);
+        assert_eq!(info.interfaces[0].name, "eth0");
+        assert_eq!(info.disks[0].used_bytes, 409_600);
     }
     #[test]
     fn parses_df() {

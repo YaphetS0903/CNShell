@@ -7,14 +7,14 @@ use crate::{
     },
     models::{
         McpApproval, McpApprovalRule, McpAuditEvent, McpClient, McpClientConfig,
-        McpClientGrantInput, McpLocalGrant, McpSettings, McpStatus,
+        McpClientGrantInput, McpLocalGrant, McpRequestNotice, McpSettings, McpStatus,
     },
     ssh::SessionManager,
 };
 use chrono::{Duration as ChronoDuration, Utc};
 use parking_lot::Mutex;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
 use std::{
@@ -402,10 +402,12 @@ impl McpManager {
                 .await?;
         let runtime = self.inner.lock();
         Ok(McpStatus {
+            version: env!("CARGO_PKG_VERSION").into(),
             enabled: settings.enabled,
             running: runtime.running,
             address: runtime.address.clone(),
             generation: runtime.generation.clone(),
+            discovery_path: self.discovery_path().to_string_lossy().into_owned(),
             client_count: client_count.max(0) as usize,
             session_count: runtime.sessions.len(),
             pending_approval_count: runtime.approvals.len(),
@@ -972,6 +974,15 @@ async fn execute_request(
     if append_audit(&context.db, audit).await.is_err() {
         tracing::error!("MCP 请求审计写入失败");
     }
+    let _ = context.app.emit(
+        "mcp-request-completed",
+        McpRequestNotice {
+            client_name: client.name.clone(),
+            tool,
+            outcome: outcome.into(),
+            duration_ms: started.elapsed().as_millis() as i64,
+        },
+    );
     result
 }
 
@@ -1460,19 +1471,90 @@ async fn system_info(
     request: &BrokerRequest,
     cancelled: Arc<AtomicBool>,
 ) -> AppResult<Value> {
-    let args: SessionArgs = arguments(request)?;
+    let args: SystemInfoArgs = arguments(request)?;
     let connection_id = context
         .manager
         .session(&context.sessions, &client.id, &args.session_id)?;
     require_tool_grant(&context.db, &client.id, &connection_id, &request.tool, None).await?;
-    let info = crate::monitor::system_info_cancelable(
+    let info = crate::monitor::mcp_system_info_cancelable(
         context.db.clone(),
         context.sessions.clone(),
         args.session_id,
         cancelled,
     )
     .await?;
-    Ok(json!({"requestId": request.request_id, "system": info}))
+    Ok(json!({
+        "requestId": request.request_id,
+        "system": select_system_info_fields(info, &args.fields)?,
+    }))
+}
+
+const SYSTEM_INFO_FIELDS: &[&str] = &["os", "cpu", "memory", "load", "disks", "network"];
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SystemInfoArgs {
+    session_id: String,
+    #[serde(default)]
+    fields: Vec<String>,
+}
+
+fn select_system_info_fields(
+    info: crate::monitor::McpSystemInfo,
+    fields: &[String],
+) -> AppResult<Value> {
+    let unique_fields = fields.iter().collect::<HashSet<_>>();
+    if fields.len() > SYSTEM_INFO_FIELDS.len()
+        || unique_fields.len() != fields.len()
+        || fields
+            .iter()
+            .any(|field| !SYSTEM_INFO_FIELDS.contains(&field.as_str()))
+    {
+        return Err(AppError::Validation(format!(
+            "MCP 系统信息字段必须是 {}",
+            SYSTEM_INFO_FIELDS.join("、")
+        )));
+    }
+    let value =
+        serde_json::to_value(info).map_err(|error| AppError::Internal(error.to_string()))?;
+    if fields.is_empty() {
+        return Ok(value);
+    }
+    let source = value
+        .as_object()
+        .ok_or_else(|| AppError::Internal("MCP 系统信息序列化失败".into()))?;
+    let mut selected = Map::new();
+    copy_system_info_keys(source, &mut selected, &["collectedAt"]);
+    for field in fields {
+        let keys: &[&str] = match field.as_str() {
+            "os" => &["hostname", "os", "kernel", "architecture"],
+            "cpu" => &["cpuModel", "cpuCores"],
+            "memory" => &[
+                "memoryUsedBytes",
+                "memoryTotalBytes",
+                "swapUsedBytes",
+                "swapTotalBytes",
+            ],
+            "load" => &["uptimeSeconds", "load"],
+            "disks" => &["disks"],
+            "network" => &["interfaces"],
+            _ => unreachable!("validated above"),
+        };
+        copy_system_info_keys(source, &mut selected, keys);
+    }
+    Ok(Value::Object(selected))
+}
+
+fn copy_system_info_keys(
+    source: &Map<String, Value>,
+    target: &mut Map<String, Value>,
+    keys: &[&str],
+) {
+    for key in keys {
+        if let Some(value) = source.get(*key) {
+            target.insert((*key).into(), value.clone());
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -1501,6 +1583,11 @@ async fn run_command(
     require_tool_grant(&context.db, &client.id, &connection_id, &request.tool, None).await?;
     let profile = context.db.get_connection(&connection_id).await?;
     let risk = command_risk(&args.command);
+    let timeout_seconds = args.timeout_seconds.unwrap_or(30).clamp(1, 600);
+    let preview = format!(
+        "工作目录：连接默认目录\n超时：{timeout_seconds} 秒\n\n{}",
+        args.command
+    );
     let approved = context
         .manager
         .request_approval(
@@ -1513,7 +1600,7 @@ async fn run_command(
             &request.tool,
             risk,
             "远端命令",
-            &args.command,
+            &preview,
             ApprovalPolicy {
                 target_key: Some(command_summary(&args.command)),
                 can_allow_session: risk != "high",
@@ -1537,7 +1624,7 @@ async fn run_command(
             "用户拒绝或未及时批准 MCP 命令".into(),
         ));
     }
-    let timeout = Duration::from_secs(args.timeout_seconds.unwrap_or(30).clamp(1, 600));
+    let timeout = Duration::from_secs(timeout_seconds);
     let result = crate::ssh::execute_pooled_command(
         &context.db,
         &context.sessions,
@@ -3786,7 +3873,17 @@ pub async fn client_config(
             "mcpServers": { "cnshell": { "command": command, "args": args } }
         }))
         .map_err(|error| AppError::Internal(error.to_string()))?,
+        self_check_command: format_sidecar_self_check_command(&command),
     })
+}
+
+fn format_sidecar_self_check_command(command: &Path) -> String {
+    let value = command.to_string_lossy();
+    if cfg!(target_os = "windows") {
+        format!("& '{}' --self-check", value.replace('\'', "''"))
+    } else {
+        format!("'{}' --self-check", value.replace('\'', "'\\''"))
+    }
 }
 
 fn sidecar_path(app: &AppHandle) -> AppResult<PathBuf> {
@@ -4019,6 +4116,69 @@ mod tests {
         let summary = command_summary("echo very-secret-value");
         assert!(summary.starts_with("command:sha256:"));
         assert!(!summary.contains("very-secret-value"));
+    }
+
+    #[test]
+    fn system_info_field_selection_is_strict_and_keeps_collection_time() {
+        let info = crate::monitor::McpSystemInfo {
+            collected_at: "2026-07-25T00:00:00Z".into(),
+            hostname: "server".into(),
+            os: "Linux".into(),
+            kernel: "6.8".into(),
+            architecture: "x86_64".into(),
+            cpu_model: "Example CPU".into(),
+            cpu_cores: 4,
+            memory_used_bytes: 25,
+            memory_total_bytes: 100,
+            swap_used_bytes: 5,
+            swap_total_bytes: 20,
+            uptime_seconds: 60,
+            load: [0.1, 0.2, 0.3],
+            interfaces: Vec::new(),
+            disks: Vec::new(),
+        };
+        let selected = select_system_info_fields(info, &["memory".into(), "load".into()])
+            .expect("valid field selection");
+        assert_eq!(selected["collectedAt"], "2026-07-25T00:00:00Z");
+        assert_eq!(selected["memoryTotalBytes"], 100);
+        assert_eq!(selected["uptimeSeconds"], 60);
+        assert!(selected.get("hostname").is_none());
+        let invalid = crate::monitor::McpSystemInfo {
+            collected_at: "now".into(),
+            hostname: String::new(),
+            os: String::new(),
+            kernel: String::new(),
+            architecture: String::new(),
+            cpu_model: String::new(),
+            cpu_cores: 0,
+            memory_used_bytes: 0,
+            memory_total_bytes: 0,
+            swap_used_bytes: 0,
+            swap_total_bytes: 0,
+            uptime_seconds: 0,
+            load: [0.0; 3],
+            interfaces: Vec::new(),
+            disks: Vec::new(),
+        };
+        assert!(select_system_info_fields(invalid, &["processes".into()]).is_err());
+        let duplicate = crate::monitor::McpSystemInfo {
+            collected_at: "now".into(),
+            hostname: String::new(),
+            os: String::new(),
+            kernel: String::new(),
+            architecture: String::new(),
+            cpu_model: String::new(),
+            cpu_cores: 0,
+            memory_used_bytes: 0,
+            memory_total_bytes: 0,
+            swap_used_bytes: 0,
+            swap_total_bytes: 0,
+            uptime_seconds: 0,
+            load: [0.0; 3],
+            interfaces: Vec::new(),
+            disks: Vec::new(),
+        };
+        assert!(select_system_info_fields(duplicate, &["cpu".into(), "cpu".into()]).is_err());
     }
 
     #[test]
