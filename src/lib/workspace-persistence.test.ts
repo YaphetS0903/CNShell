@@ -54,6 +54,14 @@ describe("workspace persistence", () => {
     expect(destroy).toHaveBeenCalledOnce();
   });
 
+  it("propagates a destroy failure so the close action can be retried", async () => {
+    await expect(saveBeforeWindowClose(
+      vi.fn().mockResolvedValue(undefined),
+      vi.fn().mockRejectedValue(new Error("window busy")),
+      vi.fn(),
+    )).rejects.toThrow("window busy");
+  });
+
   it("skips unchanged automatic saves", async () => {
     const snapshot = createWorkspaceSnapshot([], null, new Map(), {
       terminalLayout: null,

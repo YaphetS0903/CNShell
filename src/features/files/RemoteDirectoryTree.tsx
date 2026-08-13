@@ -66,27 +66,32 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
 
   useEffect(() => {
     void loadChildren("/");
-    for (const path of initialExpanded ?? []) {
-      if (path !== "/") void loadChildren(path);
-    }
-  }, [initialExpanded, loadChildren]);
+  }, [loadChildren]);
 
   useEffect(() => {
     const segments = activePath.split("/").filter(Boolean);
     const ancestors = ["/", ...segments.slice(0, -1).map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)];
-    setExpanded((current) => new Set([...current, ...ancestors]));
-    for (const path of ancestors) void loadChildren(path);
+    const activeBranch = activePath === "/" ? ancestors : [...ancestors, activePath];
+    setExpanded((current) => new Set([...current, ...activeBranch]));
+    for (const path of activeBranch) void loadChildren(path);
   }, [activePath, loadChildren]);
 
   useEffect(() => {
     const refresh = () => {
-      for (const path of expanded) void loadChildren(path, true);
+      for (const path of expanded) {
+        if (loadedPaths.current.has(path) || loadErrors.has(path)) void loadChildren(path, true);
+      }
     };
     window.addEventListener("cnshell-refresh-directory-tree", refresh);
     return () => window.removeEventListener("cnshell-refresh-directory-tree", refresh);
-  }, [expanded, loadChildren]);
+  }, [expanded, loadChildren, loadErrors]);
 
   const toggle = (path: string) => {
+    const isHydrated = loadedPaths.current.has(path) || loadingPaths.current.has(path) || loadErrors.has(path);
+    if (expanded.has(path) && !isHydrated) {
+      void loadChildren(path);
+      return;
+    }
     if (loadErrors.has(path)) {
       setExpanded((current) => new Set(current).add(path));
       void loadChildren(path, true);
@@ -106,13 +111,13 @@ export function RemoteDirectoryTree({ activePath, initialExpanded, listDirectori
 
   const open = (path: string) => {
     onNavigate(path);
-    if (!expanded.has(path)) toggle(path);
+    if (!expanded.has(path) || !loadedPaths.current.has(path)) toggle(path);
   };
 
   const renderNode = (node: DirectoryNode, depth: number) => {
-    const isExpanded = expanded.has(node.path);
     const isLoading = loading.has(node.path);
     const loadFailed = loadErrors.has(node.path);
+    const isExpanded = expanded.has(node.path) && (loadedPaths.current.has(node.path) || isLoading || loadFailed);
     return <div key={node.path} role="treeitem" aria-expanded={isExpanded} aria-selected={activePath === node.path}>
       <div className={`remote-tree-row ${activePath === node.path ? "active" : ""}`} style={{ paddingLeft: `${5 + depth * 12}px` }}>
         <button className={`remote-tree-toggle ${loadFailed ? "failed" : ""}`} aria-label={loadFailed ? `重试加载 ${node.name}` : `${isExpanded ? "折叠" : "展开"} ${node.name}`} title={loadFailed ? "目录读取失败，点击重试" : undefined} onClick={() => toggle(node.path)}>

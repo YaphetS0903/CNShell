@@ -2,7 +2,7 @@ use crate::{
     db::Database,
     error::{AppError, AppResult},
     models::PortForward,
-    ssh::SessionManager,
+    ssh::{SSH_OPERATION_TIMEOUT_MS, SessionManager},
 };
 use parking_lot::Mutex;
 use std::{
@@ -208,7 +208,7 @@ pub async fn start(
         let result = (|| -> AppResult<()> {
             match forward.forward_type.as_str() {
                 "local" | "dynamic" => {
-                    connected.session.set_timeout(20);
+                    connected.session.set_timeout(SSH_OPERATION_TIMEOUT_MS);
                     let listener =
                         TcpListener::bind(format!("{}:{}", forward.bind_host, forward.bind_port))?;
                     listener.set_nonblocking(true)?;

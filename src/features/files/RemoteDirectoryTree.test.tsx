@@ -102,4 +102,21 @@ describe("RemoteDirectoryTree", () => {
     releases.shift()?.();
     await waitFor(() => expect(active).toBe(0));
   });
+
+  it("keeps restored folders lazy until they are visible and requested", async () => {
+    const listDirectories = vi.fn(async (path: string) => path === "/"
+      ? [{ name: "dev", path: "/dev" }, { name: "etc", path: "/etc" }]
+      : []);
+
+    render(<RemoteDirectoryTree activePath="/" initialExpanded={["/dev", "/etc"]} listDirectories={listDirectories} onNavigate={vi.fn()} onError={vi.fn()} />);
+
+    await screen.findByText("dev");
+    expect(listDirectories).toHaveBeenCalledTimes(1);
+    expect(listDirectories).not.toHaveBeenCalledWith("/dev");
+    expect(listDirectories).not.toHaveBeenCalledWith("/etc");
+
+    await userEvent.click(screen.getByRole("button", { name: "展开 dev" }));
+    await waitFor(() => expect(listDirectories).toHaveBeenCalledWith("/dev"));
+    expect(listDirectories).not.toHaveBeenCalledWith("/etc");
+  });
 });
