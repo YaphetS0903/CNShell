@@ -13,6 +13,7 @@ export default defineConfig({
       output: {
         manualChunks: {
           react: ["react", "react-dom", "zustand"],
+          codemirror: ["codemirror", "@codemirror/state", "@codemirror/view", "@codemirror/language", "@codemirror/search"],
           xterm: ["@xterm/xterm", "@xterm/addon-fit", "@xterm/addon-search", "@xterm/addon-web-links"],
           tauri: ["@tauri-apps/api", "@tauri-apps/plugin-dialog", "@tauri-apps/plugin-shell"]
         }

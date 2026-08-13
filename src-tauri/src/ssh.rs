@@ -40,6 +40,8 @@ use uuid::Uuid;
 const KEYCHAIN_SERVICE: &str = "com.cnshell.desktop";
 const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(30);
 const DIAGNOSTIC_SHELL_TIMEOUT: Duration = Duration::from_secs(30);
+const AUXILIARY_OPERATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const SSH_OPERATION_TIMEOUT_MS: u32 = 20_000;
 const KEEPALIVE_INTERVAL_SECONDS: u32 = 30;
 const TCP_KEEPALIVE_IDLE: Duration = Duration::from_secs(45);
 const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
@@ -104,6 +106,16 @@ impl TransportPool {
         key: &str,
         reusable: bool,
     ) -> AppResult<Option<OwnedSemaphorePermit>> {
+        self.operation_permit_with_timeout(key, reusable, AUXILIARY_OPERATION_WAIT_TIMEOUT)
+            .await
+    }
+
+    async fn operation_permit_with_timeout(
+        &self,
+        key: &str,
+        reusable: bool,
+        wait_timeout: Duration,
+    ) -> AppResult<Option<OwnedSemaphorePermit>> {
         if !reusable {
             return Ok(None);
         }
@@ -113,10 +125,22 @@ impl TransportPool {
             .entry(key.to_owned())
             .or_insert_with(|| Arc::new(Semaphore::new(1)))
             .clone();
-        gate.acquire_owned()
-            .await
-            .map(Some)
-            .map_err(|_| AppError::Unavailable("SSH 辅助连接调度已关闭".into()))
+        match tokio::time::timeout(wait_timeout, Arc::clone(&gate).acquire_owned()).await {
+            Ok(Ok(permit)) => Ok(Some(permit)),
+            Ok(Err(_)) => Err(AppError::Unavailable("SSH 辅助连接调度已关闭".into())),
+            Err(_) => {
+                let mut gates = self.operation_gates.lock();
+                if gates
+                    .get(key)
+                    .is_some_and(|current| Arc::ptr_eq(current, &gate))
+                {
+                    gates.remove(key);
+                }
+                Err(AppError::Unavailable(
+                    "SSH 辅助连接排队超时，已重置连接通道，请重试".into(),
+                ))
+            }
+        }
     }
 
     pub async fn acquire(
@@ -176,10 +200,14 @@ impl TransportPool {
         self.idle
             .lock()
             .retain(|key, _| !key.starts_with(&format!("{connection_id}:")));
+        self.operation_gates
+            .lock()
+            .retain(|key, _| !key.starts_with(&format!("{connection_id}:")));
     }
 
     pub fn clear(&self) {
         self.idle.lock().clear();
+        self.operation_gates.lock().clear();
     }
 
     #[cfg(test)]
@@ -534,7 +562,7 @@ fn http_proxy_tcp(
 }
 
 fn bridge_jump(jump: ConnectedSsh, host: String, port: i64) -> AppResult<TcpStream> {
-    jump.session.set_timeout(20);
+    jump.session.set_timeout(SSH_OPERATION_TIMEOUT_MS);
     let channel = jump
         .session
         .channel_direct_tcpip(&host, port as u16, None)?;
@@ -2195,6 +2223,32 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[tokio::test]
+    async fn timed_out_auxiliary_lane_is_replaced_for_retry() {
+        let pool = TransportPool::default();
+        let key = "connection:version:sftp";
+        let first = pool.operation_permit(key, true).await.unwrap().unwrap();
+        let error = pool
+            .operation_permit_with_timeout(key, true, Duration::from_millis(10))
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AppError::Unavailable(message) if message.contains("排队超时")));
+
+        let replacement =
+            tokio::time::timeout(Duration::from_millis(20), pool.operation_permit(key, true))
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+        drop(replacement);
+        drop(first);
+    }
+
+    #[test]
+    fn libssh2_operation_timeout_is_twenty_seconds_in_milliseconds() {
+        assert_eq!(SSH_OPERATION_TIMEOUT_MS, 20_000);
     }
 
     #[test]

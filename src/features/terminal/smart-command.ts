@@ -3,8 +3,8 @@ export type CommandSuggestion = { id:string; kind:SuggestionKind; label:string; 
 
 const normalize=(value:string)=>value.toLocaleLowerCase("zh-CN");
 
-export function fuzzyScore(query:string,value:string):number|null {
-  const needle=normalize(query.trim());const haystack=normalize(value);
+function scoreNormalized(needle:string,value:string):number|null {
+  const haystack=normalize(value);
   if(!needle)return 0;
   const exact=haystack.indexOf(needle);if(exact>=0)return exact===0?1000-needle.length:700-exact;
   let cursor=0;let gaps=0;
@@ -12,8 +12,13 @@ export function fuzzyScore(query:string,value:string):number|null {
   return 400-gaps;
 }
 
+export function fuzzyScore(query:string,value:string):number|null {
+  return scoreNormalized(normalize(query.trim()),value);
+}
+
 export function rankCommandSuggestions(query:string,items:CommandSuggestion[],limit=10):CommandSuggestion[] {
-  return items.map((item)=>({item,score:Math.max(fuzzyScore(query,item.label)??-1,fuzzyScore(query,item.detail)??-1)})).filter(({score})=>score>=0).sort((a,b)=>b.score-a.score||a.item.label.localeCompare(b.item.label,"zh-CN")).slice(0,limit).map(({item})=>item);
+  const needle=normalize(query.trim());
+  return items.map((item)=>({item,score:Math.max(scoreNormalized(needle,item.label)??-1,scoreNormalized(needle,item.detail)??-1)})).filter(({score})=>score>=0).sort((a,b)=>b.score-a.score||a.item.label.localeCompare(b.item.label,"zh-CN")).slice(0,limit).map(({item})=>item);
 }
 
 export function completionToken(command:string):{start:number;value:string}|null {

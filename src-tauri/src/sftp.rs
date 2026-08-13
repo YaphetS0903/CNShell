@@ -19,12 +19,13 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicU8, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 const DIRECTORY_READ_TIMEOUT: Duration = Duration::from_secs(20);
+const SFTP_OPERATION_TIMEOUT: Duration = Duration::from_secs(30);
 
 fn atomic_replace(sftp: &Sftp, source: &Path, destination: &Path) -> AppResult<()> {
     match sftp.posix_rename(source, destination) {
@@ -249,37 +250,55 @@ where
     F: FnOnce(Sftp) -> AppResult<T> + Send + 'static,
 {
     let profile = manager.profile(&session_id)?;
-    let mut transport = manager
-        .acquire_auxiliary_transport(&db, &profile, "sftp")
-        .await?;
+    let (operation_name, acquire_timeout) =
+        timeout.unwrap_or(("SFTP 操作", SFTP_OPERATION_TIMEOUT));
+    let started = Instant::now();
+    let mut transport = match tokio::time::timeout(
+        acquire_timeout,
+        manager.acquire_auxiliary_transport(&db, &profile, "sftp"),
+    )
+    .await
+    {
+        Ok(result) => result?,
+        Err(_) => {
+            manager.invalidate_transport(&profile.id);
+            return Err(AppError::Unavailable(format!(
+                "{operation_name}排队或建连超时，已重置 SFTP 文件连接，请重试"
+            )));
+        }
+    };
+    let remaining = timeout
+        .map(|(_, duration)| duration.saturating_sub(started.elapsed()))
+        .unwrap_or(SFTP_OPERATION_TIMEOUT);
+    if remaining.is_zero() {
+        transport.discard();
+        manager.invalidate_transport(&profile.id);
+        return Err(AppError::Unavailable(format!(
+            "{operation_name}超时，已重置 SFTP 文件连接，请重试"
+        )));
+    }
     let interrupt = transport.try_clone_transport().ok();
-    let session_timeout = timeout.map(|(_, duration)| {
-        u32::try_from(duration.as_millis())
-            .unwrap_or(u32::MAX)
-            .max(1)
-    });
+    let session_timeout = u32::try_from(remaining.as_millis())
+        .unwrap_or(u32::MAX)
+        .max(1);
     let timed_out = Arc::new(AtomicBool::new(false));
     let timed_out_in_task = Arc::clone(&timed_out);
     let mut task = tokio::task::spawn_blocking(move || {
-        if let Some(duration) = session_timeout {
-            transport.connected().session.set_timeout(duration);
-        }
+        transport.connected().session.set_timeout(session_timeout);
         let result = transport
             .connected()
             .session
             .sftp()
             .map_err(AppError::from)
             .and_then(operation);
-        if session_timeout.is_some() {
-            transport.connected().session.set_timeout(0);
-        }
+        transport.connected().session.set_timeout(0);
         if result.is_err() || timed_out_in_task.load(Ordering::Acquire) {
             transport.discard();
         }
         result
     });
-    let joined = if let Some((operation_name, duration)) = timeout {
-        match tokio::time::timeout(duration, &mut task).await {
+    let joined = if timeout.is_some() {
+        match tokio::time::timeout(remaining, &mut task).await {
             Ok(joined) => joined,
             Err(_) => {
                 timed_out.store(true, Ordering::Release);
@@ -2072,6 +2091,7 @@ pub async fn enqueue(
         validate_remote_path(&input.source)?;
         validate_local_path(&input.destination)?;
     }
+    let profile = manager.profile(&input.session_id)?;
     let mut task = TransferTask {
         id: Uuid::new_v4().to_string(),
         session_id: input.session_id,
@@ -2085,7 +2105,7 @@ pub async fn enqueue(
         error: None,
         created_at: Utc::now().to_rfc3339(),
     };
-    let target_key = format!("{}:{}", task.direction, task.destination);
+    let target_key = transfer_target_key(&task.direction, &profile.id, &task.destination);
     let token = transfers.token(&task.id, &target_key)?;
     if let Err(error) = db.upsert_transfer(&task).await {
         transfers.finish(&task.id);
@@ -2096,17 +2116,6 @@ pub async fn enqueue(
         task.status = "running".into();
         let _ = db.upsert_transfer(&task).await;
         let _ = app.emit("transfer-progress", task.clone());
-        let profile = match manager.profile(&task.session_id) {
-            Ok(value) => value,
-            Err(error) => {
-                task.status = "failed".into();
-                task.error = Some(error.to_string());
-                let _ = db.upsert_transfer(&task).await;
-                let _ = app.emit("transfer-progress", task.clone());
-                transfers.finish(&task.id);
-                return;
-            }
-        };
         let transport = match manager
             .acquire_auxiliary_transport(&db, &profile, "sftp")
             .await
@@ -2176,6 +2185,14 @@ pub async fn enqueue(
         transfers.finish(&task.id);
     });
     Ok(returned)
+}
+
+fn transfer_target_key(direction: &str, connection_id: &str, destination: &str) -> String {
+    if direction == "upload" {
+        format!("upload:{connection_id}:{destination}")
+    } else {
+        format!("download:{destination}")
+    }
 }
 
 #[cfg(test)]
@@ -2379,6 +2396,17 @@ mod tests {
         assert!(!manager.contains("task"));
         assert!(!manager.cancel("task"));
         assert!(manager.token("other", "download:/tmp/file").is_ok());
+    }
+    #[test]
+    fn upload_targets_are_scoped_to_connections_but_downloads_are_local() {
+        assert_ne!(
+            transfer_target_key("upload", "server-a", "/tmp/file"),
+            transfer_target_key("upload", "server-b", "/tmp/file")
+        );
+        assert_eq!(
+            transfer_target_key("download", "server-a", "/tmp/file"),
+            transfer_target_key("download", "server-b", "/tmp/file")
+        );
     }
     #[test]
     fn pre_cancelled_directory_transfer_stops_before_work() {
