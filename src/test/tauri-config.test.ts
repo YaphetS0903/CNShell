@@ -61,6 +61,17 @@ describe("Tauri window permissions", () => {
 
     expect(capability.permissions).toContain("core:window:allow-destroy");
   });
+
+  it("keeps non-interactive titlebar surfaces draggable in narrow windows", () => {
+    const capability = JSON.parse(readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8")) as { permissions: string[] };
+    const app = readFileSync(resolve("src/App.tsx"), "utf8");
+
+    expect(capability.permissions).toContain("core:window:allow-start-dragging");
+    expect(app).toContain('className="traffic-light-space" data-tauri-drag-region');
+    expect(app).toContain('className="brand" data-tauri-drag-region');
+    expect(app).toContain('className="desktop-badge" data-tauri-drag-region');
+    expect(app).not.toContain('<nav data-tauri-drag-region>');
+  });
 });
 
 describe("Windows desktop shell", () => {
