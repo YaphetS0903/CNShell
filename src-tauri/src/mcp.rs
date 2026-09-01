@@ -3155,7 +3155,7 @@ async fn cleanup_sidecar_client_secret(
     }
     let output = tokio::time::timeout(
         Duration::from_secs(10),
-        tokio::process::Command::new(&managed_sidecar)
+        crate::subprocess::background_tokio_command(&managed_sidecar)
             .args([
                 "--revoke-client-secret",
                 client_id,
@@ -3820,7 +3820,7 @@ pub async fn client_config(
     let executable_bytes = std::fs::read(&command)?;
     let executable_sha256 = format!("sha256:{:x}", Sha256::digest(&executable_bytes));
     let command_string = command.to_string_lossy().into_owned();
-    let provisioned = tokio::process::Command::new(&command)
+    let provisioned = crate::subprocess::background_tokio_command(&command)
         .args(["--provision-client-secret", &client.id])
         .output()
         .await

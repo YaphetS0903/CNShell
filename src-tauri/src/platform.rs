@@ -356,7 +356,7 @@ fn system_version_impl() -> Option<String> {
 }
 
 fn command_version(executable: &str, arguments: &[&str]) -> Option<String> {
-    std::process::Command::new(executable)
+    crate::subprocess::background_command(executable)
         .args(arguments)
         .output()
         .ok()

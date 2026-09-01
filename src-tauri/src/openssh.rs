@@ -8,7 +8,6 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use std::{
     collections::{HashMap, HashSet},
     path::{Path, PathBuf},
-    process::Command,
     sync::{Arc, atomic::AtomicBool},
     time::Duration,
 };
@@ -147,7 +146,7 @@ pub fn generate_key(path: &Path, comment: &str) -> AppResult<GeneratedSshKey> {
     }
     let executable = ssh_keygen_path()
         .ok_or_else(|| AppError::Unavailable("未找到 OpenSSH ssh-keygen".into()))?;
-    let output = Command::new(&executable)
+    let output = crate::subprocess::background_command(&executable)
         .args(["-t", "ed25519", "-a", "64", "-N", "", "-C", comment, "-f"])
         .arg(path)
         .output()
@@ -159,7 +158,7 @@ pub fn generate_key(path: &Path, comment: &str) -> AppResult<GeneratedSshKey> {
     }
     let public_path = PathBuf::from(format!("{}.pub", path.display()));
     let public_key = std::fs::read_to_string(&public_path)?.trim().to_string();
-    let fingerprint_output = Command::new(&executable)
+    let fingerprint_output = crate::subprocess::background_command(&executable)
         .args(["-lf"])
         .arg(&public_path)
         .output()?;

@@ -2,6 +2,23 @@
 
 本项目采用语义化版本号。Beta 使用独立 updater 签名与更新通道；正式签名、公证与稳定更新通道完成前不标记为正式稳定版。
 
+## 0.2.0-beta.7（Windows 后台检测与终端交互修复版）
+
+### 新增
+
+- 终端工具栏新增文件面板入口；macOS 使用 `⌘J`、Windows 使用 `Ctrl+J` 显示或隐藏底部文件管理区。
+- 终端右键菜单改为 CNshell 中文菜单，提供复制、粘贴、全选和清屏，并支持焦点管理与 `Esc` 关闭。
+
+### 修复
+
+- Windows 设置页和环境检测调用统一使用无控制台后台进程，避免连续弹出 `OpenConsole.exe` 或 Windows Terminal 黑色窗口。
+- 修正原生“显示文件”菜单错误切换左侧连接库的问题，现在与终端工具栏和快捷键一致控制底部文件面板。
+
+### 已知限制
+
+- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。
+- Windows ARM64、Intel Mac、不同 macOS 版本、完整 VoiceOver/Narrator、真实弱网与 RDP 设备矩阵仍需对应外部环境继续验收。
+
 ## 0.2.0-beta.6（连接与文件管理可靠性修复版）
 
 ### 新增

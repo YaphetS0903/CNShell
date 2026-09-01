@@ -78,7 +78,7 @@ pub fn authorization() -> AppResult<X11Authorization> {
     validate_endpoint(&endpoint).map_err(AppError::Unavailable)?;
     let executable =
         xauth_path().ok_or_else(|| AppError::Unavailable(missing_xauth_message().into()))?;
-    let mut command = Command::new(&executable);
+    let mut command = crate::subprocess::background_command(&executable);
     command.args(["list", &display]).env_clear();
     configure_xauth_environment(&mut command, &executable, &display);
     let output = command

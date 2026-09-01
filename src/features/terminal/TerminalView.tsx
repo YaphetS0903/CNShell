@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { ClipboardPaste, Copy, Eraser, TextSelect } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -55,16 +56,23 @@ export const TerminalView = forwardRef<
 >(({ session, visible, focused, showTimestamps = false, style }, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [timestampRows, setTimestampRows] = useState<
     { line: number; timestamp: number | null }[]
   >([]);
   const [zmodem, setZmodem] = useState<ZmodemEvent | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    hasSelection: boolean;
+  } | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const triggerConfigRef = useRef<TriggerConfig | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
   const activeRef = useRef(focused);
   const settings = useAppStore((state)=>state.settings);
+  const setError = useAppStore((state)=>state.setError);
   const preferences = resolveTerminalPreferences(settings,session.connectionId);
   const systemPrefersDark = useSystemPrefersDark();
   const terminalTheme = resolveTerminalTheme(
@@ -484,6 +492,27 @@ export const TerminalView = forwardRef<
     if (focused) terminalRef.current?.focus();
   }, [focused]);
   useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("blur", close);
+    window.addEventListener("keydown", key);
+    const focusFrame = requestAnimationFrame(() =>
+      contextMenuRef.current
+        ?.querySelector<HTMLButtonElement>("button:not(:disabled)")
+        ?.focus(),
+    );
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("blur", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, [contextMenu]);
+  useEffect(() => {
     let disposed=false;
     const unlisten=api.onZmodemEvent((event)=>{
       if(event.sessionId!==session.id)return;
@@ -509,6 +538,32 @@ export const TerminalView = forwardRef<
     try{setZmodem(await api.cancelZmodem(session.id,zmodem.id));}
     catch(error){setZmodem((current)=>current?{...current,status:"failed",error:String(error)}:current);window.setTimeout(()=>setZmodem((current)=>current?.id===zmodem.id?null:current),5000);}
   };
+  const copySelection = async () => {
+    const text = terminalRef.current?.getSelection() ?? "";
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (error) {
+      setError(`复制失败：${String(error)}`);
+    } finally {
+      setContextMenu(null);
+    }
+  };
+  const pasteClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text)
+        window.dispatchEvent(
+          new CustomEvent("cnshell-paste-request", {
+            detail: { sessionId: session.id, text },
+          }),
+        );
+    } catch (error) {
+      setError(`读取剪贴板失败：${String(error)}`);
+    } finally {
+      setContextMenu(null);
+    }
+  };
   const zmodemPercent=zmodem?.totalBytes?Math.min(100,Math.round(zmodem.transferredBytes/zmodem.totalBytes*100)):null;
   return (
     <div
@@ -516,8 +571,61 @@ export const TerminalView = forwardRef<
       ref={containerRef}
       style={style}
       aria-label={`${session.title} 终端`}
+      onContextMenuCapture={(event) => {
+        const target = event.target as Element;
+        if (!target.closest(".terminal-host")) return;
+        event.preventDefault();
+        terminalRef.current?.focus();
+        setContextMenu({
+          x: Math.max(8, Math.min(event.clientX, window.innerWidth - 176)),
+          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 154)),
+          hasSelection: terminalRef.current?.hasSelection() ?? false,
+        });
+      }}
     >
       <div className="terminal-host" ref={hostRef} />
+      {contextMenu && (
+        <div
+          className="terminal-context-menu"
+          ref={contextMenuRef}
+          role="menu"
+          aria-label="终端右键菜单"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            role="menuitem"
+            disabled={!contextMenu.hasSelection}
+            onClick={() => void copySelection()}
+          >
+            <Copy size={14} />复制
+          </button>
+          <button role="menuitem" onClick={() => void pasteClipboard()}>
+            <ClipboardPaste size={14} />粘贴
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => {
+              terminalRef.current?.selectAll();
+              setContextMenu(null);
+            }}
+          >
+            <TextSelect size={14} />全选
+          </button>
+          <div className="terminal-context-separator" role="separator" />
+          <button
+            role="menuitem"
+            onClick={() => {
+              terminalRef.current?.clear();
+              terminalRef.current?.focus();
+              setContextMenu(null);
+            }}
+          >
+            <Eraser size={14} />清屏
+          </button>
+        </div>
+      )}
       {zmodem&&<section className="zmodem-card" role="status" aria-live="polite">
         <header><strong>Zmodem {zmodem.direction==="download"?"下载":"上传"}</strong><span>{zmodem.status==="awaitingAuthorization"?"等待授权":zmodem.status==="running"?"传输中":zmodem.status==="completed"?"已完成":zmodem.status==="cancelled"?"已取消":"失败"}</span></header>
         {zmodem.fileName&&<div className="zmodem-file" title={zmodem.fileName}>{zmodem.fileName}</div>}

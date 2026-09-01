@@ -27,6 +27,7 @@ mod serial;
 mod session_log;
 mod sftp;
 mod ssh;
+mod subprocess;
 mod task;
 mod team;
 mod team_relay;
@@ -179,7 +180,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> 
         .build()?;
     let view = SubmenuBuilder::new(app, "显示")
         .item(
-            &MenuItemBuilder::with_id("toggle_files", "切换文件面板")
+            &MenuItemBuilder::with_id("toggle_files", "切换底部文件面板")
                 .accelerator("CmdOrCtrl+J")
                 .build(app)?,
         )

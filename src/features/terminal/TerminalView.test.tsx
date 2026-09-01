@@ -1,4 +1,4 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
 import type { TerminalSession } from "../../types";
@@ -32,6 +32,7 @@ const terminalMock = vi.hoisted(() => {
     getSelection: vi.fn(() => ""),
     clearSelection: vi.fn(),
     selectLines: vi.fn(),
+    selectAll: vi.fn(),
     scrollToLine: vi.fn(),
     registerMarker: vi.fn(() => ({ dispose: vi.fn() })),
     registerDecoration: vi.fn(() => undefined),
@@ -130,5 +131,21 @@ describe("TerminalView resize", () => {
 
     view.unmount();
     expect(resizeMock.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it("replaces the native terminal context menu with Chinese actions", async () => {
+    const view = render(<TerminalView session={moshSession} visible focused />);
+
+    await waitFor(() => expect(terminalMock.instance.open).toHaveBeenCalled());
+    const host = view.container.querySelector(".terminal-host");
+    expect(host).not.toBeNull();
+    fireEvent.contextMenu(host!);
+
+    expect(screen.getByRole("menu", { name: "终端右键菜单" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "复制" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "粘贴" })).toHaveFocus();
+    fireEvent.click(screen.getByRole("menuitem", { name: "全选" }));
+    expect(terminalMock.instance.selectAll).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("menu", { name: "终端右键菜单" })).not.toBeInTheDocument();
   });
 });

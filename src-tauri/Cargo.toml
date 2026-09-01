@@ -1,6 +1,6 @@
 [package]
 name = "cnshell"
-version = "0.2.0-beta.6"
+version = "0.2.0-beta.7"
 description = "A native SSH, SFTP and server monitoring workspace for macOS and Windows"
 authors = ["CNshell Contributors"]
 edition = "2024"
@@ -80,6 +80,7 @@ windows-sys = { version = "0.61", features = [
   "Win32_Security_Cryptography",
   "Win32_Storage_FileSystem",
   "Win32_System_JobObjects",
+  "Win32_System_Console",
   "Win32_System_ProcessStatus",
   "Win32_System_Pipes",
   "Win32_System_SystemInformation",

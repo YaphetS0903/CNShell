@@ -114,6 +114,14 @@ export default function TerminalWorkspace({
     null,
   );
   const [tabMenu, setTabMenu] = useState<string | null>(null);
+  const toggleFilePanel = useCallback(() => {
+    if (bottomOpen && activePanel === "files") {
+      setBottomOpen(false);
+      return;
+    }
+    setPanel("files");
+    setBottomOpen(true);
+  }, [activePanel, bottomOpen, setPanel]);
   const [refs] = useState(
     () => new Map<string, React.RefObject<TerminalActions | null>>(),
   );
@@ -250,7 +258,7 @@ export default function TerminalWorkspace({
       }
       if (primary && event.key.toLowerCase() === "j") {
         event.preventDefault();
-        setBottomOpen((value) => !value);
+        toggleFilePanel();
       }
       if (primary && event.key.toLowerCase() === "k" && activeSessionId) {
         event.preventDefault();
@@ -308,7 +316,13 @@ export default function TerminalWorkspace({
     settings,
     saveSettings,
     setError,
+    toggleFilePanel,
   ]);
+  useEffect(() => {
+    window.addEventListener("cnshell-toggle-files", toggleFilePanel);
+    return () =>
+      window.removeEventListener("cnshell-toggle-files", toggleFilePanel);
+  }, [toggleFilePanel]);
   useEffect(() => {
     const paste = (event: Event) => {
       const detail = (event as CustomEvent<{ sessionId: string; text: string }>)
@@ -577,6 +591,14 @@ export default function TerminalWorkspace({
           );
         })}
         <div className="tab-spacer" />
+        {isInteractiveTerminal(active) && (
+          <IconButton
+            icon={Files}
+            label={`${bottomOpen && activePanel === "files" ? "隐藏" : "显示"}文件面板（${platform.shortcutModifier}+J）`}
+            active={bottomOpen && activePanel === "files"}
+            onClick={toggleFilePanel}
+          />
+        )}
         <IconButton
           icon={RadioTower}
           label="在线团队终端"

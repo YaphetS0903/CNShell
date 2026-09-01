@@ -65,7 +65,7 @@ fn bundled_helper_path(executable: &Path) -> Option<PathBuf> {
 
 pub fn available() -> bool {
     helper_path().is_some_and(|path| {
-        let mut command = Command::new(&path);
+        let mut command = crate::subprocess::background_command(&path);
         command.arg("-h").env_clear();
         configure_helper_environment(&mut command, &path);
         command.output().is_ok_and(|output| {
@@ -129,7 +129,7 @@ where
         total_bytes,
         transferred_bytes: 0,
     });
-    let mut command = Command::new(&helper);
+    let mut command = crate::subprocess::background_command(&helper);
     command
         .env_clear()
         .args(["-X", "-i", "-P", "-q", "-S", "-b", "5"])

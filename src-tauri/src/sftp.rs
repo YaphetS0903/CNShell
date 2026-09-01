@@ -14,7 +14,6 @@ use std::{
     io::{Read, Write},
     net::Shutdown,
     path::{Path, PathBuf},
-    process::Command,
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU8, Ordering},
@@ -1511,7 +1510,9 @@ fn check_directory_transfer_cancelled(cancelled: &AtomicBool) -> AppResult<()> {
 }
 
 fn run_tar(arguments: &[&std::ffi::OsStr]) -> AppResult<()> {
-    let status = Command::new("tar").args(arguments).status()?;
+    let status = crate::subprocess::background_command("tar")
+        .args(arguments)
+        .status()?;
     if status.success() {
         Ok(())
     } else {

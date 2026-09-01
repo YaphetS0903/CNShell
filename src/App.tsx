@@ -38,7 +38,7 @@ export default function App() {
     setConnecting(connection.id);try{const session=await api.openTerminal(connection.id,120,36);addSession(session);const forwards=await api.listForwards(connection.id);for(const forward of forwards.filter((item)=>item.autoStart&&item.status!=="running")){api.startForward(forward.id).catch((error)=>setError(`隧道 ${forward.bindPort} 启动失败：${errorMessage(error)}`));}}catch(reason){const errorObject=reason as {code?:string;fingerprint?:string;algorithm?:string;message?:string};if(errorObject?.code==="host_key_unknown"&&errorObject.fingerprint){setHostPrompt({connection,fingerprint:errorObject.fingerprint,algorithm:errorObject.algorithm??"unknown"});}else setError(errorMessage(reason));}finally{setConnecting(null);}
   },[addSession,setError]);
   const trustAndConnect=async()=>{if(!hostPrompt)return;const prompt=hostPrompt;setHostPrompt(null);try{await api.trustHost(prompt.connection.id,prompt.fingerprint,prompt.algorithm);await connect(prompt.connection);}catch(reason){setError(errorMessage(reason));}};
-  useEffect(()=>{if(!api.isDesktop())return;const promise=listen<string>("menu-action",(event)=>{if(event.payload==="new_connection"){setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();}if(event.payload==="show_help"){setSettingsOpen(false);setHelpOpen(true);}if(event.payload==="toggle_files")setConnectionsOpen((value)=>!value);if(event.payload==="close_session")window.dispatchEvent(new Event("cnshell-close-session"));if(event.payload==="new_terminal"){const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];if(profile)void connect(profile);}});return()=>{void promise.then((unlisten)=>unlisten());};},[connect,connections,openConnectionEditor,setHelpOpen,setSettingsOpen]);
+  useEffect(()=>{if(!api.isDesktop())return;const promise=listen<string>("menu-action",(event)=>{if(event.payload==="new_connection"){setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();}if(event.payload==="show_help"){setSettingsOpen(false);setHelpOpen(true);}if(event.payload==="toggle_files")window.dispatchEvent(new Event("cnshell-toggle-files"));if(event.payload==="close_session")window.dispatchEvent(new Event("cnshell-close-session"));if(event.payload==="new_terminal"){const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];if(profile)void connect(profile);}});return()=>{void promise.then((unlisten)=>unlisten());};},[connect,connections,openConnectionEditor,setHelpOpen,setSettingsOpen]);
   useEffect(()=>{
     if(!api.isDesktop()||platform.operatingSystem==="macos")return;
     const handler=(event:KeyboardEvent)=>{
@@ -51,8 +51,6 @@ export default function App() {
         if(profile)void connect(profile);
       }else if(event.key==="?"){
         event.preventDefault();setSettingsOpen(false);setHelpOpen(true);
-      }else if(event.key.toLowerCase()==="j"){
-        event.preventDefault();setConnectionsOpen((value)=>!value);
       }
     };
     window.addEventListener("keydown",handler);

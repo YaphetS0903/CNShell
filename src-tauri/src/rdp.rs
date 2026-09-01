@@ -188,7 +188,7 @@ pub fn validate_options(options: &RdpConnectionOptions) -> AppResult<()> {
 
 pub fn displays() -> AppResult<Vec<RdpDisplay>> {
     let executable = helper_path().ok_or_else(|| AppError::Unavailable(preflight().message))?;
-    let output = Command::new(executable)
+    let output = crate::subprocess::background_command(executable)
         .arg("/list:monitor")
         .output()
         .map_err(|error| AppError::Unavailable(format!("无法读取 FreeRDP 显示器列表：{error}")))?;

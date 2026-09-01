@@ -3,7 +3,7 @@ use crate::{
     models::SshCertificateInfo,
 };
 use chrono::{DateTime, NaiveDateTime, Utc};
-use std::{path::Path, process::Command};
+use std::path::Path;
 
 const MAX_CERTIFICATE_BYTES: u64 = 1024 * 1024;
 const MAX_INSPECT_OUTPUT: usize = 64 * 1024;
@@ -21,7 +21,7 @@ pub fn inspect(path: &Path) -> AppResult<SshCertificateInfo> {
     }
     let executable = crate::openssh::ssh_keygen_path()
         .ok_or_else(|| AppError::Unavailable("未找到 OpenSSH ssh-keygen".into()))?;
-    let mut command = Command::new(executable);
+    let mut command = crate::subprocess::background_command(executable);
     #[cfg(not(target_os = "windows"))]
     command
         .env_clear()
