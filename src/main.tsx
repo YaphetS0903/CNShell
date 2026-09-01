@@ -7,6 +7,7 @@ import "./advanced.css";
 import "./roadmap.css";
 import "./platform.css";
 import "./mcp.css";
+import "./features/settings/settings.css";
 import App from "./App";
 
 createRoot(document.getElementById("root")!).render(
