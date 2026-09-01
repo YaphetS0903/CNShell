@@ -1,6 +1,6 @@
 # CNshell v0.2.0-beta.7 验收矩阵
 
-> 最后核验：2026-09-01（macOS 本机质量门禁；GitHub Windows 与跨平台发布门禁待本版本 CI 完成）
+> 最后核验：2026-09-02（设置中心 Windows 11 高 DPI/Narrator 与 macOS VoiceOver 真机验收完成；其余外部边界按各条记录保留）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -25,7 +25,7 @@
 | 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/AdvancedSettings.tsx`、`src-tauri/src/backup.rs` | 连接库工具栏与设置均有导入入口；Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
 | 可折叠、可调尺寸的三栏与底部工具区 | 通过 | `src/App.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/lib/layout.ts` | 鼠标拖动与键盘方向键均可调整；侧栏尺寸进入工作区恢复，底部高度本机持久化；紧凑窗口 E2E 通过 |
 | RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，全部参数与密码仅经 Helper stdin 传递；静态 helper 内置 NTLM 所需 MD4/MD5/RC4；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、诊断翻译及应用退出清理。当前局域网测试目标的 TCP 3389 可建立，但对默认、Cookie 和 legacy RDP 协商探针均返回 0 字节并断开，需目标 Windows 开启有效 RDP 服务后再验收画面与输入 |
-| 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分 | `src/styles.css`、`src/components/Modal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与最终 DMG 辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、真实方向键切换与独立菜单入口，SFTP 虚拟表格行列/排序/总数，以及监控数值替代；完整 VoiceOver 朗读顺序仍需用户主动开启系统 VoiceOver 后人工巡检 |
+| 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分（设置中心真机通过） | `src/styles.css`、`src/components/Modal.tsx`、`src/features/settings/SettingsModal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与桌面辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、SFTP 虚拟表格和监控数值替代；设置中心已在实际 macOS `.app` 开启 VoiceOver 完成五分类、全部模块、搜索跳转、帮助、固定操作栏、焦点回绕和 Escape 验收。此结论不扩大为整个应用所有工作区的完整 VoiceOver 朗读巡检 |
 | SQLite 历史迁移与失败前备份 | 通过 | `src-tauri/src/db.rs`、`src-tauri/migrations/` | v1–v4 无损升级、任务恢复、数据库 `.backup` 测试通过 |
 | 本地 Shell / Telnet / Serial 基线 | 部分（代码与回环/枚举测试） | `src-tauri/src/local_shell.rs`、`src-tauri/src/telnet.rs`、`src-tauri/src/serial.rs`、连接编辑器 | 本地 PTY 和 Telnet 生命周期已通过；Serial 已完成设备枚举、参数校验、独占打开、DTR/RTS、输入、状态事件和同路径拔出重连代码与测试。当前没有实体串口设备，未声明真实网络设备、USB 转串口拔出/重插和硬件流控验收通过。 |
 | Serial X/Ymodem | 部分（协议核心与双端回环通过） | `src-tauri/src/xymodem.rs`、`src-tauri/src/serial.rs`、`src/features/terminal/SerialTransferPanel.tsx` | Xmodem 128/1K、Checksum/CRC、Ymodem Batch、双 EOT、重复块、CRC 拒绝、双 CAN、进度、单会话互斥、原子下载、失败清理、50 GB/256 文件边界和远端路径隔离已由 Rust/前端测试覆盖。本机没有 `sx/rx/sb/rb` 和实体串口设备，未声明外部实现或硬件互操作通过。 |
@@ -48,6 +48,17 @@
 | AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI 有界流式响应、可信插件沙箱、本地团队 RBAC/组织导出/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、生产邮箱验证、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI、备份恢复及生产代理/监控配置已完成。官方 `age v1.3.1` 的 Sigsum 验证和本机功能演练通过；正式域名证书、真实 SMTP/Alertmanager 投递、生产 identity 异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
 
 本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
+
+### 2026-09-02 设置中心可访问性最终验收
+
+| 项目 | 结果 |
+| --- | --- |
+| Windows 11 高 DPI | Parallels Windows 11 Build `10.0.26200.0`、DPI `192`（200%）安装 `v0.2.0-beta.7` 验收；设置窗口尺寸 `2734 × 1726`，五个分类和固定取消/保存按钮均在 UI Automation 树与窗口边界内 |
+| Windows Narrator | 通过官方快捷键启动 Narrator 后完成键盘/UIA 验证；搜索 `Mosh` 的结果角色为 `ControlType.Button`，可切换到“连接与安全”并展开“高级协议与转发”。测试结束后 CNshell/Narrator 测试进程均已清理 |
+| Windows 构建证据 | GitHub Actions run `33522542739` 在提交 `eb35e2c` 上完成 x64 与 ARM64 构建；x64 安装包已实际安装验证。可复用脚本为 `scripts/test-windows-settings-accessibility.ps1`，SHA-256 `16cab553a3ba050c50177c612c018502440d66ad2af0296fd529e7a27c170ccf` |
+| macOS VoiceOver | 对工作区实际构建的 `CNshell.app` 开启系统 VoiceOver；`Control+Option+Right` 依次切换五个分类，每个分类标题和全部模块按钮均进入辅助功能树。搜索 `Mosh` 返回标准按钮，激活后聚焦并展开目标模块；帮助按钮、固定操作栏、Shift+Tab/Tab 首尾回绕和 Escape 关闭均通过，随后已关闭 VoiceOver |
+| WebKit 修复 | 真机验收捕获到已隐藏 `tabpanel` 再激活时模块从辅助功能树消失。最终实现让活动分类保持 DOM 首位且成为唯一暴露的 `tabpanel`，非活动分类同时使用 `hidden`、`aria-hidden` 与 `inert`，保留已挂载组件状态并消除缓存问题；新增组件回归测试覆盖该结构 |
+| 自动化门禁 | `npm run lint`、57 个前端测试文件共 231 项测试、18 项 WebKit E2E、`npm run build` 与 `git diff --check` 全部通过；ad-hoc macOS `.app` 重建成功。此处只验收设置中心，不将结论扩大为整个应用所有工作区的完整读屏顺序 |
 
 ### 2026-07-15 Mosh 阶段增量验收
 

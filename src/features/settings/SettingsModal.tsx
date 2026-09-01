@@ -139,6 +139,11 @@ export default function SettingsModal() {
     () => searchTargets.filter((target) => matchesSearch(target, deferredSearchQuery)),
     [deferredSearchQuery],
   );
+  const panelCategories = useMemo(() => {
+    const active = categories.find((category) => category.id === activeCategory);
+    if (!active) return categories;
+    return [active, ...categories.filter((category) => category.id !== activeCategory)];
+  }, [activeCategory]);
   const change = <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => setDraft((current) => ({ ...current, [key]: value }));
 
   const clearHistory = async () => {
@@ -352,9 +357,19 @@ export default function SettingsModal() {
             </div>}
           </div>
           <div className="settings-panels">
-            {categories.map((category) => {
+            {panelCategories.map((category) => {
               if (!mountedCategories.has(category.id)) return null;
-              return <section key={category.id} id={`settings-panel-${category.id}`} role="tabpanel" aria-labelledby={`settings-category-${category.id}`} hidden={activeCategory !== category.id} className="settings-panel">
+              const active = activeCategory === category.id;
+              return <section
+                key={category.id}
+                id={`settings-panel-${category.id}`}
+                role={active ? "tabpanel" : undefined}
+                aria-labelledby={active ? `settings-category-${category.id}` : undefined}
+                aria-hidden={active ? undefined : true}
+                inert={active ? undefined : true}
+                hidden={!active}
+                className="settings-panel"
+              >
                 <header className="settings-category-header">
                   <div><h2 tabIndex={-1}>{category.label}</h2><p>{category.description}</p></div>
                   <div className="settings-category-actions">

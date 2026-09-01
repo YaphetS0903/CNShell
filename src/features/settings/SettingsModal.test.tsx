@@ -148,4 +148,23 @@ describe("SettingsModal", () => {
     await user.click(screen.getByRole("button", { name: "查看外观帮助" }));
     expect(screen.getByText(/跟随系统会自动使用操作系统/)).toBeVisible();
   });
+
+  it("keeps only the active tab panel exposed to WebKit accessibility", async () => {
+    const user = userEvent.setup();
+    render(<SettingsModal />);
+
+    const activePanel = () => screen.getByRole("tabpanel");
+    expect(activePanel()).toHaveAttribute("id", "settings-panel-basic");
+
+    await user.click(screen.getByRole("tab", { name: "连接与安全" }));
+    expect(activePanel()).toHaveAttribute("id", "settings-panel-connection");
+    expect(activePanel()).not.toHaveAttribute("hidden");
+    expect(document.getElementById("settings-panel-basic")).toHaveAttribute("aria-hidden", "true");
+    expect(document.getElementById("settings-panel-basic")).toHaveAttribute("inert");
+    expect(screen.getByRole("button", { name: /^OpenSSH 配置与密钥/ })).toBeVisible();
+
+    await user.click(screen.getByRole("tab", { name: "关于与支持" }));
+    expect(activePanel()).toHaveAttribute("id", "settings-panel-support");
+    expect(screen.getByRole("button", { name: /^软件更新/ })).toBeVisible();
+  });
 });
