@@ -83,6 +83,7 @@
     "vitest": "^3.2.4"
   },
   "overrides": {
+    "browserslist": "4.28.8",
     "postcss": "8.5.23"
   }
 }
