@@ -46,6 +46,7 @@ const file = (name: string, path: string): RemoteFile => ({
 
 describe("FileManager navigation state", () => {
   beforeEach(() => {
+    localStorage.clear();
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -119,6 +120,18 @@ describe("FileManager navigation state", () => {
     await user.click(more);
     await user.click(screen.getByRole("button", { name: "复制路径" }));
     expect(screen.queryByRole("button", { name: "编辑文本" })).not.toBeInTheDocument();
+  });
+
+  it("lets users enlarge the file area text and remembers the choice", async () => {
+    const user = userEvent.setup();
+    const first = render(<FileManager session={session("one")} />);
+    expect(screen.getByText("11px")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "增大文件区字号" }));
+    expect(screen.getByText("12px")).toBeVisible();
+    expect(localStorage.getItem("cnshell-files-font-size")).toBe("12");
+    first.unmount();
+    render(<FileManager session={session("one")} />);
+    expect(screen.getByText("12px")).toBeVisible();
   });
 
   it("queues files dropped through Tauri's native desktop event", async () => {

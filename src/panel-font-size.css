@@ -1,0 +1,100 @@
+/* Per-panel readable typography. The controls live beside the panel actions so they remain discoverable. */
+.monitor-sidebar {
+  --monitor-font-size: 11px;
+  font-size: var(--monitor-font-size);
+}
+
+.monitor-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.monitor-sidebar > header > div:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-sidebar .load-values b,
+.monitor-sidebar .monitor-section h3,
+.monitor-sidebar .process-section > button {
+  font-size: 1em;
+}
+
+.monitor-sidebar .process-section > button span {
+  font-size: .9em;
+}
+
+.monitor-sidebar .metric strong,
+.monitor-sidebar .process-list code,
+.monitor-sidebar .disk-heading code {
+  font-size: .9em;
+}
+
+.monitor-sidebar .disk-item small,
+.monitor-sidebar .monitor-history-chart .uplot {
+  font-size: .8em;
+}
+
+.file-manager {
+  --file-font-size: 11px;
+  font-size: var(--file-font-size);
+}
+
+.file-manager .file-table,
+.file-manager .remote-tree-name,
+.file-manager .file-action-menu button,
+.file-manager .file-context-menu button {
+  font-size: 1em;
+}
+
+.file-manager .file-toolbar form input {
+  font-size: .91em;
+}
+
+.file-manager .file-row code,
+.file-manager .file-load-error span,
+.file-manager .file-status {
+  font-size: .9em;
+}
+
+.file-manager .file-load-error strong {
+  font-size: 1.1em;
+}
+
+.file-manager .drop-overlay span {
+  font-size: .8em;
+}
+
+.panel-font-size-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.panel-font-size-control output {
+  min-width: 31px;
+  color: var(--faint);
+  font: 9px SFMono-Regular, Menlo, monospace;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-font-size-button.icon-button {
+  width: 24px;
+  height: 27px;
+  border-radius: 5px;
+}
+
+@media (max-width: 560px) {
+  .panel-font-size-control > svg,
+  .panel-font-size-control output {
+    display: none;
+  }
+}
