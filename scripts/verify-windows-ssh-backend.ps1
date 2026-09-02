@@ -10,12 +10,22 @@ Set-StrictMode -Version Latest
 function Read-CargoFeatureTree {
   param([Parameter(Mandatory = $true)][string]$Package)
 
-  $output = (& cargo tree `
-    --manifest-path src-tauri/Cargo.toml `
-    --target $Target `
-    --edges features `
-    --invert $Package 2>&1 | Out-String)
-  if ($LASTEXITCODE -ne 0) {
+  # Windows PowerShell 5.1 wraps native stderr as ErrorRecord objects. Cargo writes normal
+  # progress there, so temporarily avoid turning that informational stream into an exception.
+  $previousPreference = $ErrorActionPreference
+  $ErrorActionPreference = "Continue"
+  try {
+    $output = (& cargo tree `
+      --manifest-path src-tauri/Cargo.toml `
+      --target $Target `
+      --edges features `
+      --invert $Package 2>&1 | Out-String)
+    $exitCode = $LASTEXITCODE
+  }
+  finally {
+    $ErrorActionPreference = $previousPreference
+  }
+  if ($exitCode -ne 0) {
     throw "Unable to resolve Cargo features for $Package on $Target`n$output"
   }
   return $output
