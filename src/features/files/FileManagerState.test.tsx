@@ -125,13 +125,13 @@ describe("FileManager navigation state", () => {
   it("lets users enlarge the file area text and remembers the choice", async () => {
     const user = userEvent.setup();
     const first = render(<FileManager session={session("one")} />);
-    expect(screen.getByText("11px")).toBeVisible();
+    expect(screen.getByTitle("文件区当前字号")).toHaveTextContent("自11px");
     await user.click(screen.getByRole("button", { name: "增大文件区字号" }));
-    expect(screen.getByText("12px")).toBeVisible();
+    expect(screen.getByTitle("文件区当前字号")).toHaveTextContent("12px");
     expect(localStorage.getItem("cnshell-files-font-size")).toBe("12");
     first.unmount();
     render(<FileManager session={session("one")} />);
-    expect(screen.getByText("12px")).toBeVisible();
+    expect(screen.getByTitle("文件区当前字号")).toHaveTextContent("12px");
   });
 
   it("queues files dropped through Tauri's native desktop event", async () => {
