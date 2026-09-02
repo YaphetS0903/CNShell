@@ -10,7 +10,7 @@
 
 ## 未签名跨平台 Beta
 
-在尚未取得 Apple Developer Program 付费会员和 Windows 代码签名服务时，使用 `.github/workflows/beta-release.yml` 发布 `v0.2.0-beta.7`。该流程不读取 Apple 证书、公证或 Authenticode 凭据，只需要仓库 Actions Secrets：
+在尚未取得 Apple Developer Program 付费会员和 Windows 代码签名服务时，使用 `.github/workflows/beta-release.yml` 发布 `v0.2.0-beta.8`。该流程不读取 Apple 证书、公证或 Authenticode 凭据，只需要仓库 Actions Secrets：
 
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
@@ -24,8 +24,8 @@ Release 说明必须明确：macOS 没有 Developer ID/公证，只能在核对�
 标签必须与 `package.json` 版本完全一致：
 
 ```bash
-git tag v0.2.0-beta.7
-git push origin v0.2.0-beta.7
+git tag v0.2.0-beta.8
+git push origin v0.2.0-beta.8
 ```
 
 Updater 密钥的本机 Keychain 位置、GitHub Secret 名称、公钥指纹和禁止直接轮换的规则见 `docs/UPDATER_KEY_MANAGEMENT.md`。未来 Developer ID/公证/Authenticode 正式发布必须复用同一 updater 密钥，避免已安装 Beta 失去更新路径。
