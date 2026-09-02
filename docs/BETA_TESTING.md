@@ -1,12 +1,12 @@
-# CNshell v0.2.0-beta.8 跨平台 Beta
+# CNshell v0.2.0-beta.9 跨平台 Beta
 
 这是供真实设备测试的未签名预发布版，不是已完成商业代码签名的正式版本。
 
 ## 下载选择
 
-- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.8_universal.dmg`
-- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.8_x64-setup.exe`，状态为 **Beta**
-- Windows 11 ARM64：`CNshell_0.2.0-beta.8_arm64-setup.exe`，状态为 **Preview**
+- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.9_universal.dmg`
+- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.9_x64-setup.exe`，状态为 **Beta**
+- Windows 11 ARM64：`CNshell_0.2.0-beta.9_arm64-setup.exe`，状态为 **Preview**
 
 安装前必须从本 Release 下载 `SHA256SUMS.txt` 并核对 SHA-256。不要从第三方分发站、网盘或聊天附件安装 CNshell。
 
@@ -18,7 +18,7 @@ Windows 安装包尚未做 Authenticode，SmartScreen 可能显示“未知发�
 
 Tauri updater 更新包使用独立 minisign 密钥签名，应用会校验 `.sig`；这项签名用于更新完整性，不能替代 Developer ID、Apple 公证或 Windows Authenticode。
 
-本次 Beta.8 重点验证重新规划后的五分类设置中心、固定保存栏、设置搜索与高级模块折叠，以及 macOS VoiceOver 和 Windows Narrator 的设置页可访问性。Beta.7 的 Windows 后台检测、底部文件面板与终端中文右键菜单继续纳入回归。
+本次 Beta.9 重点验证 Windows 现代 OpenSSH、PEM、PKCS#8、Ed25519 及加密私钥认证，并回归中文/空格路径、SSH Certificate、SSH Jump 和错误口令提示。Beta.8 的五分类设置中心、固定保存栏、设置搜索、高级模块折叠，以及 macOS VoiceOver 和 Windows Narrator 设置页可访问性继续纳入回归。
 
 ## 希望重点验证
 
