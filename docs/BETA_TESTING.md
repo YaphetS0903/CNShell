@@ -1,12 +1,12 @@
-# CNshell v0.2.0-beta.9 跨平台 Beta
+# CNshell v0.2.0-beta.10 跨平台 Beta
 
 这是供真实设备测试的未签名预发布版，不是已完成商业代码签名的正式版本。
 
 ## 下载选择
 
-- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.9_universal.dmg`
-- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.9_x64-setup.exe`，状态为 **Beta**
-- Windows 11 ARM64：`CNshell_0.2.0-beta.9_arm64-setup.exe`，状态为 **Preview**
+- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.10_universal.dmg`
+- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.10_x64-setup.exe`，状态为 **Beta**
+- Windows 11 ARM64：`CNshell_0.2.0-beta.10_arm64-setup.exe`，状态为 **Preview**
 
 安装前必须从本 Release 下载 `SHA256SUMS.txt` 并核对 SHA-256。不要从第三方分发站、网盘或聊天附件安装 CNshell。
 
@@ -18,15 +18,15 @@ Windows 安装包尚未做 Authenticode，SmartScreen 可能显示“未知发�
 
 Tauri updater 更新包使用独立 minisign 密钥签名，应用会校验 `.sig`；这项签名用于更新完整性，不能替代 Developer ID、Apple 公证或 Windows Authenticode。
 
-本次 Beta.9 重点验证 Windows 现代 OpenSSH、PEM、PKCS#8、Ed25519 及加密私钥认证，并回归中文/空格路径、SSH Certificate、SSH Jump 和错误口令提示。Beta.8 的五分类设置中心、固定保存栏、设置搜索、高级模块折叠，以及 macOS VoiceOver 和 Windows Narrator 设置页可访问性继续纳入回归。
+本次 Beta.10 重点验证监控栏与远端文件管理区在不同分辨率和系统缩放下的自动字号适配，以及两个面板独立的手动字号设置。Beta.9 的 Windows 私钥认证兼容性，以及 Beta.8 的设置中心和读屏可访问性继续纳入回归。
 
 ## 希望重点验证
 
-1. 打开设置，确认基础设置、连接与安全、自动化与集成、团队与云端、关于与支持五个分类清晰可切换；取消和保存按钮应始终固定在窗口底部，无需滚动到底部。
-2. 在设置搜索中输入 `Mosh`，激活结果后应切换到“连接与安全”、展开“高级协议与转发”并把焦点移到对应模块。折叠模块或切换分类后，尚未保存的草稿应保持。
-3. 使用键盘完整操作设置窗口：Tab/Shift+Tab 应在模态窗口内首尾回绕，帮助按钮可访问，按 `Esc` 可关闭；macOS 使用 VoiceOver、Windows 使用 Narrator 时，五个分类、模块、搜索结果和固定操作栏应具有正确名称与角色。
-4. Windows 在 100%/125%/150%/200% DPI 下打开设置并切换分类；所有内容与固定操作栏都应位于可见窗口和 UI Automation 树内。Kermit、OpenSSH、X11、RDP、MCP 等环境检测不应启动 `OpenConsole.exe`、Windows Terminal 或其他黑色控制台窗口。
-5. 回归终端工具栏文件按钮及 macOS `⌘J`/Windows `Ctrl+J`，确认底部文件管理区可显示和隐藏；终端右键菜单应为中文的复制、粘贴、全选和清屏，点击外部或按 `Esc` 可关闭。
+1. 在 Windows 的 100%/125%/150%/200% DPI 下分别检查监控栏与文件管理区；其中 2K/4K 且系统缩放为 100%/125% 的大屏，字号应自动显示为 `自12px` 或 `自13px`，目录、文件表格、磁盘和进程信息应清晰可读。
+2. 在 Windows 150%/200% DPI 或 macOS Retina 环境中确认自动字号通常保持 `自11px`，避免应用字号与系统缩放叠加导致内容过大。
+3. 分别使用两个面板的 `−/+` 调节字号，确认监控栏和文件管理区互不影响，范围限制为 10–16px；重启 CNshell、切换连接后手动字号应保留。
+4. 点击对应面板的“字”图标恢复自动模式，再切换显示器或调整系统缩放，确认自动字号会根据新的显示环境重新计算。
+5. 回归 Windows 现代 OpenSSH、PEM、PKCS#8、Ed25519 与加密私钥认证，以及设置页后台环境检测，确认不启动 `OpenConsole.exe`、Windows Terminal 或其他黑色控制台窗口。
 6. 回归 SFTP 长时间挂机后重连、目录展开状态、跨服务器并发传输、窗口关闭、浅色主题、中文 IME、Windows 10/11 x64、Windows 11 ARM64 与 macOS 13+ 安装及覆盖升级；ARM64 仍为 Preview。
 
 请使用 [Beta 真机反馈](https://github.com/YaphetS0903/CNShell/issues/new?template=beta_report.yml) 提交结果。问题报告中不要包含密码、私钥、令牌、完整主机地址或未经检查的诊断文件。

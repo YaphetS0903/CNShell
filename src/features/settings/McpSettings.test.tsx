@@ -6,7 +6,7 @@ import type { ConnectionProfile, McpApprovalRule, McpClient, McpClientConfig, Mc
 import { McpSettings } from "./McpSettings";
 
 const status: McpStatus = {
-  version: "0.2.0-beta.9",
+  version: "0.2.0-beta.10",
   enabled: true,
   running: true,
   address: "127.0.0.1:43100",
@@ -112,7 +112,7 @@ describe("McpSettings", () => {
     expect(await screen.findByText("Broker 正在运行")).toBeVisible();
     expect(screen.getByRole("button", { name: "刷新" })).toBeEnabled();
     expect(screen.getByRole("checkbox", { name: "启用 MCP" })).toBeChecked();
-    expect(screen.getByText("0.2.0-beta.9")).toBeVisible();
+    expect(screen.getByText("0.2.0-beta.10")).toBeVisible();
     expect(screen.getByText("/tmp/cnshell/mcp-broker.json")).toBeVisible();
     delete document.documentElement.dataset.theme;
   });
