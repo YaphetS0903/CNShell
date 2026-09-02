@@ -18,9 +18,10 @@ use base64::{
 use parking_lot::Mutex;
 use sha2::{Digest, Sha256};
 use socket2::{SockRef, TcpKeepalive};
-use ssh2::{Channel, HostKeyType, Session};
+use ssh2::{Channel, ErrorCode as SshErrorCode, HostKeyType, Session};
 use std::{
     collections::HashMap,
+    fs::File,
     io::{ErrorKind, Read, Write},
     net::{TcpListener, TcpStream, ToSocketAddrs},
     path::Path,
@@ -36,6 +37,7 @@ use tokio::{
     time::sleep,
 };
 use uuid::Uuid;
+use zeroize::Zeroizing;
 
 const KEYCHAIN_SERVICE: &str = "com.cnshell.desktop";
 const AUTHENTICATION_TIMEOUT: Duration = Duration::from_secs(30);
@@ -46,6 +48,8 @@ const KEEPALIVE_INTERVAL_SECONDS: u32 = 30;
 const TCP_KEEPALIVE_IDLE: Duration = Duration::from_secs(45);
 const TCP_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(10);
 const TCP_KEEPALIVE_RETRIES: u32 = 3;
+const MAX_PRIVATE_KEY_BYTES: usize = 1024 * 1024;
+const MAX_SSH_CERTIFICATE_BYTES: usize = 256 * 1024;
 static KEYCHAIN_ACCESS: OnceLock<Mutex<()>> = OnceLock::new();
 
 fn keychain_access() -> parking_lot::MutexGuard<'static, ()> {
@@ -566,6 +570,9 @@ fn bridge_jump(jump: ConnectedSsh, host: String, port: i64) -> AppResult<TcpStre
     let channel = jump
         .session
         .channel_direct_tcpip(&host, port as u16, None)?;
+    // The bridge pumps both directions on one thread. A blocking channel read can hold the
+    // libssh2 session lock until its timeout and starve writes during multi-step public-key auth.
+    jump.session.set_blocking(false);
     let listener = TcpListener::bind("127.0.0.1:0")?;
     let address = listener.local_addr()?;
     let client = TcpStream::connect(address)?;
@@ -618,7 +625,7 @@ pub fn authenticate(
     connected: ConnectedSsh,
     profile: &ConnectionProfile,
 ) -> AppResult<ConnectedSsh> {
-    let secret = load_credential(&profile.id)?;
+    let secret = load_credential(&profile.id)?.map(Zeroizing::new);
     match profile.auth_type.as_str() {
         "password" => {
             let password = secret.ok_or_else(|| {
@@ -629,7 +636,7 @@ pub fn authenticate(
             })?;
             connected
                 .session
-                .userauth_password(&profile.username, &password)
+                .userauth_password(&profile.username, password.as_str())
                 .map_err(|error| AppError::Authentication(error.to_string()))?;
         }
         "privateKey" => {
@@ -638,10 +645,18 @@ pub fn authenticate(
                 .as_deref()
                 .ok_or_else(|| AppError::Authentication("未选择私钥".into()))?;
             let access = crate::bookmark::access(&profile.id, Path::new(fallback))?;
+            let private_key =
+                read_authentication_material(access.path(), "私钥", MAX_PRIVATE_KEY_BYTES)?;
+            let private_key = authentication_material_text(&private_key, "私钥")?;
             connected
                 .session
-                .userauth_pubkey_file(&profile.username, None, access.path(), secret.as_deref())
-                .map_err(|error| AppError::Authentication(error.to_string()))?;
+                .userauth_pubkey_memory(
+                    &profile.username,
+                    None,
+                    private_key,
+                    secret.as_deref().map(String::as_str),
+                )
+                .map_err(private_key_authentication_error)?;
         }
         "sshCertificate" => {
             let private_fallback = profile
@@ -664,15 +679,27 @@ pub fn authenticate(
                 }));
             }
             crate::certificate::validate_for_username(&info, &profile.username)?;
+            let private_key = read_authentication_material(
+                private_access.path(),
+                "证书对应的私钥",
+                MAX_PRIVATE_KEY_BYTES,
+            )?;
+            let certificate = read_authentication_material(
+                certificate_access.path(),
+                "SSH Certificate",
+                MAX_SSH_CERTIFICATE_BYTES,
+            )?;
+            let private_key = authentication_material_text(&private_key, "证书对应的私钥")?;
+            let certificate = authentication_material_text(&certificate, "SSH Certificate")?;
             connected
                 .session
-                .userauth_pubkey_file(
+                .userauth_pubkey_memory(
                     &profile.username,
-                    Some(certificate_access.path()),
-                    private_access.path(),
-                    secret.as_deref(),
+                    Some(certificate),
+                    private_key,
+                    secret.as_deref().map(String::as_str),
                 )
-                .map_err(|error| AppError::Authentication(error.to_string()))?;
+                .map_err(private_key_authentication_error)?;
         }
         "sshAgent" => {
             let mut agent = connected
@@ -712,6 +739,69 @@ pub fn authenticate(
         return Err(AppError::Authentication("服务端拒绝认证".into()));
     }
     Ok(connected)
+}
+
+fn read_authentication_material(
+    path: &Path,
+    label: &str,
+    maximum_bytes: usize,
+) -> AppResult<Zeroizing<Vec<u8>>> {
+    let file = File::open(path)
+        .map_err(|error| AppError::Authentication(format!("无法读取{label}：{error}")))?;
+    let mut bytes = Zeroizing::new(Vec::new());
+    file.take((maximum_bytes + 1) as u64)
+        .read_to_end(&mut bytes)
+        .map_err(|error| AppError::Authentication(format!("无法读取{label}：{error}")))?;
+    if bytes.is_empty() {
+        return Err(AppError::Authentication(format!("{label}文件为空")));
+    }
+    if bytes.len() > maximum_bytes {
+        return Err(AppError::Authentication(format!(
+            "{label}文件过大，最大允许 {} KiB",
+            maximum_bytes / 1024
+        )));
+    }
+    Ok(bytes)
+}
+
+fn authentication_material_text<'a>(bytes: &'a [u8], label: &str) -> AppResult<&'a str> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| AppError::Authentication(format!("{label}不是有效的文本格式")))?;
+    if text.as_bytes().contains(&0) {
+        return Err(AppError::Authentication(format!("{label}包含无效的空字符")));
+    }
+    Ok(text)
+}
+
+fn private_key_authentication_error(error: ssh2::Error) -> AppError {
+    let message = match error.code() {
+        SshErrorCode::Session(-1) => {
+            "私钥加载或签名失败，请确认私钥为受支持的 OpenSSH、PEM 或 PKCS#8 格式".into()
+        }
+        SshErrorCode::Session(-16) => {
+            "无法解析或解密私钥，请检查私钥口令、文件格式，并确认文件未损坏".into()
+        }
+        SshErrorCode::Session(-36 | -51) => {
+            "当前私钥格式或算法不受支持，请改用 OpenSSH、PEM 或 PKCS#8 私钥".into()
+        }
+        SshErrorCode::Session(-48) => "无法解密私钥，请检查私钥口令，并确认私钥文件未损坏".into(),
+        SshErrorCode::Session(-18 | -19) => {
+            "服务端拒绝此公钥，请检查登录用户名以及服务端 authorized_keys 配置".into()
+        }
+        SshErrorCode::Session(-9 | -30) => "私钥认证超时，请检查网络后重试".into(),
+        SshErrorCode::Session(-13 | -43 | -45) => {
+            "私钥认证过程中连接已中断，请重新连接后重试".into()
+        }
+        code => {
+            let detail = error.message().trim();
+            if detail.is_empty() || detail == "unknown error" {
+                format!("私钥认证失败（{code}）")
+            } else {
+                format!("私钥认证失败（{code}）：{detail}")
+            }
+        }
+    };
+    AppError::Authentication(message)
 }
 
 const FIDO2_KEY_TYPES: [&str; 4] = [
@@ -2165,6 +2255,76 @@ mod tests {
         assert!(fido2_failure_message(Some("touch required")).contains("触摸"));
         assert!(fido2_failure_message(Some("device removed")).contains("拔出"));
         assert!(fido2_failure_message(Some("agent refused operation")).contains("仍已插入"));
+    }
+
+    #[test]
+    fn private_key_material_is_read_through_unicode_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let unicode_directory = directory.path().join("中文密钥目录");
+        std::fs::create_dir(&unicode_directory).unwrap();
+        let path = unicode_directory.join("登录私钥");
+        std::fs::write(&path, b"-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n").unwrap();
+
+        let bytes = read_authentication_material(&path, "私钥", MAX_PRIVATE_KEY_BYTES).unwrap();
+        assert_eq!(
+            authentication_material_text(&bytes, "私钥").unwrap(),
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nfixture\n"
+        );
+    }
+
+    #[test]
+    fn private_key_material_rejects_empty_oversized_and_non_text_files() {
+        let directory = tempfile::tempdir().unwrap();
+        let empty = directory.path().join("empty-key");
+        std::fs::write(&empty, []).unwrap();
+        assert!(
+            read_authentication_material(&empty, "私钥", MAX_PRIVATE_KEY_BYTES)
+                .unwrap_err()
+                .to_string()
+                .contains("文件为空")
+        );
+
+        let oversized = directory.path().join("oversized-key");
+        std::fs::write(&oversized, vec![b'x'; 1025]).unwrap();
+        assert!(
+            read_authentication_material(&oversized, "私钥", 1024)
+                .unwrap_err()
+                .to_string()
+                .contains("文件过大")
+        );
+
+        assert!(
+            authentication_material_text(&[0xff, 0xfe], "私钥")
+                .unwrap_err()
+                .to_string()
+                .contains("不是有效的文本格式")
+        );
+        assert!(
+            authentication_material_text(b"key\0data", "私钥")
+                .unwrap_err()
+                .to_string()
+                .contains("空字符")
+        );
+    }
+
+    #[test]
+    fn private_key_errors_are_actionable_instead_of_unknown() {
+        let cases = [
+            (-1, "OpenSSH、PEM 或 PKCS#8"),
+            (-16, "私钥口令"),
+            (-36, "格式或算法不受支持"),
+            (-48, "私钥口令"),
+            (-19, "authorized_keys"),
+        ];
+        for (code, expected) in cases {
+            let message = private_key_authentication_error(ssh2::Error::new(
+                SshErrorCode::Session(code),
+                "unknown error",
+            ))
+            .to_string();
+            assert!(message.contains(expected), "{message}");
+            assert!(!message.contains("Session(-1) unknown error"), "{message}");
+        }
     }
 
     #[tokio::test]
@@ -3667,6 +3827,142 @@ mod tests {
         let connected = verified_connection(&db, &profile, false).await.unwrap();
         assert!(connected.session.authenticated());
     }
+
+    #[tokio::test]
+    async fn live_ssh_encrypted_private_key_works_from_a_unicode_path() {
+        let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let encrypted_key =
+            std::env::var("CNSHELL_TEST_SSH_ENCRYPTED_KEY").expect("encrypted key path");
+        let passphrase = std::env::var("CNSHELL_TEST_SSH_KEY_PASSPHRASE").expect("key passphrase");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("SSH username");
+        let id = format!("encrypted-key-{}", Uuid::new_v4());
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = delete_credential(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(id.clone());
+        let directory = tempfile::tempdir().unwrap();
+        let unicode_directory = directory.path().join("中文私钥目录");
+        std::fs::create_dir(&unicode_directory).unwrap();
+        let unicode_key = unicode_directory.join("加密登录私钥");
+        std::fs::copy(encrypted_key, &unicode_key).unwrap();
+        let profile = ConnectionProfile {
+            id,
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "encrypted unicode key".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username,
+            auth_type: "privateKey".into(),
+            private_key_path: Some(unicode_key.to_string_lossy().into_owned()),
+            certificate_path: None,
+            host_key_policy: "acceptNew".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            has_credential: true,
+            created_at: "".into(),
+            updated_at: "".into(),
+            last_connected_at: None,
+        };
+        let db = Database::open(&directory.path().join("encrypted-key.sqlite"))
+            .await
+            .unwrap();
+        save_credential(&profile.id, "wrong-passphrase").unwrap();
+        let error = match verified_connection(&db, &profile, false).await {
+            Ok(_) => panic!("wrong private-key passphrase unexpectedly authenticated"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("私钥口令"), "{error}");
+        save_credential(&profile.id, &passphrase).unwrap();
+        let connected = verified_connection(&db, &profile, false).await.unwrap();
+        assert!(connected.session.authenticated());
+    }
+
+    #[tokio::test]
+    async fn live_ssh_private_key_authentication_works_through_a_jump_host() {
+        let Ok(port) = std::env::var("CNSHELL_TEST_SSH_PORT") else {
+            return;
+        };
+        let key = std::env::var("CNSHELL_TEST_SSH_KEY").expect("SSH private key");
+        let username = std::env::var("CNSHELL_TEST_SSH_USER").expect("SSH username");
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("jump-key.sqlite"))
+            .await
+            .unwrap();
+        let jump_id = format!("jump-host-{}", Uuid::new_v4());
+        let jump_input = crate::models::SaveConnectionInput {
+            id: jump_id.clone(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "jump host".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username: username.clone(),
+            auth_type: "privateKey".into(),
+            private_key_path: Some(key.clone()),
+            certificate_path: None,
+            host_key_policy: "acceptNew".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            credential: None,
+        };
+        db.save_connection(&jump_input, None).await.unwrap();
+        let proxy_id = format!("jump-proxy-{}", Uuid::new_v4());
+        db.save_proxy(
+            &crate::models::SaveProxyInput {
+                id: proxy_id.clone(),
+                name: "jump proxy".into(),
+                proxy_type: "sshJump".into(),
+                host: "".into(),
+                port: 0,
+                username: None,
+                jump_connection_id: Some(jump_id),
+                credential: None,
+            },
+            None,
+        )
+        .await
+        .unwrap();
+        let target = ConnectionProfile {
+            id: format!("jump-target-{}", Uuid::new_v4()),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "jump target".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().unwrap(),
+            username,
+            auth_type: "privateKey".into(),
+            private_key_path: Some(key),
+            certificate_path: None,
+            host_key_policy: "acceptNew".into(),
+            note: "".into(),
+            tags: vec![],
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: Some(proxy_id),
+            environment: Default::default(),
+            has_credential: false,
+            created_at: "".into(),
+            updated_at: "".into(),
+            last_connected_at: None,
+        };
+        let connected = verified_connection(&db, &target, false).await.unwrap();
+        assert!(connected.session.authenticated());
+    }
+
     #[tokio::test]
     async fn live_ssh_soak() {
         let Ok(seconds) = std::env::var("CNSHELL_SOAK_SECONDS") else {

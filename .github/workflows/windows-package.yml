@@ -19,6 +19,7 @@ on:
       - "scripts/patches/**"
       - "scripts/test-windows-installer.ps1"
       - "scripts/verify-windows-pe.ps1"
+      - "scripts/verify-windows-ssh-backend.ps1"
       - "src/**"
       - "src-tauri/**"
   workflow_dispatch:
@@ -86,7 +87,8 @@ jobs:
             "scripts/build-kermit-sidecar.ps1",
             "scripts/build-mcp-sidecar.ps1",
             "scripts/test-windows-installer.ps1",
-            "scripts/verify-windows-pe.ps1"
+            "scripts/verify-windows-pe.ps1",
+            "scripts/verify-windows-ssh-backend.ps1"
           )) {
             $tokens = $null
             $errors = $null
@@ -99,6 +101,9 @@ jobs:
             }
           }
           if ($failed) { throw "PowerShell packaging script parse failed" }
+      - name: Verify Windows SSH OpenSSL backend
+        shell: powershell
+        run: ./scripts/verify-windows-ssh-backend.ps1 -Target ${{ matrix.target }}
       - name: Build pinned Windows G-Kermit
         shell: powershell
         env:

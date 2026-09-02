@@ -70,6 +70,11 @@ jobs:
           workspaces: src-tauri
           key: windows-core
       - run: npm ci
+      - name: Verify Windows SSH OpenSSL backend
+        shell: powershell
+        run: |
+          ./scripts/verify-windows-ssh-backend.ps1 -Target x86_64-pc-windows-msvc
+          ./scripts/verify-windows-ssh-backend.ps1 -Target aarch64-pc-windows-msvc
       - run: npm run lint
       - run: npm run test
       - run: npm run build

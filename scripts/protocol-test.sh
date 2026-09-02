@@ -16,9 +16,10 @@ trap cleanup EXIT
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/host_key"
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/client_key"
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/wrong_key"
+ssh-keygen -q -t ed25519 -N 'cnshell-test-passphrase' -f "$TMP/encrypted_client_key"
 ssh-keygen -q -t ed25519 -N '' -f "$TMP/user_ca"
 ssh-keygen -q -s "$TMP/user_ca" -I cnshell-certificate-test -n "$USER_NAME" -V -1m:+5m "$TMP/client_key.pub"
-cp "$TMP/client_key.pub" "$TMP/authorized_keys"
+cat "$TMP/client_key.pub" "$TMP/encrypted_client_key.pub" > "$TMP/authorized_keys"
 chmod 600 "$TMP/authorized_keys"
 
 /usr/sbin/sshd -D -e \
@@ -55,6 +56,8 @@ nc -z 127.0.0.1 "$PASSWORD_PORT"
 CNSHELL_TEST_SSH_PORT="$PORT" \
 CNSHELL_TEST_SSH_KEY="$TMP/client_key" \
 CNSHELL_TEST_SSH_BAD_KEY="$TMP/wrong_key" \
+CNSHELL_TEST_SSH_ENCRYPTED_KEY="$TMP/encrypted_client_key" \
+CNSHELL_TEST_SSH_KEY_PASSPHRASE='cnshell-test-passphrase' \
 CNSHELL_TEST_SSH_CERT="$TMP/client_key-cert.pub" \
 CNSHELL_TEST_SSH_USER="$USER_NAME" \
 CNSHELL_TEST_PASSWORD_SSH_PORT="$PASSWORD_PORT" \

@@ -30,6 +30,7 @@ const requiredDeliverables = [
   "scripts/build-mcp-sidecar.sh",
   "scripts/build-mcp-sidecar.ps1",
   "scripts/verify-windows-pe.ps1",
+  "scripts/verify-windows-ssh-backend.ps1",
 ];
 
 describe("PLAN deliverables", () => {
@@ -92,5 +93,29 @@ describe("PLAN deliverables", () => {
     expect(acceptance).toContain("ResizeObserver");
     expect(acceptance).not.toContain("自动化屏幕 resize 捕获仍待");
     expect(plan).toContain("前端回归测试已覆盖 `ResizeObserver`");
+  });
+
+  it("forces Windows private-key authentication onto the vendored OpenSSL backend", () => {
+    const cargo = readFileSync(resolve("src-tauri/Cargo.toml"), "utf8");
+    const verifier = readFileSync(
+      resolve("scripts/verify-windows-ssh-backend.ps1"),
+      "utf8",
+    );
+
+    expect(cargo).toContain('"vendored-openssl"');
+    expect(cargo).toContain('"openssl-on-win32"');
+    expect(verifier).toContain('ssh2 feature "openssl-on-win32"');
+    expect(verifier).toContain('libssh2-sys feature "openssl-on-win32"');
+
+    for (const workflow of [
+      ".github/workflows/ci.yml",
+      ".github/workflows/windows-package.yml",
+      ".github/workflows/beta-release.yml",
+      ".github/workflows/release.yml",
+    ]) {
+      expect(readFileSync(resolve(workflow), "utf8")).toContain(
+        "verify-windows-ssh-backend.ps1",
+      );
+    }
   });
 });

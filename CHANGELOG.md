@@ -2,6 +2,18 @@
 
 本项目采用语义化版本号。Beta 使用独立 updater 签名与更新通道；正式签名、公证与稳定更新通道完成前不标记为正式稳定版。
 
+## 未发布
+
+### 修复
+
+- Windows SSH 私钥认证统一改用随应用构建的 OpenSSL 后端，支持现代 OpenSSH、PEM、PKCS#8、Ed25519 与加密私钥，不再因 WinCNG 兼容性不足显示 `[Session(-1)] unknown error`。
+- 私钥和 SSH Certificate 改为由 Rust 安全读取后从内存认证，支持 Windows 中文、空格及共享目录路径，并对空文件、超大文件、损坏格式、错误口令、服务端拒绝和连接中断给出可操作的中文提示。
+- SSH Jump 桥接通道改为非阻塞泵送，避免多阶段公钥认证时读操作长期占用 libssh2 会话锁而导致认证超时。
+
+### 验证
+
+- 增加 Windows x64/ARM64 OpenSSL 后端构建门禁，以及中文路径、加密 Ed25519、错误口令、SSH Certificate 和 SSH Jump 私钥认证回归测试。
+
 ## 0.2.0-beta.8（设置中心与无障碍优化版）
 
 ### 新增
