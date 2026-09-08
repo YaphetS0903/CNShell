@@ -924,16 +924,43 @@ export interface MonitorSnapshot {
 export interface NetworkInterface {
   name: string;
   addresses: string[];
+  rxBytesPerSecond: number;
+  txBytesPerSecond: number;
+  rxTotalBytes: number;
+  txTotalBytes: number;
+}
+
+export interface CpuUsageBreakdown {
+  userPercent: number;
+  systemPercent: number;
+  nicePercent: number;
+  idlePercent: number;
+  ioWaitPercent: number;
+  irqPercent: number;
+  softIrqPercent: number;
+  stealPercent: number;
 }
 
 export interface SystemInfo {
   hostname: string;
   os: string;
+  kernelName: string;
   kernel: string;
   architecture: string;
   cpuModel: string;
   cpuCores: number;
+  cpuFrequencyMhz: number;
+  cpuCache: string;
+  cpuBogomips: number;
+  cpuUsage: CpuUsageBreakdown;
+  memoryUsedBytes: number;
   memoryTotalBytes: number;
+  memoryAvailableBytes: number;
+  swapUsedBytes: number;
+  swapTotalBytes: number;
+  swapAvailableBytes: number;
+  uptimeSeconds: number;
+  load: [number, number, number];
   interfaces: NetworkInterface[];
   disks: DiskInfo[];
 }

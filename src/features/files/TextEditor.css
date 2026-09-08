@@ -65,6 +65,8 @@
 
 .text-editor > footer {
   display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
   align-items: center;
   justify-content: space-between;
   color: var(--muted);
@@ -73,6 +75,7 @@
 
 .text-editor > footer > div {
   display: flex;
+  flex-wrap: wrap;
   gap: 7px;
 }
 

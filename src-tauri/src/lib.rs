@@ -57,6 +57,7 @@ use serial::SerialManager;
 use session_log::SessionLogManager;
 use sftp::TransferManager;
 use ssh::SessionManager;
+use std::sync::atomic::{AtomicBool, Ordering};
 use task::TaskManager;
 #[cfg(target_os = "macos")]
 use tauri::menu::{
@@ -89,6 +90,15 @@ pub struct AppState {
     collaboration: CollaborationManager,
     relay_terminal: TeamRelayTerminalManager,
     mcp: McpManager,
+}
+
+#[derive(Default)]
+struct ExitApproval(AtomicBool);
+
+#[tauri::command]
+fn application_exit(app: tauri::AppHandle, approval: tauri::State<'_, ExitApproval>) {
+    approval.0.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 pub fn rdp_preflight_json() -> String {
@@ -150,7 +160,11 @@ fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> 
         .hide_others()
         .show_all()
         .separator()
-        .quit()
+        .item(
+            &MenuItemBuilder::with_id("quit_app", "退出 CNshell")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app)?,
+        )
         .build()?;
     let file = SubmenuBuilder::new(app, "文件")
         .item(
@@ -180,7 +194,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> 
         .build()?;
     let view = SubmenuBuilder::new(app, "显示")
         .item(
-            &MenuItemBuilder::with_id("toggle_files", "切换底部文件面板")
+            &MenuItemBuilder::with_id("toggle_files", "显示/隐藏底部工具面板")
                 .accelerator("CmdOrCtrl+J")
                 .build(app)?,
         )
@@ -201,6 +215,7 @@ fn build_menu(app: &tauri::App) -> tauri::Result<tauri::menu::Menu<tauri::Wry>> 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(ExitApproval::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -260,16 +275,22 @@ pub fn run() {
             Ok(())
         })
         .on_menu_event(|app, event| {
+            if event.id().as_ref() == "quit_app" {
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Err(error) = window.emit("application-exit-requested", ()) {
+                        tracing::error!("请求前端确认退出失败：{error}");
+                    }
+                } else {
+                    app.exit(0);
+                }
+                return;
+            }
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.emit("menu-action", event.id().as_ref());
             }
         })
-        .on_window_event(|window, event| {
-            if matches!(event, tauri::WindowEvent::Destroyed) {
-                cleanup_app_state(&window.state::<AppState>());
-            }
-        })
         .invoke_handler(tauri::generate_handler![
+            application_exit,
             commands::connection_list,
             commands::connection_deleted_list,
             commands::folder_list,
@@ -493,12 +514,19 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("CNshell 构建失败")
-        .run(|app, event| {
-            if matches!(
-                event,
-                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
-            ) {
-                cleanup_app_state(&app.state::<AppState>());
+        .run(|app, event| match event {
+            tauri::RunEvent::ExitRequested { api, .. } => {
+                let approval = app.state::<ExitApproval>();
+                if !approval.0.load(Ordering::SeqCst)
+                    && let Some(window) = app.get_webview_window("main")
+                {
+                    api.prevent_exit();
+                    if let Err(error) = window.emit("application-exit-requested", ()) {
+                        tracing::error!("请求前端确认退出失败：{error}");
+                    }
+                }
             }
+            tauri::RunEvent::Exit => cleanup_app_state(&app.state::<AppState>()),
+            _ => {}
         });
 }

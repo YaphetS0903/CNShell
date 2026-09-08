@@ -12,7 +12,43 @@
 }
 
 .terminal-area {
+  position: relative;
   background: var(--terminal-area-background, var(--editor-bg));
+}
+
+.bottom-panel-reopen {
+  position: absolute;
+  z-index: 7;
+  right: 12px;
+  bottom: 10px;
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, var(--blue));
+  border-radius: 7px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  box-shadow: var(--shadow);
+  color: var(--muted);
+  font-size: 11px;
+  backdrop-filter: blur(12px);
+}
+
+.bottom-panel-reopen:hover,
+.bottom-panel-reopen:focus-visible {
+  border-color: color-mix(in srgb, var(--blue) 60%, var(--border));
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.bottom-panel-reopen svg {
+  color: var(--blue);
+}
+
+.bottom-panel-reopen kbd {
+  padding: 1px 4px;
+  font-size: 9px;
 }
 
 .tab-menu-trigger {
@@ -188,6 +224,14 @@
   color: inherit;
   text-align: left;
   font-size: 11px;
+}
+.terminal-context-menu button span {
+  flex: 1;
+}
+.terminal-context-menu button kbd {
+  margin-left: auto;
+  padding: 1px 4px;
+  font-size: 9px;
 }
 .terminal-context-menu button:hover:not(:disabled),
 .terminal-context-menu button:focus-visible {

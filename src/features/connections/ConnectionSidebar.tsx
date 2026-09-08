@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { ChevronRight, CircleOff, Clock3, Copy, Download, Edit3, Folder, FolderInput, Monitor, MoreHorizontal, Network, Plus, RotateCcw, Search, Server, Share, ShieldAlert, Stethoscope, TerminalSquare, Trash2, Usb } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { useCallback, useMemo, useState, useEffect } from "react";
@@ -13,7 +14,7 @@ import { usePlatformCapabilities } from "../../lib/platform";
 
 export function ConnectionSidebar({ connect }: { connect: (profile: ConnectionProfile) => Promise<void> }) {
   const platform=usePlatformCapabilities();
-  const { connections, openConnectionEditor, refreshConnections, setError } = useAppStore();
+  const { connections, openConnectionEditor, refreshConnections, setError } = useAppStore(useShallow((state) => ({connections: state.connections, openConnectionEditor: state.openConnectionEditor, refreshConnections: state.refreshConnections, setError: state.setError})));
   const [query, setQuery] = useState(""); const [menuId, setMenuId] = useState<string|null>(null);
   const [tunnelConnection,setTunnelConnection]=useState<ConnectionProfile|null>(null);
   const [diagnosticConnection,setDiagnosticConnection]=useState<ConnectionProfile|null>(null);

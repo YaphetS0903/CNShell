@@ -140,6 +140,14 @@ const browserFiles:Record<string,RemoteFile[]>={
 
 export const api = {
   isDesktop: isTauri,
+  async exitApplication(): Promise<void> {
+    if (isTauri()) await invoke("application_exit");
+  },
+  async onApplicationExitRequested(handler: () => void): Promise<UnlistenFn> {
+    return isTauri()
+      ? listen("application-exit-requested", () => handler())
+      : () => undefined;
+  },
   async platformCapabilities(): Promise<PlatformCapabilities> {
     if (isTauri()) return invoke("platform_capabilities");
     const windows = typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);

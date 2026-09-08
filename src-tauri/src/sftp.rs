@@ -933,7 +933,7 @@ pub async fn transfer_file_direct(
     validate_remote_path(&remote_root)?;
     let profile = manager.profile(&session_id)?;
     let mut transport = manager
-        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .acquire_file_transfer_transport(&db, &profile)
         .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
@@ -1413,7 +1413,7 @@ pub async fn archive(
     }
     let profile = manager.profile(&session_id)?;
     let mut transport = manager
-        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .acquire_file_transfer_transport(&db, &profile)
         .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
@@ -1468,7 +1468,7 @@ pub async fn open_local(
     validate_remote_path(&path)?;
     let profile = manager.profile(&session_id)?;
     let mut transport = manager
-        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .acquire_file_transfer_transport(&db, &profile)
         .await?;
     tokio::task::spawn_blocking(move || {
         let result = (|| {
@@ -1586,7 +1586,7 @@ pub async fn transfer_directory(
     }
     let profile = manager.profile(&session_id)?;
     let mut transport = manager
-        .acquire_auxiliary_transport(&db, &profile, "sftp")
+        .acquire_file_transfer_transport(&db, &profile)
         .await?;
     tokio::task::spawn_blocking(move || {
         let identifier = Uuid::new_v4().to_string();
@@ -1902,6 +1902,7 @@ where
             pulse(transferred)?;
         }
         sync_writer(&mut local)?;
+        drop(local);
         if transferred != expected_bytes {
             return Err(AppError::Remote(format!(
                 "下载大小校验失败：预期 {expected_bytes} 字节，实际 {transferred} 字节"
@@ -1916,13 +1917,46 @@ where
     result
 }
 
-#[derive(Clone, Default)]
+const MAX_CONCURRENT_TRANSFERS: usize = 4;
+
+#[derive(Clone)]
 pub struct TransferManager {
     controls: Arc<parking_lot::Mutex<std::collections::HashMap<String, Arc<AtomicU8>>>>,
     targets: Arc<parking_lot::Mutex<std::collections::HashMap<String, String>>>,
+    slots: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for TransferManager {
+    fn default() -> Self {
+        Self {
+            controls: Default::default(),
+            targets: Default::default(),
+            slots: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_TRANSFERS)),
+        }
+    }
 }
 
 impl TransferManager {
+    async fn acquire_slot(&self, token: &AtomicU8) -> AppResult<tokio::sync::OwnedSemaphorePermit> {
+        let cancelled = async {
+            loop {
+                if token.load(Ordering::Acquire) == 2 {
+                    return Err(AppError::Remote("传输已取消".into()));
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+        };
+        // A normal transfer queue has no SSH operation timeout. A paused transfer
+        // keeps its own slot; other slots and directory browsing remain available.
+        tokio::select! {
+            biased;
+            result = cancelled => result,
+            result = self.slots.clone().acquire_owned() => {
+                result.map_err(|_| AppError::Unavailable("传输队列已关闭".into()))
+            }
+        }
+    }
+
     pub fn token(&self, id: &str, target: &str) -> AppResult<Arc<AtomicU8>> {
         let mut targets = self.targets.lock();
         if targets.values().any(|running| running == target) {
@@ -1933,6 +1967,18 @@ impl TransferManager {
         let token = Arc::new(AtomicU8::new(0));
         self.controls.lock().insert(id.into(), token.clone());
         Ok(token)
+    }
+
+    fn retarget(&self, id: &str, target: &str) -> AppResult<()> {
+        let mut targets = self.targets.lock();
+        if targets
+            .iter()
+            .any(|(other, running)| other != id && running == target)
+        {
+            return Err(AppError::Validation("同一目标已有传输任务正在运行".into()));
+        }
+        targets.insert(id.into(), target.into());
+        Ok(())
     }
     pub fn cancel(&self, id: &str) -> bool {
         self.controls
@@ -1973,11 +2019,224 @@ impl TransferManager {
     }
 }
 
+const TRANSFER_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
+
+struct TransferDestination<'a> {
+    manager: &'a TransferManager,
+    connection_id: &'a str,
+}
+
+impl TransferDestination<'_> {
+    fn reserve(&self, task: &TransferTask) -> AppResult<()> {
+        self.manager.retarget(
+            &task.id,
+            &transfer_target_key(&task.direction, self.connection_id, &task.destination),
+        )
+    }
+}
+
+trait TransferEventSink {
+    fn transfer_event(&self, task: &TransferTask);
+}
+
+impl TransferEventSink for AppHandle {
+    fn transfer_event(&self, task: &TransferTask) {
+        let _ = self.emit("transfer-progress", task.clone());
+    }
+}
+
+#[derive(Default)]
+struct TransferProgress {
+    last_emit: Option<Instant>,
+    last_status: String,
+    last_bytes: i64,
+}
+
+impl TransferProgress {
+    fn should_emit(&mut self, status: &str, bytes: i64, now: Instant) -> bool {
+        let due = self
+            .last_emit
+            .is_none_or(|last| now.duration_since(last) >= TRANSFER_PROGRESS_INTERVAL);
+        if self.last_emit.is_some()
+            && status == self.last_status
+            && (!due || bytes == self.last_bytes)
+        {
+            return false;
+        }
+        self.last_emit = Some(now);
+        self.last_status = status.into();
+        self.last_bytes = bytes;
+        true
+    }
+
+    fn emit(&mut self, events: &impl TransferEventSink, task: &TransferTask) {
+        if self.should_emit(&task.status, task.transferred_bytes, Instant::now()) {
+            events.transfer_event(task);
+        }
+    }
+
+    fn pulse(
+        &mut self,
+        events: &impl TransferEventSink,
+        task: &mut TransferTask,
+        token: &AtomicU8,
+    ) -> AppResult<()> {
+        while token.load(Ordering::Acquire) == 1 {
+            task.status = "paused".into();
+            self.emit(events, task);
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        if token.load(Ordering::Acquire) == 2 {
+            return Err(AppError::Remote("传输已取消".into()));
+        }
+        task.status = "running".into();
+        self.emit(events, task);
+        Ok(())
+    }
+}
+
+/// Returns false when the user chose to skip an existing destination.
+fn resolve_local_destination(task: &mut TransferTask) -> AppResult<bool> {
+    if !Path::new(&task.destination).exists() {
+        return Ok(true);
+    }
+    match task.conflict_policy.as_str() {
+        "skip" => return Ok(false),
+        "rename" => {
+            let original = task.destination.clone();
+            let mut index = 1;
+            while Path::new(&task.destination).exists() {
+                task.destination = renamed_path(&original, index);
+                index += 1;
+            }
+        }
+        "overwrite" => {}
+        _ => {
+            return Err(AppError::Validation(
+                "本地目标已存在，请选择覆盖、跳过或重命名".into(),
+            ));
+        }
+    }
+    Ok(true)
+}
+
+fn resolve_remote_destination(sftp: &Sftp, task: &mut TransferTask) -> AppResult<bool> {
+    if sftp.stat(&remote_path(&task.destination)?).is_err() {
+        return Ok(true);
+    }
+    match task.conflict_policy.as_str() {
+        "skip" => return Ok(false),
+        "rename" => {
+            let original = task.destination.clone();
+            let mut index = 1;
+            while sftp.stat(&remote_path(&task.destination)?).is_ok() {
+                task.destination = renamed_remote_path(&original, index);
+                index += 1;
+            }
+        }
+        "overwrite" => {}
+        _ => {
+            return Err(AppError::Validation(
+                "远端目标已存在，请选择覆盖、跳过或重命名".into(),
+            ));
+        }
+    }
+    Ok(true)
+}
+
+fn download_sftp_file(
+    sftp: &Sftp,
+    task: &mut TransferTask,
+    token: &AtomicU8,
+    events: &impl TransferEventSink,
+    progress: &mut TransferProgress,
+    reservation: &TransferDestination<'_>,
+) -> AppResult<()> {
+    if !resolve_local_destination(task)? {
+        return Ok(());
+    }
+    reservation.reserve(task)?;
+    let source = remote_path(&task.source)?;
+    task.total_bytes = sftp.stat(&source)?.size.unwrap_or(0) as i64;
+    let mut remote = sftp.open(&source)?;
+    let part = PathBuf::from(format!("{}.cnshell-part-{}", task.destination, task.id));
+    let destination = PathBuf::from(&task.destination);
+    download_to_path(
+        &mut remote,
+        &part,
+        &destination,
+        task.total_bytes,
+        &mut vec![0; 256 * 1024],
+        |path| std::fs::File::create(path),
+        |file| file.sync_all(),
+        |transferred| {
+            task.transferred_bytes = transferred;
+            progress.pulse(events, task, token)
+        },
+    )?;
+    Ok(())
+}
+
+fn upload_sftp_file(
+    sftp: &Sftp,
+    task: &mut TransferTask,
+    token: &AtomicU8,
+    events: &impl TransferEventSink,
+    progress: &mut TransferProgress,
+    reservation: &TransferDestination<'_>,
+) -> AppResult<()> {
+    if !resolve_remote_destination(sftp, task)? {
+        return Ok(());
+    }
+    reservation.reserve(task)?;
+    let mut local = std::fs::File::open(&task.source)?;
+    task.total_bytes = local.metadata()?.len() as i64;
+    let destination = remote_path(&task.destination)?;
+    let mut temporary = destination.clone().into_os_string();
+    temporary.push(format!(".cnshell-part-{}", task.id));
+    let temporary = PathBuf::from(temporary);
+    let result = (|| {
+        let mut remote = sftp.open_mode(
+            &temporary,
+            OpenFlags::WRITE | OpenFlags::CREATE | OpenFlags::TRUNCATE,
+            0o600,
+            OpenType::File,
+        )?;
+        let mut buffer = vec![0; 256 * 1024];
+        loop {
+            progress.pulse(events, task, token)?;
+            let read = local.read(&mut buffer)?;
+            if read == 0 {
+                break;
+            }
+            remote.write_all(&buffer[..read])?;
+            task.transferred_bytes += read as i64;
+            progress.emit(events, task);
+        }
+        remote.fsync()?;
+        drop(remote);
+        let actual = sftp.stat(&temporary)?.size.unwrap_or(0) as i64;
+        if task.transferred_bytes != task.total_bytes || actual != task.total_bytes {
+            return Err(AppError::Remote(format!(
+                "上传大小校验失败：预期 {} 字节，本地已发送 {} 字节，远端临时文件 {} 字节",
+                task.total_bytes, task.transferred_bytes, actual
+            )));
+        }
+        atomic_replace(sftp, &temporary, &destination)
+    })();
+    if result.is_err() {
+        let _ = sftp.unlink(&temporary);
+    }
+    result
+}
+
 fn transfer_with_scp(
     transport: &crate::ssh::TransportLease,
     task: &mut TransferTask,
     token: &AtomicU8,
-    app: &AppHandle,
+    events: &impl TransferEventSink,
+    progress: &mut TransferProgress,
+    reservation: &TransferDestination<'_>,
 ) -> AppResult<()> {
     let remote = remote_path(if task.direction == "upload" {
         &task.destination
@@ -2000,68 +2259,41 @@ fn transfer_with_scp(
             None,
         )?;
         loop {
-            if token.load(Ordering::Relaxed) == 2 {
-                return Err(AppError::Remote("传输已取消".into()));
-            }
+            progress.pulse(events, task, token)?;
             let read = local.read(&mut buffer)?;
             if read == 0 {
                 break;
             }
             channel.write_all(&buffer[..read])?;
             task.transferred_bytes += read as i64;
-            let _ = app.emit("transfer-progress", task.clone());
+            progress.emit(events, task);
         }
         channel.send_eof()?;
         channel.wait_eof()?;
         channel.close()?;
         channel.wait_close()?;
     } else {
-        let destination_exists = Path::new(&task.destination).exists();
-        if destination_exists {
-            match task.conflict_policy.as_str() {
-                "skip" => return Ok(()),
-                "rename" => {
-                    let original = task.destination.clone();
-                    let mut index = 1;
-                    while Path::new(&task.destination).exists() {
-                        task.destination = renamed_path(&original, index);
-                        index += 1;
-                    }
-                }
-                "overwrite" => {}
-                _ => {
-                    return Err(AppError::Validation(
-                        "本地目标已存在，请选择覆盖、跳过或重命名".into(),
-                    ));
-                }
-            }
+        if !resolve_local_destination(task)? {
+            return Ok(());
         }
+        reservation.reserve(task)?;
         let (mut channel, stat) = transport.connected().session.scp_recv(&remote)?;
         task.total_bytes = stat.size() as i64;
-        let temporary = format!("{}.cnshell-part-{}", task.destination, task.id);
-        let mut local = std::fs::File::create(&temporary)?;
-        let result = (|| -> AppResult<()> {
-            loop {
-                if token.load(Ordering::Relaxed) == 2 {
-                    return Err(AppError::Remote("传输已取消".into()));
-                }
-                let read = channel.read(&mut buffer)?;
-                if read == 0 {
-                    break;
-                }
-                local.write_all(&buffer[..read])?;
-                task.transferred_bytes += read as i64;
-                let _ = app.emit("transfer-progress", task.clone());
-            }
-            local.sync_all()?;
-            drop(local);
-            std::fs::rename(&temporary, &task.destination)?;
-            Ok(())
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        result?;
+        let temporary = PathBuf::from(format!("{}.cnshell-part-{}", task.destination, task.id));
+        let destination = PathBuf::from(&task.destination);
+        download_to_path(
+            &mut channel,
+            &temporary,
+            &destination,
+            task.total_bytes,
+            &mut buffer,
+            |path| std::fs::File::create(path),
+            |file| file.sync_all(),
+            |transferred| {
+                task.transferred_bytes = transferred;
+                progress.pulse(events, task, token)
+            },
+        )?;
     }
     if task.transferred_bytes != task.total_bytes {
         return Err(AppError::Remote(format!(
@@ -2070,6 +2302,48 @@ fn transfer_with_scp(
         )));
     }
     Ok(())
+}
+
+fn run_queued_transfer(
+    mut transport: crate::ssh::TransportLease,
+    mut task: TransferTask,
+    token: &AtomicU8,
+    events: &impl TransferEventSink,
+    reservation: &TransferDestination<'_>,
+) -> TransferTask {
+    let mut progress = TransferProgress::default();
+    let result = progress.pulse(events, &mut task, token).and_then(|_| {
+        match transport.connected().session.sftp() {
+            Ok(sftp) if task.direction == "download" => {
+                download_sftp_file(&sftp, &mut task, token, events, &mut progress, reservation)
+            }
+            Ok(sftp) => {
+                upload_sftp_file(&sftp, &mut task, token, events, &mut progress, reservation)
+            }
+            Err(_) => transfer_with_scp(
+                &transport,
+                &mut task,
+                token,
+                events,
+                &mut progress,
+                reservation,
+            ),
+        }
+    });
+    match result {
+        Ok(()) => task.status = "completed".into(),
+        Err(error) => {
+            transport.discard();
+            task.status = if token.load(Ordering::Acquire) == 2 {
+                "cancelled"
+            } else {
+                "failed"
+            }
+            .into();
+            task.error = Some(error.to_string());
+        }
+    }
+    task
 }
 
 pub async fn enqueue(
@@ -2114,13 +2388,26 @@ pub async fn enqueue(
     }
     let returned = task.clone();
     tauri::async_runtime::spawn(async move {
+        let _slot = match transfers.acquire_slot(&token).await {
+            Ok(slot) => slot,
+            Err(error) => {
+                task.status = if token.load(Ordering::Acquire) == 2 {
+                    "cancelled"
+                } else {
+                    "failed"
+                }
+                .into();
+                task.error = Some(error.to_string());
+                let _ = db.upsert_transfer(&task).await;
+                let _ = app.emit("transfer-progress", task.clone());
+                transfers.finish(&task.id);
+                return;
+            }
+        };
         task.status = "running".into();
         let _ = db.upsert_transfer(&task).await;
         let _ = app.emit("transfer-progress", task.clone());
-        let transport = match manager
-            .acquire_auxiliary_transport(&db, &profile, "sftp")
-            .await
-        {
+        let transport = match manager.acquire_file_transfer_transport(&db, &profile).await {
             Ok(value) => value,
             Err(error) => {
                 task.status = "failed".into();
@@ -2132,56 +2419,26 @@ pub async fn enqueue(
             }
         };
         let app_clone = app.clone();
-        let mut work_task = task.clone();
-        let db_clone = db.clone();
+        let work_task = task.clone();
         let token_clone = token.clone();
-        let result = tokio::task::spawn_blocking(move || -> AppResult<TransferTask> {
-            let mut transport=transport; let result=(|| -> AppResult<TransferTask> { let sftp=match transport.connected().session.sftp(){Ok(sftp)=>sftp,Err(_)=>{transfer_with_scp(&transport,&mut work_task,&token_clone,&app_clone)?;work_task.status="completed".into();return Ok(work_task);}}; let mut buffer=vec![0_u8;256*1024];
-            if work_task.direction=="download" {
-                let destination_exists=Path::new(&work_task.destination).exists();if destination_exists{match work_task.conflict_policy.as_str(){"skip"=>{work_task.status="completed".into();return Ok(work_task);},"rename"=>{let original=work_task.destination.clone();let mut index=1;while Path::new(&work_task.destination).exists(){work_task.destination=renamed_path(&original,index);index+=1;}},"overwrite"=>{},_=>return Err(AppError::Validation("本地目标已存在，请选择覆盖、跳过或重命名".into()))}}
-                let source=remote_path(&work_task.source)?;let stat=sftp.stat(&source)?; work_task.total_bytes=stat.size.unwrap_or(0) as i64;
-                let mut remote=sftp.open(&source)?; let part=PathBuf::from(format!("{}.cnshell-part-{}",work_task.destination,work_task.id));
-                let destination=PathBuf::from(&work_task.destination);
-                let total_bytes=work_task.total_bytes;
-                download_to_path(&mut remote,&part,&destination,total_bytes,&mut buffer,|path|std::fs::File::create(path),|local|local.sync_all(),|transferred|{
-                    while token_clone.load(Ordering::Relaxed)==1{work_task.status="paused".into();let _=app_clone.emit("transfer-progress",work_task.clone());std::thread::sleep(Duration::from_millis(100));}
-                    work_task.status="running".into();
-                    if token_clone.load(Ordering::Relaxed)==2{return Err(AppError::Remote("传输已取消".into()));}
-                    work_task.transferred_bytes=transferred;let _=app_clone.emit("transfer-progress",work_task.clone());Ok(())
-                })?;
-            } else {
-                if sftp.stat(Path::new(&work_task.destination)).is_ok(){match work_task.conflict_policy.as_str(){"skip"=>{work_task.status="completed".into();return Ok(work_task);},"rename"=>{let original=work_task.destination.clone();let mut index=1;while sftp.stat(Path::new(&work_task.destination)).is_ok(){work_task.destination=renamed_remote_path(&original,index);index+=1;}},"overwrite"=>{},_=>return Err(AppError::Validation("远端目标已存在，请选择覆盖、跳过或重命名".into()))}}
-                let mut local=std::fs::File::open(&work_task.source)?; work_task.total_bytes=local.metadata()?.len() as i64;
-                let temporary=PathBuf::from(format!("{}.cnshell-part-{}",work_task.destination,work_task.id));
-                let upload=(||->AppResult<()>{
-                    let mut remote=sftp.open_mode(&temporary,OpenFlags::WRITE|OpenFlags::CREATE|OpenFlags::TRUNCATE,0o600,OpenType::File)?;
-                    loop { while token_clone.load(Ordering::Relaxed)==1{work_task.status="paused".into();let _=app_clone.emit("transfer-progress",work_task.clone());std::thread::sleep(Duration::from_millis(100));}work_task.status="running".into();if token_clone.load(Ordering::Relaxed)==2{return Err(AppError::Remote("传输已取消".into()));} let read=local.read(&mut buffer)?;if read==0{break;}remote.write_all(&buffer[..read])?;work_task.transferred_bytes+=read as i64;let _=app_clone.emit("transfer-progress",work_task.clone()); }
-                    remote.fsync()?;drop(remote);
-                    let actual=sftp.stat(&temporary)?.size.unwrap_or(0)as i64;if work_task.transferred_bytes!=work_task.total_bytes||actual!=work_task.total_bytes{return Err(AppError::Remote(format!("上传大小校验失败：预期 {} 字节，本地已发送 {} 字节，远端临时文件 {} 字节",work_task.total_bytes,work_task.transferred_bytes,actual)));}
-                    atomic_replace(&sftp, &temporary, Path::new(&work_task.destination))?;Ok(())
-                })();
-                if let Err(error)=upload{let _=sftp.unlink(&temporary);return Err(error);}
-            }
-            work_task.status="completed".into(); Ok(work_task) })(); if result.is_err(){transport.discard();} result
-        }).await;
+        let destination_manager = transfers.clone();
+        let result = tokio::task::spawn_blocking(move || {
+            let reservation = TransferDestination {
+                manager: &destination_manager,
+                connection_id: &profile.id,
+            };
+            run_queued_transfer(transport, work_task, &token_clone, &app_clone, &reservation)
+        })
+        .await;
         task = match result {
-            Ok(Ok(done)) => done,
-            Ok(Err(error)) => {
-                task.status = if token.load(Ordering::Relaxed) == 2 {
-                    "cancelled".into()
-                } else {
-                    "failed".into()
-                };
-                task.error = Some(error.to_string());
-                task
-            }
+            Ok(done) => done,
             Err(error) => {
                 task.status = "failed".into();
                 task.error = Some(error.to_string());
                 task
             }
         };
-        let _ = db_clone.upsert_transfer(&task).await;
+        let _ = db.upsert_transfer(&task).await;
         let _ = app.emit("transfer-progress", task.clone());
         transfers.finish(&task.id);
     });
@@ -2199,6 +2456,92 @@ fn transfer_target_key(direction: &str, connection_id: &str, destination: &str) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ConnectionProfile;
+
+    #[derive(Default)]
+    struct RecordingTransferEvents(parking_lot::Mutex<Vec<(String, i64)>>);
+
+    impl TransferEventSink for RecordingTransferEvents {
+        fn transfer_event(&self, task: &TransferTask) {
+            self.0
+                .lock()
+                .push((task.status.clone(), task.transferred_bytes));
+        }
+    }
+
+    fn live_transfer_profile() -> Option<ConnectionProfile> {
+        let port = std::env::var("CNSHELL_TEST_SSH_PORT").ok()?;
+        Some(ConnectionProfile {
+            id: "live-transfer-acceptance".into(),
+            folder_id: None,
+            protocol: "ssh".into(),
+            name: "live transfer acceptance".into(),
+            host: "127.0.0.1".into(),
+            port: port.parse().expect("CNSHELL_TEST_SSH_PORT"),
+            username: std::env::var("CNSHELL_TEST_SSH_USER").expect("CNSHELL_TEST_SSH_USER"),
+            auth_type: "privateKey".into(),
+            private_key_path: Some(
+                std::env::var("CNSHELL_TEST_SSH_KEY").expect("CNSHELL_TEST_SSH_KEY"),
+            ),
+            certificate_path: None,
+            host_key_policy: "acceptNew".into(),
+            note: String::new(),
+            tags: Vec::new(),
+            encoding: "UTF-8".into(),
+            startup_command: None,
+            proxy_id: None,
+            environment: Default::default(),
+            has_credential: false,
+            created_at: String::new(),
+            updated_at: "live-transfer-acceptance".into(),
+            last_connected_at: None,
+        })
+    }
+
+    fn acceptance_task(
+        id: impl Into<String>,
+        direction: &str,
+        source: impl Into<String>,
+        destination: impl Into<String>,
+        conflict_policy: &str,
+    ) -> TransferTask {
+        TransferTask {
+            id: id.into(),
+            session_id: "live-transfer-session".into(),
+            direction: direction.into(),
+            source: source.into(),
+            destination: destination.into(),
+            total_bytes: 0,
+            transferred_bytes: 0,
+            status: "queued".into(),
+            conflict_policy: conflict_policy.into(),
+            error: None,
+            created_at: Utc::now().to_rfc3339(),
+        }
+    }
+
+    async fn spawn_live_transfer(
+        db: Database,
+        profile: ConnectionProfile,
+        manager: TransferManager,
+        task: TransferTask,
+        token: Arc<AtomicU8>,
+        events: Arc<RecordingTransferEvents>,
+    ) -> tokio::task::JoinHandle<TransferTask> {
+        let slot = manager.acquire_slot(&token).await.unwrap();
+        let transport = crate::ssh::SessionManager::default()
+            .acquire_file_transfer_transport(&db, &profile)
+            .await
+            .unwrap();
+        tokio::task::spawn_blocking(move || {
+            let _slot = slot;
+            let reservation = TransferDestination {
+                manager: &manager,
+                connection_id: &profile.id,
+            };
+            run_queued_transfer(transport, task, &token, events.as_ref(), &reservation)
+        })
+    }
     struct NoSpaceWriter(std::fs::File);
     impl Write for NoSpaceWriter {
         fn write(&mut self, _buffer: &[u8]) -> std::io::Result<usize> {
@@ -2208,6 +2551,86 @@ mod tests {
             self.0.flush()
         }
     }
+    #[test]
+    fn renamed_transfer_cannot_overwrite_another_active_destination() {
+        let manager = TransferManager::default();
+        let _first = manager.token("first", "download:/tmp/file.txt").unwrap();
+        let _second = manager
+            .token("second", "download:/tmp/file (1).txt")
+            .unwrap();
+        assert!(
+            manager
+                .retarget("first", "download:/tmp/file (1).txt")
+                .is_err()
+        );
+        assert!(manager.token("third", "download:/tmp/file.txt").is_err());
+        manager.finish("second");
+        manager
+            .retarget("first", "download:/tmp/file (1).txt")
+            .unwrap();
+        assert!(
+            manager
+                .token("third", "download:/tmp/file (1).txt")
+                .is_err()
+        );
+        manager.finish("first");
+        assert!(manager.token("third", "download:/tmp/file (1).txt").is_ok());
+    }
+
+    #[test]
+    fn progress_events_are_throttled_without_delaying_status_changes() {
+        let mut progress = TransferProgress::default();
+        let now = Instant::now();
+        let emitted = (0..1000)
+            .filter(|millis| {
+                progress.should_emit(
+                    "running",
+                    *millis as i64,
+                    now + Duration::from_millis(*millis),
+                )
+            })
+            .count();
+        assert_eq!(emitted, 10);
+        let paused_at = now + Duration::from_millis(1001);
+        assert!(progress.should_emit("paused", 999, paused_at));
+        assert!(!progress.should_emit("paused", 999, paused_at + Duration::from_secs(1)));
+        assert!(progress.should_emit("running", 999, paused_at + Duration::from_secs(1)));
+        assert!(progress.should_emit("completed", 1000, paused_at + Duration::from_secs(1)));
+    }
+
+    #[tokio::test]
+    async fn transfer_queue_limits_connections_and_allows_cancellation_while_waiting() {
+        let manager = TransferManager::default();
+        let token = Arc::new(AtomicU8::new(0));
+        let mut active = Vec::new();
+        for _ in 0..MAX_CONCURRENT_TRANSFERS {
+            active.push(manager.acquire_slot(&token).await.unwrap());
+        }
+        let waiting_manager = manager.clone();
+        let cancelled = Arc::new(AtomicU8::new(0));
+        let waiting_token = cancelled.clone();
+        let mut waiting =
+            tokio::spawn(async move { waiting_manager.acquire_slot(&waiting_token).await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut waiting)
+                .await
+                .is_err()
+        );
+        cancelled.store(2, Ordering::Release);
+        let result = tokio::time::timeout(Duration::from_secs(1), waiting)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(result, Err(AppError::Remote(message)) if message.contains("取消")));
+        active.pop();
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), manager.acquire_slot(&token))
+                .await
+                .unwrap()
+                .is_ok()
+        );
+    }
+
     #[test]
     fn permission_rendering_is_posix() {
         assert_eq!(permission_string(Some(0o755), "directory"), "drwxr-xr-x");
@@ -2355,6 +2778,51 @@ mod tests {
         assert!(!directory.exists());
     }
     #[test]
+    fn truncated_download_preserves_existing_destination_and_removes_partial_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("download.bin");
+        let part = directory.path().join("download.bin.part");
+        std::fs::write(&destination, b"original contents").unwrap();
+        let result = download_to_path(
+            &mut std::io::Cursor::new(b"short"),
+            &part,
+            &destination,
+            100,
+            &mut [0; 16],
+            |path| std::fs::File::create(path),
+            |file| file.sync_all(),
+            |_| Ok(()),
+        );
+        assert!(
+            matches!(result, Err(AppError::Remote(message)) if message.contains("大小校验失败"))
+        );
+        assert_eq!(std::fs::read(&destination).unwrap(), b"original contents");
+        assert!(!part.exists());
+    }
+
+    #[test]
+    fn verified_download_replaces_existing_destination() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("download.bin");
+        let part = directory.path().join("download.bin.part");
+        std::fs::write(&destination, b"original contents").unwrap();
+        let transferred = download_to_path(
+            &mut std::io::Cursor::new(b"complete"),
+            &part,
+            &destination,
+            8,
+            &mut [0; 16],
+            |path| std::fs::File::create(path),
+            |file| file.sync_all(),
+            |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(transferred, 8);
+        assert_eq!(std::fs::read(&destination).unwrap(), b"complete");
+        assert!(!part.exists());
+    }
+
+    #[test]
     fn disk_full_download_reports_storage_error_and_removes_partial_file() {
         let directory = tempfile::tempdir().unwrap();
         let destination = directory.path().join("download.bin");
@@ -2416,5 +2884,318 @@ mod tests {
             check_directory_transfer_cancelled(&cancelled),
             Err(AppError::Remote(message)) if message.contains("已取消")
         ));
+    }
+
+    #[tokio::test]
+    async fn live_ssh_transfer_queue_pause_cancel_conflicts_retry_and_hash() {
+        let Some(profile) = live_transfer_profile() else {
+            return;
+        };
+        let local = tempfile::tempdir().unwrap();
+        let db = Database::open(&local.path().join("transfer-acceptance.sqlite"))
+            .await
+            .unwrap();
+        let remote_directory = format!("/tmp/cnshell-transfer-{}", Uuid::new_v4());
+        let remote_source = format!("{remote_directory}/source.bin");
+        let remote_upload = format!("{remote_directory}/upload.bin");
+        let setup_transport = crate::ssh::SessionManager::default()
+            .acquire_file_transfer_transport(&db, &profile)
+            .await
+            .unwrap();
+        let setup = setup_transport.connected().session.sftp().unwrap();
+        setup.mkdir(Path::new(&remote_directory), 0o700).unwrap();
+        let chunk = vec![0x5a; 256 * 1024];
+        let chunks = 32;
+        {
+            let mut source = setup.create(Path::new(&remote_source)).unwrap();
+            for _ in 0..chunks {
+                source.write_all(&chunk).unwrap();
+            }
+            source.fsync().unwrap();
+        }
+        let expected_hash = Sha256::digest(vec![0x5a; chunk.len() * chunks]);
+
+        // Fill all four production queue slots with real, initially paused SFTP
+        // downloads. The fifth task must remain queued and be cancellable.
+        let manager = TransferManager::default();
+        let events = Arc::new(RecordingTransferEvents::default());
+        let mut running = Vec::new();
+        let mut tokens = Vec::new();
+        for index in 0..MAX_CONCURRENT_TRANSFERS {
+            let destination = local.path().join(format!("parallel-{index}.bin"));
+            let task = acceptance_task(
+                format!("parallel-{index}"),
+                "download",
+                remote_source.clone(),
+                destination.to_string_lossy().into_owned(),
+                "overwrite",
+            );
+            let target = transfer_target_key(&task.direction, &profile.id, &task.destination);
+            let token = manager.token(&task.id, &target).unwrap();
+            token.store(1, Ordering::Release);
+            running.push(
+                spawn_live_transfer(
+                    db.clone(),
+                    profile.clone(),
+                    manager.clone(),
+                    task,
+                    token.clone(),
+                    events.clone(),
+                )
+                .await,
+            );
+            tokens.push(token);
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+        assert!(running.iter().all(|transfer| !transfer.is_finished()));
+        assert_eq!(
+            events
+                .0
+                .lock()
+                .iter()
+                .filter(|(status, _)| status == "paused")
+                .count(),
+            MAX_CONCURRENT_TRANSFERS
+        );
+
+        let queued = acceptance_task(
+            "queued-cancel",
+            "download",
+            remote_source.clone(),
+            local.path().join("queued.bin").to_string_lossy(),
+            "overwrite",
+        );
+        let queued_target =
+            transfer_target_key(&queued.direction, &profile.id, &queued.destination);
+        let queued_token = manager.token(&queued.id, &queued_target).unwrap();
+        let queued_manager = manager.clone();
+        let queued_token_for_wait = queued_token.clone();
+        let mut waiting =
+            tokio::spawn(async move { queued_manager.acquire_slot(&queued_token_for_wait).await });
+        assert!(
+            tokio::time::timeout(Duration::from_millis(200), &mut waiting)
+                .await
+                .is_err()
+        );
+        assert!(manager.cancel(&queued.id));
+        assert!(matches!(
+            waiting.await.unwrap(),
+            Err(AppError::Remote(message)) if message.contains("取消")
+        ));
+        manager.finish(&queued.id);
+        assert!(!local.path().join("queued.bin").exists());
+
+        for token in &tokens {
+            token.store(0, Ordering::Release);
+        }
+        for (index, transfer) in running.into_iter().enumerate() {
+            let done = tokio::time::timeout(Duration::from_secs(30), transfer)
+                .await
+                .expect("parallel transfer timed out")
+                .unwrap();
+            assert_eq!(done.status, "completed", "{:?}", done.error);
+            assert_eq!(done.transferred_bytes, (chunk.len() * chunks) as i64);
+            assert_eq!(
+                Sha256::digest(
+                    std::fs::read(local.path().join(format!("parallel-{index}.bin"))).unwrap()
+                ),
+                expected_hash
+            );
+            manager.finish(&done.id);
+        }
+
+        // A paused transfer can be cancelled without publishing a destination or
+        // leaving its deterministic partial path behind.
+        let cancelled_destination = local.path().join("cancelled.bin");
+        let cancelled_task = acceptance_task(
+            "paused-cancel",
+            "download",
+            remote_source.clone(),
+            cancelled_destination.to_string_lossy(),
+            "overwrite",
+        );
+        let cancelled_part = PathBuf::from(format!(
+            "{}.cnshell-part-{}",
+            cancelled_task.destination, cancelled_task.id
+        ));
+        let cancelled_target = transfer_target_key(
+            &cancelled_task.direction,
+            &profile.id,
+            &cancelled_task.destination,
+        );
+        let cancelled_token = manager
+            .token(&cancelled_task.id, &cancelled_target)
+            .unwrap();
+        cancelled_token.store(1, Ordering::Release);
+        let cancelled = spawn_live_transfer(
+            db.clone(),
+            profile.clone(),
+            manager.clone(),
+            cancelled_task,
+            cancelled_token.clone(),
+            events.clone(),
+        )
+        .await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        cancelled_token.store(2, Ordering::Release);
+        let cancelled = cancelled.await.unwrap();
+        assert_eq!(cancelled.status, "cancelled");
+        assert!(!cancelled_destination.exists());
+        assert!(!cancelled_part.exists());
+        manager.finish(&cancelled.id);
+
+        // Rename, skip and overwrite all operate against an actual SFTP source.
+        let conflict = local.path().join("conflict.bin");
+        std::fs::write(&conflict, b"original").unwrap();
+        for policy in ["rename", "skip", "overwrite"] {
+            let id = format!("conflict-{policy}");
+            let task = acceptance_task(
+                id,
+                "download",
+                remote_source.clone(),
+                conflict.to_string_lossy(),
+                policy,
+            );
+            let target = transfer_target_key(&task.direction, &profile.id, &task.destination);
+            let token = manager.token(&task.id, &target).unwrap();
+            let done = spawn_live_transfer(
+                db.clone(),
+                profile.clone(),
+                manager.clone(),
+                task,
+                token,
+                events.clone(),
+            )
+            .await
+            .await
+            .unwrap();
+            assert_eq!(done.status, "completed", "{:?}", done.error);
+            match policy {
+                "rename" => {
+                    assert_eq!(std::fs::read(&conflict).unwrap(), b"original");
+                    assert!(done.destination.ends_with("conflict (1).bin"));
+                    assert_eq!(
+                        Sha256::digest(std::fs::read(&done.destination).unwrap()),
+                        expected_hash
+                    );
+                }
+                "skip" => assert_eq!(std::fs::read(&conflict).unwrap(), b"original"),
+                "overwrite" => assert_eq!(
+                    Sha256::digest(std::fs::read(&conflict).unwrap()),
+                    expected_hash
+                ),
+                _ => unreachable!(),
+            }
+            manager.finish(&done.id);
+        }
+
+        // An upload rename preserves the existing remote object and publishes the
+        // actual renamed destination. A failed download can then be retried.
+        let upload_source = local.path().join("upload.bin");
+        std::fs::write(&upload_source, b"new upload contents").unwrap();
+        {
+            let mut existing = setup.create(Path::new(&remote_upload)).unwrap();
+            existing.write_all(b"existing remote contents").unwrap();
+            existing.fsync().unwrap();
+        }
+        let upload = acceptance_task(
+            "upload-rename",
+            "upload",
+            upload_source.to_string_lossy(),
+            remote_upload.clone(),
+            "rename",
+        );
+        let upload_target =
+            transfer_target_key(&upload.direction, &profile.id, &upload.destination);
+        let upload_token = manager.token(&upload.id, &upload_target).unwrap();
+        let upload = spawn_live_transfer(
+            db.clone(),
+            profile.clone(),
+            manager.clone(),
+            upload,
+            upload_token,
+            events.clone(),
+        )
+        .await
+        .await
+        .unwrap();
+        assert_eq!(upload.status, "completed", "{:?}", upload.error);
+        assert!(upload.destination.ends_with("upload (1).bin"));
+        let mut existing = Vec::new();
+        setup
+            .open(Path::new(&remote_upload))
+            .unwrap()
+            .read_to_end(&mut existing)
+            .unwrap();
+        assert_eq!(existing, b"existing remote contents");
+        let mut renamed = Vec::new();
+        setup
+            .open(Path::new(&upload.destination))
+            .unwrap()
+            .read_to_end(&mut renamed)
+            .unwrap();
+        assert_eq!(renamed, b"new upload contents");
+        manager.finish(&upload.id);
+
+        let retry_destination = local.path().join("retry.bin");
+        let missing_source = format!("{remote_directory}/missing.bin");
+        let first_try = acceptance_task(
+            "retry-first",
+            "download",
+            missing_source.clone(),
+            retry_destination.to_string_lossy(),
+            "overwrite",
+        );
+        let first_target =
+            transfer_target_key(&first_try.direction, &profile.id, &first_try.destination);
+        let first_token = manager.token(&first_try.id, &first_target).unwrap();
+        let first_try = spawn_live_transfer(
+            db.clone(),
+            profile.clone(),
+            manager.clone(),
+            first_try,
+            first_token,
+            events.clone(),
+        )
+        .await
+        .await
+        .unwrap();
+        assert_eq!(first_try.status, "failed");
+        assert!(!retry_destination.exists());
+        manager.finish(&first_try.id);
+        {
+            let mut recovered = setup.create(Path::new(&missing_source)).unwrap();
+            recovered.write_all(b"retry succeeded").unwrap();
+            recovered.fsync().unwrap();
+        }
+        let retry = acceptance_task(
+            "retry-second",
+            "download",
+            missing_source.clone(),
+            retry_destination.to_string_lossy(),
+            "overwrite",
+        );
+        let retry_target = transfer_target_key(&retry.direction, &profile.id, &retry.destination);
+        let retry_token = manager.token(&retry.id, &retry_target).unwrap();
+        let retry = spawn_live_transfer(db, profile, manager.clone(), retry, retry_token, events)
+            .await
+            .await
+            .unwrap();
+        assert_eq!(retry.status, "completed", "{:?}", retry.error);
+        assert_eq!(
+            std::fs::read(&retry_destination).unwrap(),
+            b"retry succeeded"
+        );
+        manager.finish(&retry.id);
+
+        for path in [
+            retry.source,
+            upload.destination,
+            remote_upload,
+            remote_source,
+        ] {
+            setup.unlink(Path::new(&path)).unwrap();
+        }
+        setup.rmdir(Path::new(&remote_directory)).unwrap();
     }
 }

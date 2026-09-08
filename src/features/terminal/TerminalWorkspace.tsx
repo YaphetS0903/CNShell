@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import {
   Activity,
   ClipboardList,
@@ -10,6 +11,8 @@ import {
   Highlighter,
   History,
   MoreHorizontal,
+  PanelBottom,
+  PanelBottomOpen,
   RadioTower,
   RefreshCw,
   Rows2,
@@ -63,7 +66,10 @@ import {
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
 import { TeamTerminalCenter } from "./TeamTerminalCenter";
-import { primaryShortcutPressed, usePlatformCapabilities } from "../../lib/platform";
+import {
+  primaryShortcutPressed,
+  usePlatformCapabilities,
+} from "../../lib/platform";
 import { useSystemPrefersDark } from "../../lib/system-theme";
 
 export default function TerminalWorkspace({
@@ -72,6 +78,7 @@ export default function TerminalWorkspace({
   connect: (profile: ConnectionProfile) => Promise<void>;
 }) {
   const platform = usePlatformCapabilities();
+  const bottomPanelShortcut = `${platform.shortcutModifier}${platform.shortcutModifier === "⌘" ? "" : "+"}J`;
   const systemPrefersDark = useSystemPrefersDark();
   const {
     sessions,
@@ -85,7 +92,21 @@ export default function TerminalWorkspace({
     settings,
     saveSettings,
     setError,
-  } = useAppStore();
+  } = useAppStore(
+    useShallow((state) => ({
+      sessions: state.sessions,
+      connections: state.connections,
+      activeSessionId: state.activeSessionId,
+      activePanel: state.activePanel,
+      setActiveSession: state.setActiveSession,
+      updateSession: state.updateSession,
+      removeSession: state.removeSession,
+      setPanel: state.setPanel,
+      settings: state.settings,
+      saveSettings: state.saveSettings,
+      setError: state.setError,
+    })),
+  );
   const [findOpen, setFindOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [bottomOpen, setBottomOpen] = useState(true);
@@ -114,14 +135,10 @@ export default function TerminalWorkspace({
     null,
   );
   const [tabMenu, setTabMenu] = useState<string | null>(null);
-  const toggleFilePanel = useCallback(() => {
-    if (bottomOpen && activePanel === "files") {
-      setBottomOpen(false);
-      return;
-    }
-    setPanel("files");
-    setBottomOpen(true);
-  }, [activePanel, bottomOpen, setPanel]);
+  const toggleBottomPanel = useCallback(
+    () => setBottomOpen((open) => !open),
+    [],
+  );
   const [refs] = useState(
     () => new Map<string, React.RefObject<TerminalActions | null>>(),
   );
@@ -131,6 +148,7 @@ export default function TerminalWorkspace({
   });
   const close = useCallback(
     async (id: string) => {
+      if (!useAppStore.getState().prepareCloseSession(id)) return false;
       const session = useAppStore
         .getState()
         .sessions.find((item) => item.id === id);
@@ -146,6 +164,7 @@ export default function TerminalWorkspace({
       removeSession(id);
       refs.delete(id);
       workspaceRuntime.remoteFileBrowserBySession.delete(id);
+      return true;
     },
     [refs, removeSession],
   );
@@ -158,7 +177,7 @@ export default function TerminalWorkspace({
   const reconnect = async (session: TerminalSession) => {
     const profile = profileFor(session);
     if (!profile) return;
-    await close(session.id);
+    if (!(await close(session.id))) return;
     await connect(profile);
   };
   const selectSession = useCallback(
@@ -258,7 +277,7 @@ export default function TerminalWorkspace({
       }
       if (primary && event.key.toLowerCase() === "j") {
         event.preventDefault();
-        toggleFilePanel();
+        toggleBottomPanel();
       }
       if (primary && event.key.toLowerCase() === "k" && activeSessionId) {
         event.preventDefault();
@@ -316,13 +335,13 @@ export default function TerminalWorkspace({
     settings,
     saveSettings,
     setError,
-    toggleFilePanel,
+    toggleBottomPanel,
   ]);
   useEffect(() => {
-    window.addEventListener("cnshell-toggle-files", toggleFilePanel);
+    window.addEventListener("cnshell-toggle-files", toggleBottomPanel);
     return () =>
-      window.removeEventListener("cnshell-toggle-files", toggleFilePanel);
-  }, [toggleFilePanel]);
+      window.removeEventListener("cnshell-toggle-files", toggleBottomPanel);
+  }, [toggleBottomPanel]);
   useEffect(() => {
     const paste = (event: Event) => {
       const detail = (event as CustomEvent<{ sessionId: string; text: string }>)
@@ -493,110 +512,118 @@ export default function TerminalWorkspace({
         {sessions.map((session) => {
           const sessionTerminalTheme = terminalThemeFor(session);
           return (
-          <div className="session-tab-wrap" key={session.id}>
-            <button
-              id={`session-tab-${session.id}`}
-              role="tab"
-              aria-selected={session.id === active.id}
-              aria-controls={`session-panel-${session.id}`}
-              tabIndex={session.id === active.id ? 0 : -1}
-              aria-label={`${session.title}，${sessionStatusLabel(session.status)}${session.lastError ? `，${session.lastError}` : ""}`}
-              className={`session-tab ${session.id === active.id ? "active" : ""} ${visibleIds.has(session.id) ? "in-layout" : ""}`}
-              style={
-                session.id === active.id && sessionTerminalTheme
-                  ? ({
-                      "--terminal-tab-background": sessionTerminalTheme.background,
-                      "--terminal-tab-foreground": sessionTerminalTheme.foreground,
-                    } as React.CSSProperties)
-                  : undefined
-              }
-              onClick={() => selectSession(session.id)}
-            >
-              <span
-                className={`status-dot ${session.status}`}
-                aria-hidden="true"
+            <div className="session-tab-wrap" key={session.id}>
+              <button
+                id={`session-tab-${session.id}`}
+                role="tab"
+                aria-selected={session.id === active.id}
+                aria-controls={`session-panel-${session.id}`}
+                tabIndex={session.id === active.id ? 0 : -1}
+                aria-label={`${session.title}，${sessionStatusLabel(session.status)}${session.lastError ? `，${session.lastError}` : ""}`}
+                className={`session-tab ${session.id === active.id ? "active" : ""} ${visibleIds.has(session.id) ? "in-layout" : ""}`}
+                style={
+                  session.id === active.id && sessionTerminalTheme
+                    ? ({
+                        "--terminal-tab-background":
+                          sessionTerminalTheme.background,
+                        "--terminal-tab-foreground":
+                          sessionTerminalTheme.foreground,
+                      } as React.CSSProperties)
+                    : undefined
+                }
+                onClick={() => selectSession(session.id)}
+              >
+                <span
+                  className={`status-dot ${session.status}`}
+                  aria-hidden="true"
+                />
+                <span>{session.title}</span>
+                {workspaceRuntime.terminalActivity.has(session.id) && (
+                  <i className="activity-mark" aria-label="有后台活动" />
+                )}
+                {session.status !== "online" && (
+                  <small>{sessionStatusLabel(session.status)}</small>
+                )}
+              </button>
+              <IconButton
+                icon={MoreHorizontal}
+                label={`${session.title} 会话操作`}
+                className="tab-menu-trigger"
+                aria-haspopup="menu"
+                aria-expanded={tabMenu === session.id}
+                onClick={() =>
+                  setTabMenu(tabMenu === session.id ? null : session.id)
+                }
               />
-              <span>{session.title}</span>
-              {workspaceRuntime.terminalActivity.has(session.id) && (
-                <i className="activity-mark" aria-label="有后台活动" />
-              )}
-              {session.status !== "online" && (
-                <small>{sessionStatusLabel(session.status)}</small>
-              )}
-            </button>
-            <IconButton
-              icon={MoreHorizontal}
-              label={`${session.title} 会话操作`}
-              className="tab-menu-trigger"
-              aria-haspopup="menu"
-              aria-expanded={tabMenu === session.id}
-              onClick={() =>
-                setTabMenu(tabMenu === session.id ? null : session.id)
-              }
-            />
-            {tabMenu === session.id && (
-              <div className="tab-context-menu" role="menu">
-                <button role="menuitem" onClick={() => void duplicate(session)}>
-                  <Copy size={13} />
-                  复制会话
-                </button>
-                <button role="menuitem" onClick={() => void reconnect(session)}>
-                  <RefreshCw size={13} />
-                  重新连接
-                </button>
-                {isInteractiveTerminal(session) && (
-                  <>
-                    <button
-                      role="menuitem"
-                      onClick={() => void split(session, "vertical")}
-                    >
-                      <Columns2 size={13} />
-                      左右拆分
-                    </button>
-                    <button
-                      role="menuitem"
-                      onClick={() => void split(session, "horizontal")}
-                    >
-                      <Rows2 size={13} />
-                      上下拆分
-                    </button>
-                    {visibleIds.size > 1 && visibleIds.has(session.id) && (
+              {tabMenu === session.id && (
+                <div className="tab-context-menu" role="menu">
+                  <button
+                    role="menuitem"
+                    onClick={() => void duplicate(session)}
+                  >
+                    <Copy size={13} />
+                    复制会话
+                  </button>
+                  <button
+                    role="menuitem"
+                    onClick={() => void reconnect(session)}
+                  >
+                    <RefreshCw size={13} />
+                    重新连接
+                  </button>
+                  {isInteractiveTerminal(session) && (
+                    <>
                       <button
                         role="menuitem"
-                        onClick={() => removeFromLayout(session.id)}
+                        onClick={() => void split(session, "vertical")}
                       >
-                        <X size={13} />
-                        移出拆分布局
+                        <Columns2 size={13} />
+                        左右拆分
                       </button>
-                    )}
-                  </>
-                )}
-                <button
-                  role="menuitem"
-                  className="danger"
-                  onClick={() => {
-                    if (
-                      !settings.confirmCloseActiveSession ||
-                      confirm(`关闭“${session.title}”会话？`)
-                    )
-                      void close(session.id);
-                  }}
-                >
-                  <X size={13} />
-                  关闭
-                </button>
-              </div>
-            )}
-          </div>
+                      <button
+                        role="menuitem"
+                        onClick={() => void split(session, "horizontal")}
+                      >
+                        <Rows2 size={13} />
+                        上下拆分
+                      </button>
+                      {visibleIds.size > 1 && visibleIds.has(session.id) && (
+                        <button
+                          role="menuitem"
+                          onClick={() => removeFromLayout(session.id)}
+                        >
+                          <X size={13} />
+                          移出拆分布局
+                        </button>
+                      )}
+                    </>
+                  )}
+                  <button
+                    role="menuitem"
+                    className="danger"
+                    onClick={() => {
+                      if (
+                        !settings.confirmCloseActiveSession ||
+                        confirm(`关闭“${session.title}”会话？`)
+                      )
+                        void close(session.id);
+                    }}
+                  >
+                    <X size={13} />
+                    关闭
+                  </button>
+                </div>
+              )}
+            </div>
           );
         })}
         <div className="tab-spacer" />
         {isInteractiveTerminal(active) && (
           <IconButton
-            icon={Files}
-            label={`${bottomOpen && activePanel === "files" ? "隐藏" : "显示"}文件面板（${platform.shortcutModifier}+J）`}
-            active={bottomOpen && activePanel === "files"}
-            onClick={toggleFilePanel}
+            icon={PanelBottom}
+            label={`${bottomOpen ? "隐藏" : "显示"}底部工具面板（${bottomPanelShortcut}）`}
+            active={bottomOpen}
+            onClick={toggleBottomPanel}
           />
         )}
         <IconButton
@@ -722,8 +749,10 @@ export default function TerminalWorkspace({
                 style={
                   activeTerminalTheme
                     ? ({
-                        "--terminal-area-background": activeTerminalTheme.background,
-                        "--terminal-area-foreground": activeTerminalTheme.foreground,
+                        "--terminal-area-background":
+                          activeTerminalTheme.background,
+                        "--terminal-area-foreground":
+                          activeTerminalTheme.foreground,
                       } as React.CSSProperties)
                     : undefined
                 }
@@ -748,6 +777,9 @@ export default function TerminalWorkspace({
                         visible={Boolean(rect)}
                         focused={session.id === active.id}
                         showTimestamps={showTimestamps}
+                        bottomPanelOpen={bottomOpen}
+                        bottomPanelShortcut={bottomPanelShortcut}
+                        onToggleBottomPanel={toggleBottomPanel}
                         style={style}
                       />
                     );
@@ -761,6 +793,18 @@ export default function TerminalWorkspace({
                       )
                     }
                   />
+                )}
+                {!bottomOpen && (
+                  <button
+                    type="button"
+                    className="bottom-panel-reopen"
+                    aria-label={`显示底部工具面板（${bottomPanelShortcut}）`}
+                    onClick={() => setBottomOpen(true)}
+                  >
+                    <PanelBottomOpen size={15} aria-hidden="true" />
+                    <span>工具面板</span>
+                    <kbd>{bottomPanelShortcut}</kbd>
+                  </button>
                 )}
               </div>
               {copyMode && (

@@ -53,10 +53,11 @@ impl Database {
     }
 
     pub async fn get_connection(&self, id: &str) -> AppResult<ConnectionProfile> {
-        self.list_connections()
+        sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, certificate_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE id = ? AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_optional(&self.pool)
             .await?
-            .into_iter()
-            .find(|item| item.id == id)
+            .map(connection_from_row)
             .ok_or_else(|| AppError::NotFound(id.into()))
     }
 
@@ -372,7 +373,7 @@ impl Database {
     }
 
     pub async fn upsert_transfer(&self, task: &TransferTask) -> AppResult<()> {
-        sqlx::query("INSERT INTO transfer_tasks(id,session_id,direction,source,destination,total_bytes,transferred_bytes,status,conflict_policy,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET total_bytes=excluded.total_bytes,transferred_bytes=excluded.transferred_bytes,status=excluded.status,error=excluded.error")
+        sqlx::query("INSERT INTO transfer_tasks(id,session_id,direction,source,destination,total_bytes,transferred_bytes,status,conflict_policy,error,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET destination=excluded.destination,total_bytes=excluded.total_bytes,transferred_bytes=excluded.transferred_bytes,status=excluded.status,error=excluded.error")
             .bind(&task.id).bind(&task.session_id).bind(&task.direction).bind(&task.source).bind(&task.destination).bind(task.total_bytes).bind(task.transferred_bytes).bind(&task.status).bind(&task.conflict_policy).bind(&task.error).bind(&task.created_at).execute(&self.pool).await?;
         Ok(())
     }
@@ -1264,6 +1265,38 @@ mod tests {
         assert!(db.history(&input.id).await.unwrap().is_empty());
     }
     #[tokio::test]
+    async fn completed_transfer_persists_its_renamed_destination() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("transfers.sqlite");
+        let db = Database::open(&path).await.unwrap();
+        let mut task = TransferTask {
+            id: "renamed-transfer".into(),
+            session_id: "session".into(),
+            direction: "download".into(),
+            source: "/remote/file.txt".into(),
+            destination: "/local/file.txt".into(),
+            total_bytes: 0,
+            transferred_bytes: 0,
+            status: "queued".into(),
+            conflict_policy: "rename".into(),
+            error: None,
+            created_at: Utc::now().to_rfc3339(),
+        };
+        db.upsert_transfer(&task).await.unwrap();
+        task.destination = "/local/file (1).txt".into();
+        task.total_bytes = 42;
+        task.transferred_bytes = 42;
+        task.status = "completed".into();
+        db.upsert_transfer(&task).await.unwrap();
+        db.pool.close().await;
+        let reopened = Database::open(&path).await.unwrap();
+        let persisted = reopened.transfers().await.unwrap().remove(0);
+        assert_eq!(persisted.destination, task.destination);
+        assert_eq!(persisted.status, "completed");
+        assert_eq!(persisted.transferred_bytes, 42);
+    }
+
+    #[tokio::test]
     async fn migrations_and_connection_round_trip() {
         let directory = tempfile::tempdir().unwrap();
         let db = Database::open(&directory.path().join("test.sqlite"))
@@ -1293,6 +1326,20 @@ mod tests {
         let saved = db.get_connection("roundtrip").await.unwrap();
         assert_eq!(saved.host, "example.test");
         assert_eq!(saved.tags, vec!["test"]);
+        assert!(matches!(
+            db.get_connection("missing").await,
+            Err(AppError::NotFound(_))
+        ));
+        db.delete_connection("roundtrip").await.unwrap();
+        assert!(matches!(
+            db.get_connection("roundtrip").await,
+            Err(AppError::NotFound(_))
+        ));
+        db.restore_connection("roundtrip").await.unwrap();
+        assert_eq!(
+            db.get_connection("roundtrip").await.unwrap().tags,
+            vec!["test"]
+        );
     }
     #[tokio::test]
     async fn switching_to_ssh_agent_clears_credential_reference() {

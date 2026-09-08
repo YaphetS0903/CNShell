@@ -1,7 +1,26 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { Activity, FolderOpen, HelpCircle, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Settings, TerminalSquare } from "lucide-react";
+import { useShallow } from "zustand/react/shallow";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  Activity,
+  FolderOpen,
+  HelpCircle,
+  LoaderCircle,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Settings,
+  TerminalSquare,
+} from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./lib/api";
 import { useAppStore } from "./store/app-store";
 import type { ConnectionProfile } from "./types";
@@ -15,69 +34,614 @@ import { clampPanelSize, resizeFromKeyboard } from "./lib/layout";
 import { shellQuote, workspaceRuntime } from "./lib/workspace-runtime";
 import { mapLayoutSessions } from "./features/terminal/terminal-layout";
 import { ErrorToast } from "./components/ErrorToast";
-import { createWorkspaceSnapshot, saveBeforeWindowClose, saveWorkspaceIfChanged, type WorkspaceSnapshot } from "./lib/workspace-persistence";
-import { primaryShortcutPressed, usePlatformCapabilities } from "./lib/platform";
+import {
+  createWorkspaceSnapshot,
+  saveWorkspaceIfChanged,
+  type WorkspaceSnapshot,
+} from "./lib/workspace-persistence";
+import {
+  primaryShortcutPressed,
+  usePlatformCapabilities,
+} from "./lib/platform";
 import { McpApprovalCenter } from "./features/mcp/McpApprovalCenter";
+import { RemoteEditorHost } from "./features/files/RemoteEditorHost";
+import { useTransferSync } from "./lib/transfer-sync";
+import { registerWindowCloseProtection } from "./lib/window-close-protection";
 
-const TerminalWorkspace = lazy(() => import("./features/terminal/TerminalWorkspace"));
+const TerminalWorkspace = lazy(
+  () => import("./features/terminal/TerminalWorkspace"),
+);
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
 const HelpModal = lazy(() => import("./features/help/HelpModal"));
 
-interface HostKeyPrompt { connection: ConnectionProfile; fingerprint: string; algorithm: string }
-
-export default function App() {
-  const platform = usePlatformCapabilities();
-  const { bootstrap, loading, error, setError, addSession, connections, openConnectionEditor, setSettingsOpen, setHelpOpen, settings, settingsOpen, connectionEditorOpen } = useAppStore();
-  const [connectionsOpen,setConnectionsOpen]=useState(true);const[monitorOpen,setMonitorOpen]=useState(true);const[connectionWidth,setConnectionWidth]=useState(260);const[monitorWidth,setMonitorWidth]=useState(232);const[connecting,setConnecting]=useState<string|null>(null);const[hostPrompt,setHostPrompt]=useState<HostKeyPrompt|null>(null);
-  const workspaceRestoreStarted=useRef(false);const workspacePersistenceReady=useRef(false);const lastSavedWorkspace=useRef<string|null>(null);const workspaceSnapshotRef=useRef<()=>WorkspaceSnapshot>(()=>createWorkspaceSnapshot([],null,workspaceRuntime.cwdBySession,{terminalLayout:null,bottomOpen:true,bottomHeight:260,connectionsOpen:true,monitorOpen:true,connectionWidth:260,monitorWidth:232}));
-  useEffect(()=>{void bootstrap();},[bootstrap]);
-  useEffect(()=>{if(!loading&&!settingsOpen&&!connectionEditorOpen&&settings.showWelcomeHelp&&!localStorage.getItem("cnshell-welcome-seen")){setHelpOpen(true);localStorage.setItem("cnshell-welcome-seen","1");}},[loading,settingsOpen,connectionEditorOpen,settings.showWelcomeHelp,setHelpOpen]);
-  useEffect(()=>{const root=document.documentElement;root.dataset.theme=settings.theme;if(settings.theme==="system")delete root.dataset.theme;},[settings.theme]);
-  const connect=useCallback(async(connection:ConnectionProfile)=>{
-    if(connection.protocol==="rdp"){setConnecting(connection.id);try{const check=await api.rdpPreflight();if(!check.available){setError(check.message);return;}addSession(await api.rdpOpen(connection.id));}catch(reason){setError(errorMessage(reason));}finally{setConnecting(null);}return;}
-    setConnecting(connection.id);try{const session=await api.openTerminal(connection.id,120,36);addSession(session);const forwards=await api.listForwards(connection.id);for(const forward of forwards.filter((item)=>item.autoStart&&item.status!=="running")){api.startForward(forward.id).catch((error)=>setError(`隧道 ${forward.bindPort} 启动失败：${errorMessage(error)}`));}}catch(reason){const errorObject=reason as {code?:string;fingerprint?:string;algorithm?:string;message?:string};if(errorObject?.code==="host_key_unknown"&&errorObject.fingerprint){setHostPrompt({connection,fingerprint:errorObject.fingerprint,algorithm:errorObject.algorithm??"unknown"});}else setError(errorMessage(reason));}finally{setConnecting(null);}
-  },[addSession,setError]);
-  const trustAndConnect=async()=>{if(!hostPrompt)return;const prompt=hostPrompt;setHostPrompt(null);try{await api.trustHost(prompt.connection.id,prompt.fingerprint,prompt.algorithm);await connect(prompt.connection);}catch(reason){setError(errorMessage(reason));}};
-  useEffect(()=>{if(!api.isDesktop())return;const promise=listen<string>("menu-action",(event)=>{if(event.payload==="new_connection"){setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();}if(event.payload==="show_help"){setSettingsOpen(false);setHelpOpen(true);}if(event.payload==="toggle_files")window.dispatchEvent(new Event("cnshell-toggle-files"));if(event.payload==="close_session")window.dispatchEvent(new Event("cnshell-close-session"));if(event.payload==="new_terminal"){const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];if(profile)void connect(profile);}});return()=>{void promise.then((unlisten)=>unlisten());};},[connect,connections,openConnectionEditor,setHelpOpen,setSettingsOpen]);
-  useEffect(()=>{
-    if(!api.isDesktop()||platform.operatingSystem==="macos")return;
-    const handler=(event:KeyboardEvent)=>{
-      if(!primaryShortcutPressed(event,platform.operatingSystem))return;
-      if(event.key.toLowerCase()==="n"){
-        event.preventDefault();setHelpOpen(false);setSettingsOpen(false);openConnectionEditor();
-      }else if(event.key.toLowerCase()==="t"){
-        event.preventDefault();
-        const state=useAppStore.getState();const active=state.sessions.find((session)=>session.id===state.activeSessionId);const profile=connections.find((item)=>item.id===active?.connectionId)??connections[0];
-        if(profile)void connect(profile);
-      }else if(event.key==="?"){
-        event.preventDefault();setSettingsOpen(false);setHelpOpen(true);
-      }
-    };
-    window.addEventListener("keydown",handler);
-    return()=>window.removeEventListener("keydown",handler);
-  },[connect,connections,openConnectionEditor,platform.operatingSystem,setHelpOpen,setSettingsOpen]);
-  useEffect(()=>{if(!api.isDesktop()||loading||workspaceRestoreStarted.current)return;workspaceRestoreStarted.current=true;void api.loadWorkspace<RestorableWorkspaceSnapshot>().then(async(workspace)=>{if(!workspace)return;if(typeof workspace.connectionsOpen==="boolean")setConnectionsOpen(workspace.connectionsOpen);if(typeof workspace.monitorOpen==="boolean")setMonitorOpen(workspace.monitorOpen);if(workspace.connectionWidth)setConnectionWidth(clampPanelSize(workspace.connectionWidth,210,420));if(workspace.monitorWidth)setMonitorWidth(clampPanelSize(workspace.monitorWidth,200,360));const entries=(workspace.sessions??workspace.connectionIds?.map((connectionId)=>({id:crypto.randomUUID(),connectionId,cwd:null}))??[]).filter((entry)=>connections.some((item)=>item.id===entry.connectionId&&item.protocol==="ssh"));if(!entries.length||!confirm(`恢复上次的 ${entries.length} 个 SSH 会话和布局？只恢复目录，不会重放历史命令。`))return;const mapped=new Map<string,string>();for(const entry of entries){const profile=connections.find((item)=>item.id===entry.connectionId);if(!profile)continue;const before=new Set(useAppStore.getState().sessions.map((item)=>item.id));await connect(profile);const created=useAppStore.getState().sessions.find((item)=>!before.has(item.id));if(!created)continue;mapped.set(entry.id,created.id);if(entry.cwd)await api.terminalInput(created.id,`cd -- ${shellQuote(entry.cwd)}\n`);}const active=mapped.get(workspace.activeSessionId??"");if(active)useAppStore.getState().setActiveSession(active);window.dispatchEvent(new CustomEvent("cnshell-restore-layout",{detail:{terminalLayout:workspace.terminalLayout?mapLayoutSessions(workspace.terminalLayout,mapped):null,splitSessionId:mapped.get(workspace.splitSessionId??"")??null,bottomOpen:workspace.bottomOpen??true,bottomHeight:workspace.bottomHeight??260}}));}).catch((reason)=>setError(`工作区恢复失败：${errorMessage(reason)}`)).finally(()=>{workspacePersistenceReady.current=true;});},[loading,connections,connect,setError]);
-  workspaceSnapshotRef.current=()=>{const state=useAppStore.getState();return createWorkspaceSnapshot(state.sessions,state.activeSessionId,workspaceRuntime.cwdBySession,{terminalLayout:workspaceRuntime.terminalLayout,bottomOpen:workspaceRuntime.bottomOpen,bottomHeight:workspaceRuntime.bottomHeight,connectionsOpen,monitorOpen,connectionWidth,monitorWidth});};
-  useEffect(()=>{if(!api.isDesktop())return;let cancelled=false;let timer:number;const persist=async()=>{if(workspacePersistenceReady.current){try{lastSavedWorkspace.current=await saveWorkspaceIfChanged(workspaceSnapshotRef.current(),lastSavedWorkspace.current,(snapshot)=>api.saveWorkspace(snapshot));}catch(reason){console.error("工作区自动保存失败",reason);}}if(!cancelled)timer=window.setTimeout(persist,2_000);};timer=window.setTimeout(persist,2_000);return()=>{cancelled=true;window.clearTimeout(timer);};},[]);
-  useEffect(()=>{if(!api.isDesktop())return;let closing=false;const listener=getCurrentWindow().onCloseRequested(async(event)=>{event.preventDefault();if(closing)return;const activeTransfers=useAppStore.getState().transfers.filter((task)=>["queued","running","paused"].includes(task.status));if(activeTransfers.length&&!confirm(`仍有 ${activeTransfers.length} 个传输任务未完成。关闭 CNshell 会中断这些任务，确定继续吗？`))return;closing=true;try{await saveBeforeWindowClose(()=>workspacePersistenceReady.current?api.saveWorkspace(workspaceSnapshotRef.current()):Promise.resolve(),()=>getCurrentWindow().destroy(),(reason)=>console.error("工作区状态保存失败",reason));}catch(reason){closing=false;setError(`关闭窗口失败：${errorMessage(reason)}`);}});return()=>{void listener.then((unlisten)=>unlisten());};},[setError]);
-  if(loading)return <div className="app-loading"><img src="/app-mark.svg" alt=""/><LoaderCircle className="spin"/><span>正在启动安全工作区…</span></div>;
-  const beginResize=(event:ReactPointerEvent<HTMLDivElement>,current:number,setValue:(value:number)=>void,minimum:number,maximum:number)=>{event.currentTarget.setPointerCapture(event.pointerId);const startX=event.clientX;const move=(moveEvent:PointerEvent)=>setValue(clampPanelSize(current+moveEvent.clientX-startX,minimum,maximum));const stop=()=>{window.removeEventListener("pointermove",move);window.removeEventListener("pointerup",stop);};window.addEventListener("pointermove",move);window.addEventListener("pointerup",stop);};
-  const resizeKey=(event:React.KeyboardEvent<HTMLDivElement>,current:number,setValue:(value:number)=>void,minimum:number,maximum:number)=>{const next=resizeFromKeyboard(current,event.key,"vertical");if(next===current)return;event.preventDefault();setValue(clampPanelSize(next,minimum,maximum));};
-  const layoutStyle={"--connections-width":`${connectionWidth}px`,"--monitor-width":`${monitorWidth}px`} as CSSProperties;
-  return <div className={`app-shell ${connectionsOpen?"connections-open":""} ${monitorOpen?"monitor-open":""}`} style={layoutStyle}>
-    <header className="titlebar" data-tauri-drag-region><div className="traffic-light-space" data-tauri-drag-region/><div className="brand" data-tauri-drag-region><img src="/app-mark.svg" alt="" data-tauri-drag-region/><strong data-tauri-drag-region>CNshell</strong><span data-tauri-drag-region>Secure Remote Workspace</span></div><nav>
-      <IconButton icon={connectionsOpen?PanelLeftClose:PanelLeftOpen} label={connectionsOpen?"隐藏连接库":"显示连接库"} onClick={()=>setConnectionsOpen(!connectionsOpen)}/>
-      <IconButton icon={FolderOpen} label="连接管理器" onClick={()=>setConnectionsOpen(true)}/><IconButton icon={Plus} label="新建连接" onClick={()=>openConnectionEditor()}/>
-      <span className="toolbar-separator" data-tauri-drag-region/><IconButton icon={Activity} label={monitorOpen?"隐藏监控":"显示监控"} active={monitorOpen} onClick={()=>setMonitorOpen(!monitorOpen)}/>
-      <IconButton icon={HelpCircle} label="使用帮助" onClick={()=>{setSettingsOpen(false);setHelpOpen(true);}}/><IconButton icon={Settings} label="设置" onClick={()=>{setHelpOpen(false);setSettingsOpen(true);}}/>
-    </nav><div className="desktop-badge" data-tauri-drag-region><span className={api.isDesktop()?"online":"preview"} data-tauri-drag-region/>{api.isDesktop()?"桌面运行":"浏览器预览"}</div></header>
-    <div className="app-body">{connectionsOpen&&<><ConnectionSidebar connect={connect}/><div className="panel-resizer vertical connections-resizer" role="separator" aria-label="调整连接库宽度" aria-orientation="vertical" aria-valuemin={210} aria-valuemax={420} aria-valuenow={connectionWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,connectionWidth,setConnectionWidth,210,420)} onKeyDown={(event)=>resizeKey(event,connectionWidth,setConnectionWidth,210,420)}/></>} {monitorOpen&&<><MonitorSidebar/><div className="panel-resizer vertical monitor-resizer" role="separator" aria-label="调整监控栏宽度" aria-orientation="vertical" aria-valuemin={200} aria-valuemax={360} aria-valuenow={monitorWidth} tabIndex={0} onPointerDown={(event)=>beginResize(event,monitorWidth,setMonitorWidth,200,360)} onKeyDown={(event)=>resizeKey(event,monitorWidth,setMonitorWidth,200,360)}/></>}<Suspense fallback={<main className="loading-state"><LoaderCircle className="spin"/>加载终端工作区…</main>}><TerminalWorkspace connect={connect}/></Suspense></div>
-    {connecting&&<div className="connection-overlay"><LoaderCircle className="spin"/><span>正在安全连接 {connections.find((item)=>item.id===connecting)?.name}…</span></div>}
-    {error&&<ErrorToast message={error} onClose={()=>setError(null)}/>}
-    <McpApprovalCenter onError={(message)=>setError(message)}/>
-    <ConnectionEditor/><Suspense fallback={null}><SettingsModal/><HelpModal/></Suspense>
-    {hostPrompt&&<Modal title="核对服务器身份" onClose={()=>setHostPrompt(null)}><div className="host-key-prompt"><div className="host-key-icon"><TerminalSquare size={27}/></div><h3>{hostPrompt.connection.name}</h3><p>这是首次连接。请通过服务器控制台或管理员核对下面的主机密钥指纹。确认后 CNshell 会保存记录，今后若发生变化将阻止连接。</p><dl><div><dt>主机</dt><dd>{hostPrompt.connection.host}:{hostPrompt.connection.port}</dd></div><div><dt>算法</dt><dd>{hostPrompt.algorithm}</dd></div><div><dt>SHA-256 指纹</dt><dd><code>{hostPrompt.fingerprint}</code></dd></div></dl><footer className="form-actions"><button className="button secondary" onClick={()=>setHostPrompt(null)}>取消</button><button className="button primary" onClick={trustAndConnect}>我已核对，信任并连接</button></footer></div></Modal>}
-  </div>;
+interface HostKeyPrompt {
+  connection: ConnectionProfile;
+  fingerprint: string;
+  algorithm: string;
 }
 
-type RestorableWorkspaceSnapshot=Partial<WorkspaceSnapshot>&{connectionIds?:string[];splitSessionId?:string|null};
+export default function App() {
+  useTransferSync();
+  const platform = usePlatformCapabilities();
+  const {
+    bootstrap,
+    loading,
+    error,
+    setError,
+    addSession,
+    connections,
+    openConnectionEditor,
+    setSettingsOpen,
+    setHelpOpen,
+    settings,
+    settingsOpen,
+    connectionEditorOpen,
+  } = useAppStore(
+    useShallow((state) => ({
+      bootstrap: state.bootstrap,
+      loading: state.loading,
+      error: state.error,
+      setError: state.setError,
+      addSession: state.addSession,
+      connections: state.connections,
+      openConnectionEditor: state.openConnectionEditor,
+      setSettingsOpen: state.setSettingsOpen,
+      setHelpOpen: state.setHelpOpen,
+      settings: state.settings,
+      settingsOpen: state.settingsOpen,
+      connectionEditorOpen: state.connectionEditorOpen,
+    })),
+  );
+  const [connectionsOpen, setConnectionsOpen] = useState(true);
+  const [monitorOpen, setMonitorOpen] = useState(true);
+  const [connectionWidth, setConnectionWidth] = useState(260);
+  const [monitorWidth, setMonitorWidth] = useState(232);
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [hostPrompt, setHostPrompt] = useState<HostKeyPrompt | null>(null);
+  const workspaceRestoreStarted = useRef(false);
+  const workspacePersistenceReady = useRef(false);
+  const lastSavedWorkspace = useRef<string | null>(null);
+  const workspaceSnapshotRef = useRef<() => WorkspaceSnapshot>(() =>
+    createWorkspaceSnapshot([], null, workspaceRuntime.cwdBySession, {
+      terminalLayout: null,
+      bottomOpen: true,
+      bottomHeight: 260,
+      connectionsOpen: true,
+      monitorOpen: true,
+      connectionWidth: 260,
+      monitorWidth: 232,
+    }),
+  );
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
+  useEffect(() => {
+    if (
+      !loading &&
+      !settingsOpen &&
+      !connectionEditorOpen &&
+      settings.showWelcomeHelp &&
+      !localStorage.getItem("cnshell-welcome-seen")
+    ) {
+      setHelpOpen(true);
+      localStorage.setItem("cnshell-welcome-seen", "1");
+    }
+  }, [
+    loading,
+    settingsOpen,
+    connectionEditorOpen,
+    settings.showWelcomeHelp,
+    setHelpOpen,
+  ]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = settings.theme;
+    if (settings.theme === "system") delete root.dataset.theme;
+  }, [settings.theme]);
+  const connect = useCallback(
+    async (connection: ConnectionProfile) => {
+      if (connection.protocol === "rdp") {
+        setConnecting(connection.id);
+        try {
+          const check = await api.rdpPreflight();
+          if (!check.available) {
+            setError(check.message);
+            return;
+          }
+          addSession(await api.rdpOpen(connection.id));
+        } catch (reason) {
+          setError(errorMessage(reason));
+        } finally {
+          setConnecting(null);
+        }
+        return;
+      }
+      setConnecting(connection.id);
+      try {
+        const session = await api.openTerminal(connection.id, 120, 36);
+        addSession(session);
+        const forwards = await api.listForwards(connection.id);
+        for (const forward of forwards.filter(
+          (item) => item.autoStart && item.status !== "running",
+        )) {
+          api
+            .startForward(forward.id)
+            .catch((error) =>
+              setError(
+                `隧道 ${forward.bindPort} 启动失败：${errorMessage(error)}`,
+              ),
+            );
+        }
+      } catch (reason) {
+        const errorObject = reason as {
+          code?: string;
+          fingerprint?: string;
+          algorithm?: string;
+          message?: string;
+        };
+        if (
+          errorObject?.code === "host_key_unknown" &&
+          errorObject.fingerprint
+        ) {
+          setHostPrompt({
+            connection,
+            fingerprint: errorObject.fingerprint,
+            algorithm: errorObject.algorithm ?? "unknown",
+          });
+        } else setError(errorMessage(reason));
+      } finally {
+        setConnecting(null);
+      }
+    },
+    [addSession, setError],
+  );
+  const trustAndConnect = async () => {
+    if (!hostPrompt) return;
+    const prompt = hostPrompt;
+    setHostPrompt(null);
+    try {
+      await api.trustHost(
+        prompt.connection.id,
+        prompt.fingerprint,
+        prompt.algorithm,
+      );
+      await connect(prompt.connection);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  useEffect(() => {
+    if (!api.isDesktop()) return;
+    const promise = listen<string>("menu-action", (event) => {
+      if (event.payload === "new_connection") {
+        setHelpOpen(false);
+        setSettingsOpen(false);
+        openConnectionEditor();
+      }
+      if (event.payload === "show_help") {
+        setSettingsOpen(false);
+        setHelpOpen(true);
+      }
+      if (event.payload === "toggle_files")
+        window.dispatchEvent(new Event("cnshell-toggle-files"));
+      if (event.payload === "close_session")
+        window.dispatchEvent(new Event("cnshell-close-session"));
+      if (event.payload === "new_terminal") {
+        const state = useAppStore.getState();
+        const active = state.sessions.find(
+          (session) => session.id === state.activeSessionId,
+        );
+        const profile =
+          connections.find((item) => item.id === active?.connectionId) ??
+          connections[0];
+        if (profile) void connect(profile);
+      }
+    });
+    return () => {
+      void promise.then((unlisten) => unlisten());
+    };
+  }, [
+    connect,
+    connections,
+    openConnectionEditor,
+    setHelpOpen,
+    setSettingsOpen,
+  ]);
+  useEffect(() => {
+    if (!api.isDesktop() || platform.operatingSystem === "macos") return;
+    const handler = (event: KeyboardEvent) => {
+      if (!primaryShortcutPressed(event, platform.operatingSystem)) return;
+      if (event.key.toLowerCase() === "n") {
+        event.preventDefault();
+        setHelpOpen(false);
+        setSettingsOpen(false);
+        openConnectionEditor();
+      } else if (event.key.toLowerCase() === "t") {
+        event.preventDefault();
+        const state = useAppStore.getState();
+        const active = state.sessions.find(
+          (session) => session.id === state.activeSessionId,
+        );
+        const profile =
+          connections.find((item) => item.id === active?.connectionId) ??
+          connections[0];
+        if (profile) void connect(profile);
+      } else if (event.key === "?") {
+        event.preventDefault();
+        setSettingsOpen(false);
+        setHelpOpen(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [
+    connect,
+    connections,
+    openConnectionEditor,
+    platform.operatingSystem,
+    setHelpOpen,
+    setSettingsOpen,
+  ]);
+  useEffect(() => {
+    if (!api.isDesktop() || loading || workspaceRestoreStarted.current) return;
+    workspaceRestoreStarted.current = true;
+    void api
+      .loadWorkspace<RestorableWorkspaceSnapshot>()
+      .then(async (workspace) => {
+        if (!workspace) return;
+        if (typeof workspace.connectionsOpen === "boolean")
+          setConnectionsOpen(workspace.connectionsOpen);
+        if (typeof workspace.monitorOpen === "boolean")
+          setMonitorOpen(workspace.monitorOpen);
+        if (workspace.connectionWidth)
+          setConnectionWidth(
+            clampPanelSize(workspace.connectionWidth, 210, 420),
+          );
+        if (workspace.monitorWidth)
+          setMonitorWidth(clampPanelSize(workspace.monitorWidth, 200, 360));
+        const entries = (
+          workspace.sessions ??
+          workspace.connectionIds?.map((connectionId) => ({
+            id: crypto.randomUUID(),
+            connectionId,
+            cwd: null,
+          })) ??
+          []
+        ).filter((entry) =>
+          connections.some(
+            (item) => item.id === entry.connectionId && item.protocol === "ssh",
+          ),
+        );
+        if (
+          !entries.length ||
+          !confirm(
+            `恢复上次的 ${entries.length} 个 SSH 会话和布局？只恢复目录，不会重放历史命令。`,
+          )
+        )
+          return;
+        const mapped = new Map<string, string>();
+        for (const entry of entries) {
+          const profile = connections.find(
+            (item) => item.id === entry.connectionId,
+          );
+          if (!profile) continue;
+          const before = new Set(
+            useAppStore.getState().sessions.map((item) => item.id),
+          );
+          await connect(profile);
+          const created = useAppStore
+            .getState()
+            .sessions.find((item) => !before.has(item.id));
+          if (!created) continue;
+          mapped.set(entry.id, created.id);
+          if (entry.cwd)
+            await api.terminalInput(
+              created.id,
+              `cd -- ${shellQuote(entry.cwd)}\n`,
+            );
+        }
+        const active = mapped.get(workspace.activeSessionId ?? "");
+        if (active) useAppStore.getState().setActiveSession(active);
+        window.dispatchEvent(
+          new CustomEvent("cnshell-restore-layout", {
+            detail: {
+              terminalLayout: workspace.terminalLayout
+                ? mapLayoutSessions(workspace.terminalLayout, mapped)
+                : null,
+              splitSessionId:
+                mapped.get(workspace.splitSessionId ?? "") ?? null,
+              bottomOpen: workspace.bottomOpen ?? true,
+              bottomHeight: workspace.bottomHeight ?? 260,
+            },
+          }),
+        );
+      })
+      .catch((reason) => setError(`工作区恢复失败：${errorMessage(reason)}`))
+      .finally(() => {
+        workspacePersistenceReady.current = true;
+      });
+  }, [loading, connections, connect, setError]);
+  workspaceSnapshotRef.current = () => {
+    const state = useAppStore.getState();
+    return createWorkspaceSnapshot(
+      state.sessions,
+      state.activeSessionId,
+      workspaceRuntime.cwdBySession,
+      {
+        terminalLayout: workspaceRuntime.terminalLayout,
+        bottomOpen: workspaceRuntime.bottomOpen,
+        bottomHeight: workspaceRuntime.bottomHeight,
+        connectionsOpen,
+        monitorOpen,
+        connectionWidth,
+        monitorWidth,
+      },
+    );
+  };
+  useEffect(() => {
+    if (!api.isDesktop()) return;
+    let cancelled = false;
+    let timer: number;
+    const persist = async () => {
+      if (workspacePersistenceReady.current) {
+        try {
+          lastSavedWorkspace.current = await saveWorkspaceIfChanged(
+            workspaceSnapshotRef.current(),
+            lastSavedWorkspace.current,
+            (snapshot) => api.saveWorkspace(snapshot),
+          );
+        } catch (reason) {
+          console.error("工作区自动保存失败", reason);
+        }
+      }
+      if (!cancelled) timer = window.setTimeout(persist, 2_000);
+    };
+    timer = window.setTimeout(persist, 2_000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+  useEffect(
+    () =>
+      registerWindowCloseProtection(
+        () =>
+          workspacePersistenceReady.current
+            ? api.saveWorkspace(workspaceSnapshotRef.current())
+            : Promise.resolve(),
+        setError,
+      ),
+    [setError],
+  );
+  if (loading)
+    return (
+      <div className="app-loading">
+        <img src="/app-mark.svg" alt="" />
+        <LoaderCircle className="spin" />
+        <span>正在启动安全工作区…</span>
+      </div>
+    );
+  const beginResize = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    current: number,
+    setValue: (value: number) => void,
+    minimum: number,
+    maximum: number,
+  ) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const startX = event.clientX;
+    const move = (moveEvent: PointerEvent) =>
+      setValue(
+        clampPanelSize(current + moveEvent.clientX - startX, minimum, maximum),
+      );
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  const resizeKey = (
+    event: React.KeyboardEvent<HTMLDivElement>,
+    current: number,
+    setValue: (value: number) => void,
+    minimum: number,
+    maximum: number,
+  ) => {
+    const next = resizeFromKeyboard(current, event.key, "vertical");
+    if (next === current) return;
+    event.preventDefault();
+    setValue(clampPanelSize(next, minimum, maximum));
+  };
+  const layoutStyle = {
+    "--connections-width": `${connectionWidth}px`,
+    "--monitor-width": `${monitorWidth}px`,
+  } as CSSProperties;
+  return (
+    <div
+      className={`app-shell ${connectionsOpen ? "connections-open" : ""} ${monitorOpen ? "monitor-open" : ""}`}
+      style={layoutStyle}
+    >
+      <header className="titlebar" data-tauri-drag-region>
+        <div className="traffic-light-space" data-tauri-drag-region />
+        <div className="brand" data-tauri-drag-region>
+          <img src="/app-mark.svg" alt="" data-tauri-drag-region />
+          <strong data-tauri-drag-region>CNshell</strong>
+          <span data-tauri-drag-region>Secure Remote Workspace</span>
+        </div>
+        <nav>
+          <IconButton
+            icon={connectionsOpen ? PanelLeftClose : PanelLeftOpen}
+            label={connectionsOpen ? "隐藏连接库" : "显示连接库"}
+            onClick={() => setConnectionsOpen(!connectionsOpen)}
+          />
+          <IconButton
+            icon={FolderOpen}
+            label="连接管理器"
+            onClick={() => setConnectionsOpen(true)}
+          />
+          <IconButton
+            icon={Plus}
+            label="新建连接"
+            onClick={() => openConnectionEditor()}
+          />
+          <span className="toolbar-separator" data-tauri-drag-region />
+          <IconButton
+            icon={Activity}
+            label={monitorOpen ? "隐藏监控" : "显示监控"}
+            active={monitorOpen}
+            onClick={() => setMonitorOpen(!monitorOpen)}
+          />
+          <IconButton
+            icon={HelpCircle}
+            label="使用帮助"
+            onClick={() => {
+              setSettingsOpen(false);
+              setHelpOpen(true);
+            }}
+          />
+          <IconButton
+            icon={Settings}
+            label="设置"
+            onClick={() => {
+              setHelpOpen(false);
+              setSettingsOpen(true);
+            }}
+          />
+        </nav>
+        <div className="desktop-badge" data-tauri-drag-region>
+          <span
+            className={api.isDesktop() ? "online" : "preview"}
+            data-tauri-drag-region
+          />
+          {api.isDesktop() ? "桌面运行" : "浏览器预览"}
+        </div>
+      </header>
+      <div className="app-body">
+        {connectionsOpen && (
+          <>
+            <ConnectionSidebar connect={connect} />
+            <div
+              className="panel-resizer vertical connections-resizer"
+              role="separator"
+              aria-label="调整连接库宽度"
+              aria-orientation="vertical"
+              aria-valuemin={210}
+              aria-valuemax={420}
+              aria-valuenow={connectionWidth}
+              tabIndex={0}
+              onPointerDown={(event) =>
+                beginResize(
+                  event,
+                  connectionWidth,
+                  setConnectionWidth,
+                  210,
+                  420,
+                )
+              }
+              onKeyDown={(event) =>
+                resizeKey(event, connectionWidth, setConnectionWidth, 210, 420)
+              }
+            />
+          </>
+        )}{" "}
+        {monitorOpen && (
+          <>
+            <MonitorSidebar />
+            <div
+              className="panel-resizer vertical monitor-resizer"
+              role="separator"
+              aria-label="调整监控栏宽度"
+              aria-orientation="vertical"
+              aria-valuemin={200}
+              aria-valuemax={360}
+              aria-valuenow={monitorWidth}
+              tabIndex={0}
+              onPointerDown={(event) =>
+                beginResize(event, monitorWidth, setMonitorWidth, 200, 360)
+              }
+              onKeyDown={(event) =>
+                resizeKey(event, monitorWidth, setMonitorWidth, 200, 360)
+              }
+            />
+          </>
+        )}
+        <Suspense
+          fallback={
+            <main className="loading-state">
+              <LoaderCircle className="spin" />
+              加载终端工作区…
+            </main>
+          }
+        >
+          <TerminalWorkspace connect={connect} />
+        </Suspense>
+      </div>
+      {connecting && (
+        <div className="connection-overlay">
+          <LoaderCircle className="spin" />
+          <span>
+            正在安全连接{" "}
+            {connections.find((item) => item.id === connecting)?.name}…
+          </span>
+        </div>
+      )}
+      {error && <ErrorToast message={error} onClose={() => setError(null)} />}
+      <McpApprovalCenter onError={(message) => setError(message)} />
+      <ConnectionEditor />
+      <RemoteEditorHost />
+      <Suspense fallback={null}>
+        <SettingsModal />
+        <HelpModal />
+      </Suspense>
+      {hostPrompt && (
+        <Modal title="核对服务器身份" onClose={() => setHostPrompt(null)}>
+          <div className="host-key-prompt">
+            <div className="host-key-icon">
+              <TerminalSquare size={27} />
+            </div>
+            <h3>{hostPrompt.connection.name}</h3>
+            <p>
+              这是首次连接。请通过服务器控制台或管理员核对下面的主机密钥指纹。确认后
+              CNshell 会保存记录，今后若发生变化将阻止连接。
+            </p>
+            <dl>
+              <div>
+                <dt>主机</dt>
+                <dd>
+                  {hostPrompt.connection.host}:{hostPrompt.connection.port}
+                </dd>
+              </div>
+              <div>
+                <dt>算法</dt>
+                <dd>{hostPrompt.algorithm}</dd>
+              </div>
+              <div>
+                <dt>SHA-256 指纹</dt>
+                <dd>
+                  <code>{hostPrompt.fingerprint}</code>
+                </dd>
+              </div>
+            </dl>
+            <footer className="form-actions">
+              <button
+                className="button secondary"
+                onClick={() => setHostPrompt(null)}
+              >
+                取消
+              </button>
+              <button className="button primary" onClick={trustAndConnect}>
+                我已核对，信任并连接
+              </button>
+            </footer>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+type RestorableWorkspaceSnapshot = Partial<WorkspaceSnapshot> & {
+  connectionIds?: string[];
+  splitSessionId?: string | null;
+};

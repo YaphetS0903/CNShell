@@ -1170,6 +1170,23 @@ pub struct MonitorSnapshot {
 pub struct NetworkInterface {
     pub name: String,
     pub addresses: Vec<String>,
+    pub rx_bytes_per_second: u64,
+    pub tx_bytes_per_second: u64,
+    pub rx_total_bytes: u64,
+    pub tx_total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CpuUsageBreakdown {
+    pub user_percent: f64,
+    pub system_percent: f64,
+    pub nice_percent: f64,
+    pub idle_percent: f64,
+    pub io_wait_percent: f64,
+    pub irq_percent: f64,
+    pub soft_irq_percent: f64,
+    pub steal_percent: f64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1177,11 +1194,23 @@ pub struct NetworkInterface {
 pub struct SystemInfo {
     pub hostname: String,
     pub os: String,
+    pub kernel_name: String,
     pub kernel: String,
     pub architecture: String,
     pub cpu_model: String,
     pub cpu_cores: u32,
+    pub cpu_frequency_mhz: f64,
+    pub cpu_cache: String,
+    pub cpu_bogomips: f64,
+    pub cpu_usage: CpuUsageBreakdown,
+    pub memory_used_bytes: u64,
     pub memory_total_bytes: u64,
+    pub memory_available_bytes: u64,
+    pub swap_used_bytes: u64,
+    pub swap_total_bytes: u64,
+    pub swap_available_bytes: u64,
+    pub uptime_seconds: u64,
+    pub load: [f64; 3],
     pub interfaces: Vec<NetworkInterface>,
     pub disks: Vec<DiskInfo>,
 }

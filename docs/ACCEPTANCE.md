@@ -1,6 +1,6 @@
-# CNshell v0.2.0-beta.10 验收矩阵
+# CNshell v0.2.0-beta.11 验收矩阵
 
-> 最后核验：2026-09-02（设置中心 Windows 11 高 DPI/Narrator 与 macOS VoiceOver 真机验收完成；其余外部边界按各条记录保留）
+> 最后核验：2026-09-08（传输队列真实协议、编辑器生命周期、应用退出保护与 macOS arm64 成品 App 增量验收完成；其余外部边界按各条记录保留）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -15,7 +15,7 @@
 | xterm.js、多标签、拆分、搜索、剪贴板、IME、True Color、PTY resize | 通过 | `src/features/terminal/TerminalView.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src-tauri/src/ssh.rs` | E2E 直接验证拆分后主标签保持选中、左右各显示独立终端，选择副标签会安全收拢布局；单元/E2E、1 MB 输出及 PTY roundtrip 通过；浏览器端 IME 风格文本插入保留中文与 Emoji；本机密码 SSH 夹具验证交互 PTY、中文/Emoji 双向字节和 ANSI/True Color 全屏序列；最终 universal DMG 的只读挂载应用经真实 Canvas 截图确认中文宽字符、Emoji、线框、光标定位和 RGB 颜色无明显错位；腾讯云 PTY 的 `vim`、`top`、`tmux` 验收亦通过 |
 | 自动重连与安全错误停止重试 | 通过 | `src-tauri/src/ssh.rs` | Rust 测试验证 1/2/5/10/30 秒及认证/指纹错误停止策略 |
 | SFTP 目录树、导航、排序、隐藏文件、虚拟滚动与文件操作 | 通过 | `src/features/files/RemoteDirectoryTree.tsx`、`src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 左侧目录树按需加载并自动展开活动路径祖先；文件右键含下载、上传、新建文件/文件夹、打开方式、编辑、复制、重命名、权限、压缩/解压和删除，新建文件采用排他创建不覆盖同名目标；组件/E2E 与真实 SFTP 小型协议覆盖。此前空目录、10 万文件、特殊文件名、符号链接和无权限目录证据保留 |
-| 上传下载队列、速度/ETA、暂停/取消/重试、冲突策略 | 通过 | `src/features/files/TransferQueue.tsx`、`src-tauri/src/sftp.rs` | 1 GB 真实 SFTP 流式上传/下载及 SHA-256 一致性通过；中断临时文件、显式重试已覆盖 |
+| 上传下载队列、速度/ETA、暂停/取消/重试、冲突策略 | 通过 | `src/features/files/TransferQueue.tsx`、`src-tauri/src/sftp.rs` | 1 GiB 真实 SFTP 流式上传/下载及 SHA-256 一致性通过；4 路生产并发槽位、排队取消、运行中暂停/恢复/取消、临时文件清理、上传下载 rename/skip/overwrite、失败后重试及数据库最终目标持久化均由本机 OpenSSH 夹具覆盖 |
 | 文件夹打包上传与下载 | 通过 | `src/features/files/FileManager.tsx`、`src-tauri/src/sftp.rs` | 本机真实 OpenSSH 覆盖两层目录、中文文件名、上传/下载往返内容、覆盖时两阶段备份交换，以及本地/远端临时归档清理；后台任务支持取消，失败不先删除原目标 |
 | 下载临时文件与上传原子替换 | 通过 | `src-tauri/src/sftp.rs` | `.cnshell-part`、远端临时文件及原子 rename 已由协议/Rust 测试覆盖 |
 | 10 MB 文本编辑、修改冲突与原子保存 | 通过 | `src/features/files/TextEditor.tsx`、`src-tauri/src/sftp.rs` | UTF-8 字节边界测试；冲突比较、临时文件、fsync 与原子 rename 路径由代码审计及真实 SFTP 覆盖 |
@@ -47,7 +47,21 @@
 | Zmodem/Mosh/X11 | 部分 | Zmodem 已与腾讯云 `lrzsz` 完成双向互操作；Mosh 已完成真实公网 UDP 短测；X11 已由本机 OpenSSH 接受真实 `x11-req` 并建立远端 `DISPLAY`。XQuartz GUI、Mosh 漫游/Intel 与对应外部环境仍待验收 |
 | AI、插件、团队协作 | 部分（代码与 loopback 通过，生产/真机待补） | AI 有界流式响应、可信插件沙箱、本地团队 RBAC/组织导出/设备/审计、Keychain 设备密钥 E2E 离线连接分享、relay 服务端、生产邮箱验证、客户端账号/工作区同步、在线多人终端 WebSocket/观看控制 UI、备份恢复及生产代理/监控配置已完成。官方 `age v1.3.1` 的 Sigsum 验证和本机功能演练通过；正式域名证书、真实 SMTP/Alertmanager 投递、生产 identity 异地恢复和双设备跨网络会话仍未完成，不声明生产在线团队服务验收通过 |
 
-本轮遵守用户指示，不重跑 soak、1 GB 传输或 100k 文件测试。对应历史证据保留，但不计入本轮新增验收。
+### 2026-09-08 传输、编辑与桌面退出增量验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 一键验收入口 | 新增 `npm run test:transfer-acceptance`；默认执行完整真实协议矩阵，`CNSHELL_TRANSFER_ACCEPTANCE_LEVEL=quick npm run test:transfer-acceptance` 只运行核心队列场景与确定性故障测试 |
+| 真实队列与完整性 | 本机临时 OpenSSH `sshd` 使用生产传输实现：同时暂停 4 个 8 MiB 下载占满全部并发槽位，第 5 个任务保持排队并可取消；恢复后 4 个文件均完成且 SHA-256 一致。运行中取消后状态为 cancelled，目标文件和 `.cnshell-part-*` 均不存在 |
+| 冲突与重试 | 真实 SFTP 下载已覆盖 rename/skip/overwrite，真实上传 rename 保留原文件并写入改名目标；缺失远端文件先失败，创建后重试成功。数据库测试确认完成任务持久化最终改名目标 |
+| 大文件与目录规模 | 完整命令重新执行 1 GiB SFTP 往返 SHA-256 和 10 万目录项；协议测试 14 项返回通过。长时间 soak 未设置 `CNSHELL_SOAK_SECONDS`，按设计跳过，不计为本轮耐久测试 |
+| 故障与前端同步 | 22 项 SFTP 测试覆盖 ENOSPC、截断、现有目标保护、临时文件和队列槽位；12 项前端测试覆盖隐藏面板下的后台进度同步、终态收敛和退出警告。物理磁盘填满仍未执行，ENOSPC 为系统错误注入 |
+| 编辑器生命周期 | 远程编辑器提升为应用级宿主；草稿按连接与路径恢复，远端变化进入冲突视图，切换会话、关闭会话和退出均检查未保存内容；WebKit E2E 覆盖编辑器打开、编辑、冲突和关闭保护 |
+| macOS 成品 App | `0.2.0-beta.10` arm64 主程序完成 ad-hoc Hardened Runtime 签名，最低 macOS 13；包内 FreeRDP、Mosh、G-Kermit、MCP 均为 arm64+x86_64 universal sidecar，严格签名、许可证/对应源码、RDP preflight/显示器枚举、Mosh、G-Kermit 与 MCP `--self-check` 通过 |
+| 原生启动与退出 | 成品 App 实际恢复 SSH 工作区，终端和 SFTP 在线，并只读打开 `/etc/timezone`。验收发现旧 `⌘Q` 路径会销毁窗口但遗留进程；现改为 Rust 拦截系统退出、前端统一检查未保存编辑/后台传输、确认后调用后端退出命令。新增 5 项退出保护测试与严格 Clippy 通过；验收草稿未写回远端 |
+| 验收边界 | 当前主机只完成 macOS arm64 运行；Windows 原生安装与 Windows ARM64 真机仍沿用既有外部边界。当前包为本机 ad-hoc 签名，未使用 Developer ID，也未公证 |
+
+完整传输命令最终输出 `CNshell transfer acceptance passed: full`，真实协议阶段耗时约 148 秒。取消测试造成的本机 `sshd` connection reset 日志属于主动中断路径，测试与清理均通过。
 
 ### 2026-09-02 设置中心可访问性最终验收
 
@@ -319,7 +333,7 @@
 
 ## 5. 结论
 
-当前代码已发布为 **v0.2.0-beta.2 未签名跨平台 Pre-release**：核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试已按用户认可的约 2 小时 50 分钟结果验收，Beta updater 签名、四平台清单、公开下载入口和 Beta.1 → Beta.2 应用内更新均已验证。Beta.2 没有新增真机能力声明，主要验证 Windows migration 备份重试、严格 Clippy 门禁和真实更新链路。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
+当前工作区版本为 **v0.2.0-beta.11**；本文记录的公开发布链路基线仍为 **v0.2.0-beta.2 未签名跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试按用户认可的约 2 小时 50 分钟结果保留，Beta updater 签名、四平台清单、公开下载入口和 Beta.1 → Beta.2 应用内更新均已有历史证据。当前 beta.11 增量以各日期小节的本机证据为准，不能表述为已经公开发布。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 

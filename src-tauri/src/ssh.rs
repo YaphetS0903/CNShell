@@ -342,6 +342,16 @@ impl SessionManager {
             .await
     }
 
+    /// Long file operations own their connection, including while paused.
+    /// They must not hold the short-lived directory/edit lane's semaphore.
+    pub async fn acquire_file_transfer_transport(
+        &self,
+        db: &Database,
+        profile: &ConnectionProfile,
+    ) -> AppResult<TransportLease> {
+        self.transports.acquire(db, profile, false).await
+    }
+
     pub fn invalidate_transport(&self, connection_id: &str) {
         self.transports.invalidate(connection_id);
     }
@@ -3717,6 +3727,35 @@ mod tests {
         drop(first_terminal);
         let next_exclusive = pool.acquire(&db, &profile, false).await.unwrap();
         assert_eq!(pool.created(), 5);
+        let manager = SessionManager::default();
+        manager.insert_external("file-operations".into(), profile.clone());
+        let held_transfer = manager
+            .acquire_file_transfer_transport(&db, &profile)
+            .await
+            .unwrap();
+        let another_transfer = tokio::time::timeout(
+            Duration::from_secs(5),
+            manager.acquire_file_transfer_transport(&db, &profile),
+        )
+        .await
+        .expect("a second transfer must not queue behind the first")
+        .unwrap();
+        let listing = tokio::time::timeout(
+            Duration::from_secs(5),
+            crate::sftp::list(
+                db.clone(),
+                manager,
+                "file-operations".into(),
+                "/tmp".into(),
+                false,
+            ),
+        )
+        .await
+        .expect("directory browsing must not wait for active or paused transfers")
+        .unwrap();
+        let _ = listing;
+        drop(another_transfer);
+        drop(held_transfer);
         let mut next_terminal =
             open_pty(next_exclusive, profile.clone(), 80, 24, false, false, false).unwrap();
         write_channel_input(&mut next_terminal.channel, b"exit\n").unwrap();

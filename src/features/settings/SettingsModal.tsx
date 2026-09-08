@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import {
   lazy,
   useDeferredValue,
@@ -116,7 +117,7 @@ function matchesSearch(target: SettingsSearchTarget, query: string) {
 
 export default function SettingsModal() {
   const platform = usePlatformCapabilities();
-  const { settingsOpen, setSettingsOpen, settings, saveSettings, connections, refreshConnections, setError } = useAppStore();
+  const { settingsOpen, setSettingsOpen, settings, saveSettings, connections, refreshConnections, setError } = useAppStore(useShallow((state) => ({settingsOpen: state.settingsOpen, setSettingsOpen: state.setSettingsOpen, settings: state.settings, saveSettings: state.saveSettings, connections: state.connections, refreshConnections: state.refreshConnections, setError: state.setError})));
   const [draft, setDraft] = useState(settings);
   const [activeCategory, setActiveCategory] = useState<SettingsCategory>("basic");
   const [mountedCategories, setMountedCategories] = useState<Set<SettingsCategory>>(() => new Set(["basic"]));

@@ -1,5 +1,32 @@
-import { AlertCircle, Archive, ArrowDownToLine, ArrowLeft, ArrowUpToLine, ChevronDown, Clipboard, File, FileCode2, FilePlus, Folder, FolderPlus, LoaderCircle, MoreHorizontal, PackageOpen, RefreshCw, RotateCcw, Trash2 } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useShallow } from "zustand/react/shallow";
+import {
+  AlertCircle,
+  Archive,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowUpToLine,
+  ChevronDown,
+  Clipboard,
+  File,
+  FileCode2,
+  FilePlus,
+  Folder,
+  FolderPlus,
+  LoaderCircle,
+  MoreHorizontal,
+  PackageOpen,
+  RefreshCw,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { api } from "../../lib/api";
@@ -15,72 +42,972 @@ import { usePlatformCapabilities } from "../../lib/platform";
 import { externalApplicationDialogOptions } from "./external-application";
 import { joinLocalPath, localPathName } from "../../lib/local-path";
 import { nativeDropIsInsideElement } from "./native-file-drop";
-import { DIRECTORY_REQUEST_TIMEOUT_MS, withTimeout } from "../../lib/async-timeout";
+import {
+  DIRECTORY_REQUEST_TIMEOUT_MS,
+  withTimeout,
+} from "../../lib/async-timeout";
 import { parseRemoteMode } from "./file-permissions";
 import { PanelFontSizeControl } from "../../components/PanelFontSizeControl";
-import { panelFontSizeStorageKeys, usePanelFontSize } from "../../lib/panel-font-size";
+import {
+  panelFontSizeStorageKeys,
+  usePanelFontSize,
+} from "../../lib/panel-font-size";
 
-const TextEditor=lazy(()=>import("./TextEditor").then((module)=>({default:module.TextEditor})));
-
-type SortKey = "name"|"size"|"modifiedAt";
+type SortKey = "name" | "size" | "modifiedAt";
 
 export function FileManager({ session }: { session: TerminalSession }) {
-  const platform=usePlatformCapabilities();
-  const [fileFontSize, setFileFontSize, useAutomaticFileFontSize, fileFontSizeAutomatic] = usePanelFontSize(panelFontSizeStorageKeys.files);
-  const restored=workspaceRuntime.remoteFileBrowserBySession.get(session.id);const { settings, setError, setPanel } = useAppStore(); const [path,setPath]=useState(restored?.path??"/");const [draftPath,setDraftPath]=useState(restored?.path??"/");const [files,setFiles]=useState<RemoteFile[]>([]);const [loading,setLoading]=useState(false);const [directoryError,setDirectoryError]=useState<string|null>(null);const [selected,setSelected]=useState<RemoteFile|null>(null);const [sort,setSort]=useState<{key:SortKey;asc:boolean}>({key:"name",asc:true});const [editor,setEditor]=useState<string|null>(null);const[dragging,setDragging]=useState(false);const[scrollTop,setScrollTop]=useState(0);const[viewportHeight,setViewportHeight]=useState(260);const[background,setBackground]=useState<{id:string;label:string}|null>(null);const[contextMenu,setContextMenu]=useState<{x:number;y:number}|null>(null);const[actionsOpen,setActionsOpen]=useState(false);const bodyRef=useRef<HTMLDivElement>(null);const browserRef=useRef<HTMLDivElement>(null);const actionsRef=useRef<HTMLDivElement>(null);const loadRequestRef=useRef(0);const listRequestsRef=useRef(new Map<string,Promise<RemoteFile[]>>());const uploadPathsRef=useRef<(paths:string[])=>Promise<void>>(async()=>{});const rememberBrowser=useCallback((patch:Partial<{path:string;expandedPaths:string[]}>)=>{const current=workspaceRuntime.remoteFileBrowserBySession.get(session.id)??{path:"/",expandedPaths:["/"]};workspaceRuntime.remoteFileBrowserBySession.set(session.id,{...current,...patch});},[session.id]);const rememberExpanded=useCallback((expandedPaths:string[])=>rememberBrowser({expandedPaths}),[rememberBrowser]);
-  const listRemoteFiles=useCallback((target:string)=>{const key=`${settings.showHiddenFiles?"hidden":"visible"}:${target}`;const existing=listRequestsRef.current.get(key);if(existing)return existing;const request=api.listFiles(session.id,target,settings.showHiddenFiles).finally(()=>{if(listRequestsRef.current.get(key)===request)listRequestsRef.current.delete(key);});listRequestsRef.current.set(key,request);return request;},[session.id,settings.showHiddenFiles]);
-  const load=useCallback(async()=>{const requestId=++loadRequestRef.current;setLoading(true);setDirectoryError(null);try{const result=await withTimeout(listRemoteFiles(path),DIRECTORY_REQUEST_TIMEOUT_MS,`目录读取 ${path} 超时，请重试`);if(requestId!==loadRequestRef.current)return;setFiles(result);setDraftPath(path);setSelected(null);setScrollTop(0);if(bodyRef.current)bodyRef.current.scrollTop=0;}catch(reason){if(requestId!==loadRequestRef.current)return;const message=errorMessage(reason);setDirectoryError(message);setError(message);}finally{if(requestId===loadRequestRef.current)setLoading(false);}},[listRemoteFiles,path,setError]);
-  useEffect(()=>{void load();return()=>{loadRequestRef.current+=1;};},[load]);
-  const sorted=useMemo(()=>[...files].sort((a,b)=>{if(a.kind!==b.kind)return a.kind==="directory"?-1:1;const direction=sort.asc?1:-1;if(sort.key==="size")return(a.size-b.size)*direction;if(sort.key==="modifiedAt")return((a.modifiedAt??0)-(b.modifiedAt??0))*direction;return a.name.localeCompare(b.name,"zh-CN")*direction;}),[files,sort]);
-  const windowRange=virtualWindow(sorted.length,scrollTop,viewportHeight);const visibleFiles=sorted.slice(windowRange.start,windowRange.end);
-  useEffect(()=>{const body=bodyRef.current;if(!body)return;const resize=new ResizeObserver(()=>setViewportHeight(body.clientHeight));resize.observe(body);setViewportHeight(body.clientHeight);return()=>resize.disconnect();},[]);
-  useEffect(()=>{if(!contextMenu)return;const close=()=>setContextMenu(null);const key=(event:KeyboardEvent)=>{if(event.key==="Escape")close();};window.addEventListener("pointerdown",close);window.addEventListener("keydown",key);return()=>{window.removeEventListener("pointerdown",close);window.removeEventListener("keydown",key);};},[contextMenu]);
-  useEffect(()=>{if(!actionsOpen)return;const close=(event:PointerEvent)=>{if(!actionsRef.current?.contains(event.target as Node))setActionsOpen(false);};const key=(event:KeyboardEvent)=>{if(event.key==="Escape")setActionsOpen(false);};window.addEventListener("pointerdown",close);window.addEventListener("keydown",key);return()=>{window.removeEventListener("pointerdown",close);window.removeEventListener("keydown",key);};},[actionsOpen]);
-  useEffect(()=>setActionsOpen(false),[selected?.path,session.id]);
-  const navigate=(target:string)=>{const normalized=target.startsWith("cnshell-raw-path:")?target:normalizeRemotePath(target);setPath(normalized);rememberBrowser({path:normalized});};const parent=()=>{if(path.startsWith("cnshell-raw-path:")){navigate("/");return;}navigate(path.split("/").slice(0,-1).join("/")||"/");};
-  const listTreeDirectories=useCallback(async(target:string)=>(await listRemoteFiles(target)).filter((item)=>item.kind==="directory").sort((left,right)=>left.name.localeCompare(right.name,"zh-CN")).map(({name,path})=>({name,path})),[listRemoteFiles]);
-  const reportTreeError=useCallback((reason:unknown)=>setError(errorMessage(reason)),[setError]);
-  const refreshTree=()=>window.dispatchEvent(new Event("cnshell-refresh-directory-tree"));
-  const createFolder=async(target=path)=>{const name=prompt("新文件夹名称");if(!name)return;try{await api.createDirectory(session.id,await api.joinRemotePath(target,name));await load();refreshTree();}catch(reason){setError(errorMessage(reason));}};
-  const createFile=async(target=path)=>{const name=prompt("新文件名称");if(!name)return;try{const filePath=await api.joinRemotePath(target,name);await api.createText(session.id,filePath);await load();setEditor(filePath);}catch(reason){setError(errorMessage(reason));}};
-  const rename=async()=>{if(!selected)return;const name=prompt("新名称",selected.name);if(!name||name===selected.name)return;try{await api.renameRemote(session.id,selected.path,await api.joinRemotePath(path,name));await load();if(selected.kind==="directory")refreshTree();}catch(reason){setError(errorMessage(reason));}};
-  const remove=async()=>{if(!selected||!confirm(`确定删除 ${selected.name}？此操作无法撤销。`))return;try{await api.deleteRemote(session.id,selected.path,selected.kind==="directory");await load();if(selected.kind==="directory")refreshTree();}catch(reason){setError(errorMessage(reason));}};
-  const chmod=async()=>{if(!selected)return;const value=prompt("输入八进制权限，例如 755",selected.permissions.includes("x")?"755":"644");if(value===null)return;const mode=parseRemoteMode(value);if(mode===null){setError("权限必须是 3 或 4 位八进制数字，例如 644、755 或 0755");return;}try{await api.chmodRemote(session.id,selected.path,mode);await load();}catch(reason){setError(errorMessage(reason));}};
-  const chooseConflictPolicy=useCallback((message:string):Exclude<ConflictPolicy,"ask">=>{const answer=prompt(`${message}\n输入 O 覆盖、S 跳过、R 自动重命名（默认）`,"R")?.trim().toLowerCase();return answer==="o"?"overwrite":answer==="s"?"skip":"rename";},[]);
-  const upload=async(target=path)=>{if(!api.isDesktop()){setError("上传需要运行 CNshell 桌面版");return;}const source=await open({multiple:false,directory:false});if(!source)return;const destination=await api.joinRemotePath(target,localPathName(source));const conflictPolicy:ConflictPolicy=files.some((item)=>item.path===destination)?chooseConflictPolicy("远端已存在同名文件。"):"ask";try{await api.enqueueTransfer({sessionId:session.id,direction:"upload",source,destination,conflictPolicy});setPanel("transfers");}catch(reason){setError(errorMessage(reason));}};
-  const transferFolder=async(direction:"upload"|"download")=>{if(!api.isDesktop()){setError("文件夹传输需要运行 CNshell 桌面版");return;}let source:string;let destination:string;if(direction==="upload"){const chosen=await open({multiple:false,directory:true});if(!chosen)return;source=chosen;destination=await api.joinRemotePath(path,localPathName(chosen));}else{if(!selected||selected.kind!=="directory")return;const chosen=await open({multiple:false,directory:true});if(!chosen)return;source=selected.path;destination=joinLocalPath(chosen,selected.name,platform.operatingSystem);}const exists=direction==="upload"?files.some((item)=>item.path===destination):false;const conflictPolicy:Exclude<ConflictPolicy,"ask">=exists&&confirm("目标文件夹已存在，是否覆盖？选择“取消”将自动重命名。")?"overwrite":"rename";await runBackground(direction==="upload"?"正在打包并上传文件夹…":"正在打包并下载文件夹…",()=>api.startDirectoryTransfer(session.id,direction,source,destination,conflictPolicy));};
-  const download=async()=>{if(!selected||selected.kind!=="file")return;const destination=await save({defaultPath:selected.name});if(!destination)return;const conflictPolicy=chooseConflictPolicy("如果本地已存在目标文件，请选择冲突策略。");try{await api.enqueueTransfer({sessionId:session.id,direction:"download",source:selected.path,destination,conflictPolicy});setPanel("transfers");}catch(reason){setError(errorMessage(reason));}};
-  const sortBy=(key:SortKey)=>setSort((current)=>current.key===key?{key,asc:!current.asc}:{key,asc:true});
-  const runBackground=async(label:string,start:()=>ReturnType<typeof api.startArchiveRemote>)=>{if(background){setError("已有文件后台任务正在运行");return;}try{const task=await start();setBackground({id:task.id,label});await waitForTask(task);await load();}catch(reason){if((reason as DOMException).name!=="AbortError")setError(errorMessage(reason));}finally{setBackground(null);}};
-  const archive=async(extract:boolean)=>{if(!selected)return;await runBackground(extract?"正在解压…":"正在压缩…",()=>api.startArchiveRemote(session.id,selected.path,extract));};
-  const openLocally=async(application?:string)=>{if(!selected)return;await runBackground("正在准备本地预览…",()=>api.startOpenRemoteLocally(session.id,selected.path,application));};
-  const openWith=async()=>{const application=await open(externalApplicationDialogOptions(platform,`选择用于打开文件的${platform.displayName}应用`));if(application)await openLocally(application);};
-  const uploadPaths=useCallback(async(paths:string[])=>{const destinations=await Promise.all(paths.map(async(source)=>({source,destination:await api.joinRemotePath(path,localPathName(source))})));const hasConflict=destinations.some(({destination})=>files.some((item)=>item.path===destination));const policy=hasConflict?chooseConflictPolicy("拖入项目中存在远端同名文件，此选择将应用到本批全部冲突。 "):"ask";for(const item of destinations)await api.enqueueTransfer({sessionId:session.id,direction:"upload",...item,conflictPolicy:policy});setPanel("transfers");},[chooseConflictPolicy,files,path,session.id,setPanel]);
-  useEffect(()=>{uploadPathsRef.current=uploadPaths;},[uploadPaths]);
-  useEffect(()=>{if(!api.isDesktop())return;let disposed=false;let unlisten:(()=>void)|undefined;void getCurrentWebview().onDragDropEvent((event)=>{const payload=event.payload;if(payload.type==="leave"){setDragging(false);return;}const dropTarget=browserRef.current;const inside=Boolean(dropTarget&&nativeDropIsInsideElement(payload.position,dropTarget));if(payload.type==="enter"||payload.type==="over"){setDragging(inside);return;}setDragging(false);if(inside&&payload.paths.length)void uploadPathsRef.current(payload.paths).catch((reason)=>setError(errorMessage(reason)));}).then((stop)=>{if(disposed)stop();else unlisten=stop;}).catch((reason)=>{if(!disposed)setError(`无法启用原生文件拖放：${errorMessage(reason)}`);});return()=>{disposed=true;setDragging(false);unlisten?.();};},[session.id,setError]);
-  const drop=async(event:React.DragEvent)=>{event.preventDefault();setDragging(false);const paths=Array.from(event.dataTransfer.files).map((file)=>(file as File&{path?:string}).path).filter((value):value is string=>Boolean(value));if(!paths.length){setError(`${platform.displayName} WebView 未提供拖入文件路径，请使用上传按钮`);return;}try{await uploadPaths(paths);}catch(error){setError(errorMessage(error));}};
-  const fileStyle={"--file-font-size":`${fileFontSize}px`} as CSSProperties;
-  return <div className="file-manager" style={fileStyle}>
-    <div className="file-toolbar">
-      <IconButton icon={ArrowLeft} label="上级目录" onClick={parent} disabled={path==="/"}/>
-      <form onSubmit={(event)=>{event.preventDefault();navigate(draftPath);}}><input value={draftPath} onChange={(event)=>setDraftPath(event.target.value)} aria-label="远程路径"/></form>
-      <IconButton icon={RefreshCw} label="刷新" onClick={()=>{void load();refreshTree();}}/>
-      <span className="toolbar-separator"/>
-      <IconButton icon={FolderPlus} label="新建文件夹" onClick={()=>void createFolder()}/>
-      <IconButton icon={ArrowUpToLine} label="上传文件" onClick={()=>void upload()}/>
-      <IconButton icon={FolderPlus} label="上传文件夹" onClick={()=>void transferFolder("upload")}/>
-      <IconButton icon={ArrowDownToLine} label={selected?.kind==="directory"?"下载文件夹":"下载文件"} onClick={()=>selected?.kind==="directory"?void transferFolder("download"):void download()} disabled={!selected||!["file","directory"].includes(selected.kind)}/>
-      <span className="toolbar-separator"/>
-      <PanelFontSizeControl value={fileFontSize} onChange={setFileFontSize} onAutomatic={useAutomaticFileFontSize} automatic={fileFontSizeAutomatic} label="文件区"/>
-      <div className="file-actions" ref={actionsRef}><IconButton icon={MoreHorizontal} label="更多文件操作" disabled={!selected||Boolean(background)} active={actionsOpen} onClick={()=>setActionsOpen((open)=>!open)}/>{selected&&actionsOpen&&<div className="file-action-menu" onClickCapture={()=>setActionsOpen(false)}><button onClick={()=>selected.kind==="file"&&setEditor(selected.path)}><FileCode2 size={14}/>编辑文本</button>{selected.kind==="file"&&<><button onClick={()=>void openLocally()}><File size={14}/>使用默认应用打开</button><button onClick={()=>void openWith()}><FileCode2 size={14}/>选择应用打开…</button></>}<button onClick={()=>void navigator.clipboard.writeText(selected.path)}><Clipboard size={14}/>复制路径</button><button onClick={()=>void archive(false)}><Archive size={14}/>压缩为 tar.gz</button>{selected.name.endsWith(".tar.gz")&&<button onClick={()=>void archive(true)}><PackageOpen size={14}/>解压到当前目录</button>}<button onClick={rename}>重命名</button><button onClick={chmod}>修改权限</button><button className="danger" onClick={remove}><Trash2 size={14}/>删除</button></div>}</div>
+  const platform = usePlatformCapabilities();
+  const [
+    fileFontSize,
+    setFileFontSize,
+    useAutomaticFileFontSize,
+    fileFontSizeAutomatic,
+  ] = usePanelFontSize(panelFontSizeStorageKeys.files);
+  const restored = workspaceRuntime.remoteFileBrowserBySession.get(session.id);
+  const { settings, setError, setPanel, openTextEditor, addTransfer } =
+    useAppStore(
+      useShallow((state) => ({
+        settings: state.settings,
+        setError: state.setError,
+        setPanel: state.setPanel,
+        openTextEditor: state.openTextEditor,
+        addTransfer: state.addTransfer,
+      })),
+    );
+  const [path, setPath] = useState(restored?.path ?? "/");
+  const [draftPath, setDraftPath] = useState(restored?.path ?? "/");
+  const [files, setFiles] = useState<RemoteFile[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<RemoteFile | null>(null);
+  const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({
+    key: "name",
+    asc: true,
+  });
+  const setEditor = (path: string) =>
+    openTextEditor({
+      sessionId: session.id,
+      connectionId: session.connectionId,
+      path,
+    });
+  const [dragging, setDragging] = useState(false);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(260);
+  const [background, setBackground] = useState<{
+    id: string;
+    label: string;
+  } | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const browserRef = useRef<HTMLDivElement>(null);
+  const actionsRef = useRef<HTMLDivElement>(null);
+  const loadRequestRef = useRef(0);
+  const listRequestsRef = useRef(new Map<string, Promise<RemoteFile[]>>());
+  const uploadPathsRef = useRef<(paths: string[]) => Promise<void>>(
+    async () => {},
+  );
+  const rememberBrowser = useCallback(
+    (patch: Partial<{ path: string; expandedPaths: string[] }>) => {
+      const current = workspaceRuntime.remoteFileBrowserBySession.get(
+        session.id,
+      ) ?? { path: "/", expandedPaths: ["/"] };
+      workspaceRuntime.remoteFileBrowserBySession.set(session.id, {
+        ...current,
+        ...patch,
+      });
+    },
+    [session.id],
+  );
+  const rememberExpanded = useCallback(
+    (expandedPaths: string[]) => rememberBrowser({ expandedPaths }),
+    [rememberBrowser],
+  );
+  const listRemoteFiles = useCallback(
+    (target: string) => {
+      const key = `${settings.showHiddenFiles ? "hidden" : "visible"}:${target}`;
+      const existing = listRequestsRef.current.get(key);
+      if (existing) return existing;
+      const request = api
+        .listFiles(session.id, target, settings.showHiddenFiles)
+        .finally(() => {
+          if (listRequestsRef.current.get(key) === request)
+            listRequestsRef.current.delete(key);
+        });
+      listRequestsRef.current.set(key, request);
+      return request;
+    },
+    [session.id, settings.showHiddenFiles],
+  );
+  const load = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
+    setLoading(true);
+    setDirectoryError(null);
+    try {
+      const result = await withTimeout(
+        listRemoteFiles(path),
+        DIRECTORY_REQUEST_TIMEOUT_MS,
+        `目录读取 ${path} 超时，请重试`,
+      );
+      if (requestId !== loadRequestRef.current) return;
+      setFiles(result);
+      setDraftPath(path);
+      setSelected(null);
+      setScrollTop(0);
+      if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    } catch (reason) {
+      if (requestId !== loadRequestRef.current) return;
+      const message = errorMessage(reason);
+      setDirectoryError(message);
+      setError(message);
+    } finally {
+      if (requestId === loadRequestRef.current) setLoading(false);
+    }
+  }, [listRemoteFiles, path, setError]);
+  useEffect(() => {
+    void load();
+    return () => {
+      loadRequestRef.current += 1;
+    };
+  }, [load]);
+  const sorted = useMemo(
+    () =>
+      [...files].sort((a, b) => {
+        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+        const direction = sort.asc ? 1 : -1;
+        if (sort.key === "size") return (a.size - b.size) * direction;
+        if (sort.key === "modifiedAt")
+          return ((a.modifiedAt ?? 0) - (b.modifiedAt ?? 0)) * direction;
+        return a.name.localeCompare(b.name, "zh-CN") * direction;
+      }),
+    [files, sort],
+  );
+  const windowRange = virtualWindow(sorted.length, scrollTop, viewportHeight);
+  const visibleFiles = sorted.slice(windowRange.start, windowRange.end);
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const resize = new ResizeObserver(() =>
+      setViewportHeight(body.clientHeight),
+    );
+    resize.observe(body);
+    setViewportHeight(body.clientHeight);
+    return () => resize.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, [contextMenu]);
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!actionsRef.current?.contains(event.target as Node))
+        setActionsOpen(false);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false);
+    };
+    window.addEventListener("pointerdown", close);
+    window.addEventListener("keydown", key);
+    return () => {
+      window.removeEventListener("pointerdown", close);
+      window.removeEventListener("keydown", key);
+    };
+  }, [actionsOpen]);
+  useEffect(() => setActionsOpen(false), [selected?.path, session.id]);
+  const navigate = (target: string) => {
+    const normalized = target.startsWith("cnshell-raw-path:")
+      ? target
+      : normalizeRemotePath(target);
+    setPath(normalized);
+    rememberBrowser({ path: normalized });
+  };
+  const parent = () => {
+    if (path.startsWith("cnshell-raw-path:")) {
+      navigate("/");
+      return;
+    }
+    navigate(path.split("/").slice(0, -1).join("/") || "/");
+  };
+  const listTreeDirectories = useCallback(
+    async (target: string) =>
+      (await listRemoteFiles(target))
+        .filter((item) => item.kind === "directory")
+        .sort((left, right) => left.name.localeCompare(right.name, "zh-CN"))
+        .map(({ name, path }) => ({ name, path })),
+    [listRemoteFiles],
+  );
+  const reportTreeError = useCallback(
+    (reason: unknown) => setError(errorMessage(reason)),
+    [setError],
+  );
+  const refreshTree = () =>
+    window.dispatchEvent(new Event("cnshell-refresh-directory-tree"));
+  const createFolder = async (target = path) => {
+    const name = prompt("新文件夹名称");
+    if (!name) return;
+    try {
+      await api.createDirectory(
+        session.id,
+        await api.joinRemotePath(target, name),
+      );
+      await load();
+      refreshTree();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const createFile = async (target = path) => {
+    const name = prompt("新文件名称");
+    if (!name) return;
+    try {
+      const filePath = await api.joinRemotePath(target, name);
+      await api.createText(session.id, filePath);
+      await load();
+      setEditor(filePath);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const rename = async () => {
+    if (!selected) return;
+    const name = prompt("新名称", selected.name);
+    if (!name || name === selected.name) return;
+    try {
+      await api.renameRemote(
+        session.id,
+        selected.path,
+        await api.joinRemotePath(path, name),
+      );
+      await load();
+      if (selected.kind === "directory") refreshTree();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const remove = async () => {
+    if (!selected || !confirm(`确定删除 ${selected.name}？此操作无法撤销。`))
+      return;
+    try {
+      await api.deleteRemote(
+        session.id,
+        selected.path,
+        selected.kind === "directory",
+      );
+      await load();
+      if (selected.kind === "directory") refreshTree();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const chmod = async () => {
+    if (!selected) return;
+    const value = prompt(
+      "输入八进制权限，例如 755",
+      selected.permissions.includes("x") ? "755" : "644",
+    );
+    if (value === null) return;
+    const mode = parseRemoteMode(value);
+    if (mode === null) {
+      setError("权限必须是 3 或 4 位八进制数字，例如 644、755 或 0755");
+      return;
+    }
+    try {
+      await api.chmodRemote(session.id, selected.path, mode);
+      await load();
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const chooseConflictPolicy = useCallback(
+    (message: string): Exclude<ConflictPolicy, "ask"> => {
+      const answer = prompt(
+        `${message}\n输入 O 覆盖、S 跳过、R 自动重命名（默认）`,
+        "R",
+      )
+        ?.trim()
+        .toLowerCase();
+      return answer === "o" ? "overwrite" : answer === "s" ? "skip" : "rename";
+    },
+    [],
+  );
+  const upload = async (target = path) => {
+    if (!api.isDesktop()) {
+      setError("上传需要运行 CNshell 桌面版");
+      return;
+    }
+    const source = await open({ multiple: false, directory: false });
+    if (!source) return;
+    const destination = await api.joinRemotePath(target, localPathName(source));
+    const conflictPolicy: ConflictPolicy = files.some(
+      (item) => item.path === destination,
+    )
+      ? chooseConflictPolicy("远端已存在同名文件。")
+      : "ask";
+    try {
+      addTransfer(
+        await api.enqueueTransfer({
+          sessionId: session.id,
+          direction: "upload",
+          source,
+          destination,
+          conflictPolicy,
+        }),
+      );
+      setPanel("transfers");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const transferFolder = async (direction: "upload" | "download") => {
+    if (!api.isDesktop()) {
+      setError("文件夹传输需要运行 CNshell 桌面版");
+      return;
+    }
+    let source: string;
+    let destination: string;
+    if (direction === "upload") {
+      const chosen = await open({ multiple: false, directory: true });
+      if (!chosen) return;
+      source = chosen;
+      destination = await api.joinRemotePath(path, localPathName(chosen));
+    } else {
+      if (!selected || selected.kind !== "directory") return;
+      const chosen = await open({ multiple: false, directory: true });
+      if (!chosen) return;
+      source = selected.path;
+      destination = joinLocalPath(
+        chosen,
+        selected.name,
+        platform.operatingSystem,
+      );
+    }
+    const exists =
+      direction === "upload"
+        ? files.some((item) => item.path === destination)
+        : false;
+    const conflictPolicy: Exclude<ConflictPolicy, "ask"> =
+      exists && confirm("目标文件夹已存在，是否覆盖？选择“取消”将自动重命名。")
+        ? "overwrite"
+        : "rename";
+    await runBackground(
+      direction === "upload"
+        ? "正在打包并上传文件夹…"
+        : "正在打包并下载文件夹…",
+      () =>
+        api.startDirectoryTransfer(
+          session.id,
+          direction,
+          source,
+          destination,
+          conflictPolicy,
+        ),
+    );
+  };
+  const download = async () => {
+    if (!selected || selected.kind !== "file") return;
+    const destination = await save({ defaultPath: selected.name });
+    if (!destination) return;
+    const conflictPolicy = chooseConflictPolicy(
+      "如果本地已存在目标文件，请选择冲突策略。",
+    );
+    try {
+      addTransfer(
+        await api.enqueueTransfer({
+          sessionId: session.id,
+          direction: "download",
+          source: selected.path,
+          destination,
+          conflictPolicy,
+        }),
+      );
+      setPanel("transfers");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    }
+  };
+  const sortBy = (key: SortKey) =>
+    setSort((current) =>
+      current.key === key ? { key, asc: !current.asc } : { key, asc: true },
+    );
+  const runBackground = async (
+    label: string,
+    start: () => ReturnType<typeof api.startArchiveRemote>,
+  ) => {
+    if (background) {
+      setError("已有文件后台任务正在运行");
+      return;
+    }
+    try {
+      const task = await start();
+      setBackground({ id: task.id, label });
+      await waitForTask(task);
+      await load();
+    } catch (reason) {
+      if ((reason as DOMException).name !== "AbortError")
+        setError(errorMessage(reason));
+    } finally {
+      setBackground(null);
+    }
+  };
+  const archive = async (extract: boolean) => {
+    if (!selected) return;
+    await runBackground(extract ? "正在解压…" : "正在压缩…", () =>
+      api.startArchiveRemote(session.id, selected.path, extract),
+    );
+  };
+  const openLocally = async (application?: string) => {
+    if (!selected) return;
+    await runBackground("正在准备本地预览…", () =>
+      api.startOpenRemoteLocally(session.id, selected.path, application),
+    );
+  };
+  const openWith = async () => {
+    const application = await open(
+      externalApplicationDialogOptions(
+        platform,
+        `选择用于打开文件的${platform.displayName}应用`,
+      ),
+    );
+    if (application) await openLocally(application);
+  };
+  const uploadPaths = useCallback(
+    async (paths: string[]) => {
+      const destinations = await Promise.all(
+        paths.map(async (source) => ({
+          source,
+          destination: await api.joinRemotePath(path, localPathName(source)),
+        })),
+      );
+      const hasConflict = destinations.some(({ destination }) =>
+        files.some((item) => item.path === destination),
+      );
+      const policy = hasConflict
+        ? chooseConflictPolicy(
+            "拖入项目中存在远端同名文件，此选择将应用到本批全部冲突。 ",
+          )
+        : "ask";
+      for (const item of destinations)
+        addTransfer(
+          await api.enqueueTransfer({
+            sessionId: session.id,
+            direction: "upload",
+            ...item,
+            conflictPolicy: policy,
+          }),
+        );
+      setPanel("transfers");
+    },
+    [chooseConflictPolicy, files, path, session.id, setPanel, addTransfer],
+  );
+  useEffect(() => {
+    uploadPathsRef.current = uploadPaths;
+  }, [uploadPaths]);
+  useEffect(() => {
+    if (!api.isDesktop()) return;
+    let disposed = false;
+    let unlisten: (() => void) | undefined;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "leave") {
+          setDragging(false);
+          return;
+        }
+        const dropTarget = browserRef.current;
+        const inside = Boolean(
+          dropTarget && nativeDropIsInsideElement(payload.position, dropTarget),
+        );
+        if (payload.type === "enter" || payload.type === "over") {
+          setDragging(inside);
+          return;
+        }
+        setDragging(false);
+        if (inside && payload.paths.length)
+          void uploadPathsRef
+            .current(payload.paths)
+            .catch((reason) => setError(errorMessage(reason)));
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((reason) => {
+        if (!disposed)
+          setError(`无法启用原生文件拖放：${errorMessage(reason)}`);
+      });
+    return () => {
+      disposed = true;
+      setDragging(false);
+      unlisten?.();
+    };
+  }, [session.id, setError]);
+  const drop = async (event: React.DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    const paths = Array.from(event.dataTransfer.files)
+      .map((file) => (file as File & { path?: string }).path)
+      .filter((value): value is string => Boolean(value));
+    if (!paths.length) {
+      setError(
+        `${platform.displayName} WebView 未提供拖入文件路径，请使用上传按钮`,
+      );
+      return;
+    }
+    try {
+      await uploadPaths(paths);
+    } catch (error) {
+      setError(errorMessage(error));
+    }
+  };
+  const fileStyle = {
+    "--file-font-size": `${fileFontSize}px`,
+  } as CSSProperties;
+  return (
+    <div className="file-manager" style={fileStyle}>
+      <div className="file-toolbar">
+        <IconButton
+          icon={ArrowLeft}
+          label="上级目录"
+          onClick={parent}
+          disabled={path === "/"}
+        />
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            navigate(draftPath);
+          }}
+        >
+          <input
+            value={draftPath}
+            onChange={(event) => setDraftPath(event.target.value)}
+            aria-label="远程路径"
+          />
+        </form>
+        <IconButton
+          icon={RefreshCw}
+          label="刷新"
+          onClick={() => {
+            void load();
+            refreshTree();
+          }}
+        />
+        <span className="toolbar-separator" />
+        <IconButton
+          icon={FolderPlus}
+          label="新建文件夹"
+          onClick={() => void createFolder()}
+        />
+        <IconButton
+          icon={ArrowUpToLine}
+          label="上传文件"
+          onClick={() => void upload()}
+        />
+        <IconButton
+          icon={FolderPlus}
+          label="上传文件夹"
+          onClick={() => void transferFolder("upload")}
+        />
+        <IconButton
+          icon={ArrowDownToLine}
+          label={selected?.kind === "directory" ? "下载文件夹" : "下载文件"}
+          onClick={() =>
+            selected?.kind === "directory"
+              ? void transferFolder("download")
+              : void download()
+          }
+          disabled={!selected || !["file", "directory"].includes(selected.kind)}
+        />
+        <span className="toolbar-separator" />
+        <PanelFontSizeControl
+          value={fileFontSize}
+          onChange={setFileFontSize}
+          onAutomatic={useAutomaticFileFontSize}
+          automatic={fileFontSizeAutomatic}
+          label="文件区"
+        />
+        <div className="file-actions" ref={actionsRef}>
+          <IconButton
+            icon={MoreHorizontal}
+            label="更多文件操作"
+            disabled={!selected || Boolean(background)}
+            active={actionsOpen}
+            onClick={() => setActionsOpen((open) => !open)}
+          />
+          {selected && actionsOpen && (
+            <div
+              className="file-action-menu"
+              onClickCapture={() => setActionsOpen(false)}
+            >
+              <button
+                onClick={() =>
+                  selected.kind === "file" && setEditor(selected.path)
+                }
+              >
+                <FileCode2 size={14} />
+                编辑文本
+              </button>
+              {selected.kind === "file" && (
+                <>
+                  <button onClick={() => void openLocally()}>
+                    <File size={14} />
+                    使用默认应用打开
+                  </button>
+                  <button onClick={() => void openWith()}>
+                    <FileCode2 size={14} />
+                    选择应用打开…
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() =>
+                  void navigator.clipboard.writeText(selected.path)
+                }
+              >
+                <Clipboard size={14} />
+                复制路径
+              </button>
+              <button onClick={() => void archive(false)}>
+                <Archive size={14} />
+                压缩为 tar.gz
+              </button>
+              {selected.name.endsWith(".tar.gz") && (
+                <button onClick={() => void archive(true)}>
+                  <PackageOpen size={14} />
+                  解压到当前目录
+                </button>
+              )}
+              <button onClick={rename}>重命名</button>
+              <button onClick={chmod}>修改权限</button>
+              <button className="danger" onClick={remove}>
+                <Trash2 size={14} />
+                删除
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+      <div
+        ref={browserRef}
+        className={`file-browser ${dragging ? "dragging" : ""}`}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setDragging(false);
+        }}
+        onDrop={(event) => void drop(event)}
+      >
+        <RemoteDirectoryTree
+          key={`${session.id}-${settings.showHiddenFiles}`}
+          activePath={path}
+          initialExpanded={restored?.expandedPaths}
+          listDirectories={listTreeDirectories}
+          onNavigate={navigate}
+          onError={reportTreeError}
+          onExpandedChange={rememberExpanded}
+        />
+        <div
+          className="file-table"
+          role="table"
+          aria-label={`远程目录 ${path}`}
+          aria-rowcount={files.length + 1}
+          aria-colcount={6}
+          aria-busy={loading}
+        >
+          <div className="file-head" role="row" aria-rowindex={1}>
+            <button
+              role="columnheader"
+              aria-sort={
+                sort.key === "name"
+                  ? sort.asc
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              onClick={() => sortBy("name")}
+            >
+              名称
+              <ChevronDown size={12} aria-hidden="true" />
+            </button>
+            <button
+              role="columnheader"
+              aria-sort={
+                sort.key === "size"
+                  ? sort.asc
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              onClick={() => sortBy("size")}
+            >
+              大小
+            </button>
+            <span role="columnheader">类型</span>
+            <button
+              role="columnheader"
+              aria-sort={
+                sort.key === "modifiedAt"
+                  ? sort.asc
+                    ? "ascending"
+                    : "descending"
+                  : "none"
+              }
+              onClick={() => sortBy("modifiedAt")}
+            >
+              修改时间
+            </button>
+            <span role="columnheader">权限</span>
+            <span role="columnheader">用户/组</span>
+          </div>
+          <div
+            className="file-body"
+            ref={bodyRef}
+            onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+          >
+            {loading ? (
+              <div className="loading-state" role="status">
+                <LoaderCircle className="spin" />
+                读取目录…
+              </div>
+            ) : directoryError ? (
+              <div className="file-load-error" role="alert">
+                <AlertCircle size={25} />
+                <strong>无法读取目录</strong>
+                <span>{directoryError}</span>
+                <button
+                  className="button secondary"
+                  aria-label="重试读取目录"
+                  onClick={() => void load()}
+                >
+                  <RotateCcw size={13} />
+                  重试
+                </button>
+              </div>
+            ) : (
+              <>
+                <div aria-hidden="true" style={{ height: windowRange.top }} />
+                {visibleFiles.map((item, index) => (
+                  <button
+                    key={item.path}
+                    className={`file-row ${selected?.path === item.path ? "selected" : ""}`}
+                    onClick={() => setSelected(item)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setSelected(item);
+                      setContextMenu({ x: event.clientX, y: event.clientY });
+                    }}
+                    onDoubleClick={() =>
+                      item.kind === "directory"
+                        ? navigate(item.path)
+                        : setEditor(item.path)
+                    }
+                    role="row"
+                    aria-selected={selected?.path === item.path}
+                    aria-rowindex={windowRange.start + index + 2}
+                  >
+                    <span role="cell">
+                      <>
+                        {item.kind === "directory" ? (
+                          <Folder size={15} aria-hidden="true" />
+                        ) : (
+                          <File size={15} aria-hidden="true" />
+                        )}
+                      </>
+                      <strong>{item.name}</strong>
+                    </span>
+                    <span role="cell">
+                      {item.kind === "directory" ? "—" : formatBytes(item.size)}
+                    </span>
+                    <span role="cell">{item.kind}</span>
+                    <span role="cell">
+                      {item.modifiedAt
+                        ? new Date(item.modifiedAt * 1000).toLocaleString()
+                        : "—"}
+                    </span>
+                    <code role="cell">{item.permissions}</code>
+                    <span role="cell">
+                      {item.owner ?? "—"}/{item.group ?? "—"}
+                    </span>
+                  </button>
+                ))}
+                <div
+                  aria-hidden="true"
+                  style={{ height: windowRange.bottom }}
+                />
+              </>
+            )}
+            {!loading && !directoryError && !files.length && (
+              <div className="empty-files">
+                <Folder size={28} />
+                <span>
+                  {api.isDesktop()
+                    ? "此目录为空"
+                    : "连接真实 SSH 会话后浏览远端文件"}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+        {dragging && (
+          <div className="drop-overlay" role="status" aria-live="polite">
+            <ArrowUpToLine size={28} />
+            <strong>拖放上传到 {path}</strong>
+            <span>同名文件自动重命名</span>
+          </div>
+        )}
+      </div>
+      {contextMenu && selected && (
+        <div
+          className="file-context-menu"
+          role="menu"
+          aria-label={`${selected.name} 文件操作`}
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <button
+            role="menuitem"
+            onClick={() => selected.kind === "file" && setEditor(selected.path)}
+            disabled={selected.kind !== "file"}
+          >
+            <FileCode2 size={14} />
+            编辑文本
+          </button>
+          {selected.kind === "file" && (
+            <>
+              <button role="menuitem" onClick={() => void openLocally()}>
+                <File size={14} />
+                使用默认应用打开
+              </button>
+              <button role="menuitem" onClick={() => void openWith()}>
+                <FileCode2 size={14} />
+                选择应用打开…
+              </button>
+            </>
+          )}
+          <button
+            role="menuitem"
+            onClick={() =>
+              selected.kind === "directory"
+                ? void transferFolder("download")
+                : void download()
+            }
+            disabled={!["file", "directory"].includes(selected.kind)}
+          >
+            <ArrowDownToLine size={14} />
+            下载
+          </button>
+          <button
+            role="menuitem"
+            onClick={() =>
+              void upload(selected.kind === "directory" ? selected.path : path)
+            }
+          >
+            <ArrowUpToLine size={14} />
+            上传文件到此处
+          </button>
+          <button
+            role="menuitem"
+            onClick={() =>
+              void createFile(
+                selected.kind === "directory" ? selected.path : path,
+              )
+            }
+          >
+            <FilePlus size={14} />
+            新建文件
+          </button>
+          <button
+            role="menuitem"
+            onClick={() =>
+              void createFolder(
+                selected.kind === "directory" ? selected.path : path,
+              )
+            }
+          >
+            <FolderPlus size={14} />
+            新建文件夹
+          </button>
+          <button
+            role="menuitem"
+            onClick={() => void navigator.clipboard.writeText(selected.path)}
+          >
+            <Clipboard size={14} />
+            复制路径
+          </button>
+          <button role="menuitem" onClick={() => void archive(false)}>
+            <Archive size={14} />
+            压缩为 tar.gz
+          </button>
+          {selected.name.endsWith(".tar.gz") && (
+            <button role="menuitem" onClick={() => void archive(true)}>
+              <PackageOpen size={14} />
+              解压到当前目录
+            </button>
+          )}
+          <button role="menuitem" onClick={() => void rename()}>
+            重命名
+          </button>
+          <button role="menuitem" onClick={() => void chmod()}>
+            修改权限
+          </button>
+          <button
+            role="menuitem"
+            className="danger"
+            onClick={() => void remove()}
+          >
+            <Trash2 size={14} />
+            删除
+          </button>
+        </div>
+      )}
+      <footer className="file-status">
+        <span>
+          {background ? (
+            <>
+              <LoaderCircle className="spin" size={12} />
+              {background.label}
+              <button onClick={() => void api.cancelTask(background.id)}>
+                取消
+              </button>
+            </>
+          ) : (
+            `${files.length} 个项目`
+          )}
+        </span>
+        <span>
+          {selected
+            ? selected.path
+            : api.isDesktop()
+              ? "SFTP 已就绪"
+              : "等待桌面连接"}
+        </span>
+      </footer>
     </div>
-    <div ref={browserRef} className={`file-browser ${dragging?"dragging":""}`} onDragEnter={(event)=>{event.preventDefault();setDragging(true);}} onDragOver={(event)=>event.preventDefault()} onDragLeave={(event)=>{if(!event.currentTarget.contains(event.relatedTarget as Node|null))setDragging(false);}} onDrop={(event)=>void drop(event)}><RemoteDirectoryTree key={`${session.id}-${settings.showHiddenFiles}`} activePath={path} initialExpanded={restored?.expandedPaths} listDirectories={listTreeDirectories} onNavigate={navigate} onError={reportTreeError} onExpandedChange={rememberExpanded}/><div className="file-table" role="table" aria-label={`远程目录 ${path}`} aria-rowcount={files.length+1} aria-colcount={6} aria-busy={loading}><div className="file-head" role="row" aria-rowindex={1}><button role="columnheader" aria-sort={sort.key==="name"?(sort.asc?"ascending":"descending"):"none"} onClick={()=>sortBy("name")}>名称<ChevronDown size={12} aria-hidden="true"/></button><button role="columnheader" aria-sort={sort.key==="size"?(sort.asc?"ascending":"descending"):"none"} onClick={()=>sortBy("size")}>大小</button><span role="columnheader">类型</span><button role="columnheader" aria-sort={sort.key==="modifiedAt"?(sort.asc?"ascending":"descending"):"none"} onClick={()=>sortBy("modifiedAt")}>修改时间</button><span role="columnheader">权限</span><span role="columnheader">用户/组</span></div>
-      <div className="file-body" ref={bodyRef} onScroll={(event)=>setScrollTop(event.currentTarget.scrollTop)}>{loading?<div className="loading-state" role="status"><LoaderCircle className="spin"/>读取目录…</div>:directoryError?<div className="file-load-error" role="alert"><AlertCircle size={25}/><strong>无法读取目录</strong><span>{directoryError}</span><button className="button secondary" aria-label="重试读取目录" onClick={()=>void load()}><RotateCcw size={13}/>重试</button></div>:<><div aria-hidden="true" style={{height:windowRange.top}}/>{visibleFiles.map((item,index)=><button key={item.path} className={`file-row ${selected?.path===item.path?"selected":""}`} onClick={()=>setSelected(item)} onContextMenu={(event)=>{event.preventDefault();setSelected(item);setContextMenu({x:event.clientX,y:event.clientY});}} onDoubleClick={()=>item.kind==="directory"?navigate(item.path):setEditor(item.path)} role="row" aria-selected={selected?.path===item.path} aria-rowindex={windowRange.start+index+2}><span role="cell"><>{item.kind==="directory"?<Folder size={15} aria-hidden="true"/>:<File size={15} aria-hidden="true"/>}</><strong>{item.name}</strong></span><span role="cell">{item.kind==="directory"?"—":formatBytes(item.size)}</span><span role="cell">{item.kind}</span><span role="cell">{item.modifiedAt?new Date(item.modifiedAt*1000).toLocaleString():"—"}</span><code role="cell">{item.permissions}</code><span role="cell">{item.owner??"—"}/{item.group??"—"}</span></button>)}<div aria-hidden="true" style={{height:windowRange.bottom}}/></>}{!loading&&!directoryError&&!files.length&&<div className="empty-files"><Folder size={28}/><span>{api.isDesktop()?"此目录为空":"连接真实 SSH 会话后浏览远端文件"}</span></div>}</div></div>
-      {dragging&&<div className="drop-overlay" role="status" aria-live="polite"><ArrowUpToLine size={28}/><strong>拖放上传到 {path}</strong><span>同名文件自动重命名</span></div>}</div>
-    {contextMenu&&selected&&<div className="file-context-menu" role="menu" aria-label={`${selected.name} 文件操作`} style={{left:contextMenu.x,top:contextMenu.y}} onPointerDown={(event)=>event.stopPropagation()}><button role="menuitem" onClick={()=>selected.kind==="file"&&setEditor(selected.path)} disabled={selected.kind!=="file"}><FileCode2 size={14}/>编辑文本</button>{selected.kind==="file"&&<><button role="menuitem" onClick={()=>void openLocally()}><File size={14}/>使用默认应用打开</button><button role="menuitem" onClick={()=>void openWith()}><FileCode2 size={14}/>选择应用打开…</button></>}<button role="menuitem" onClick={()=>selected.kind==="directory"?void transferFolder("download"):void download()} disabled={!['file','directory'].includes(selected.kind)}><ArrowDownToLine size={14}/>下载</button><button role="menuitem" onClick={()=>void upload(selected.kind==="directory"?selected.path:path)}><ArrowUpToLine size={14}/>上传文件到此处</button><button role="menuitem" onClick={()=>void createFile(selected.kind==="directory"?selected.path:path)}><FilePlus size={14}/>新建文件</button><button role="menuitem" onClick={()=>void createFolder(selected.kind==="directory"?selected.path:path)}><FolderPlus size={14}/>新建文件夹</button><button role="menuitem" onClick={()=>void navigator.clipboard.writeText(selected.path)}><Clipboard size={14}/>复制路径</button><button role="menuitem" onClick={()=>void archive(false)}><Archive size={14}/>压缩为 tar.gz</button>{selected.name.endsWith(".tar.gz")&&<button role="menuitem" onClick={()=>void archive(true)}><PackageOpen size={14}/>解压到当前目录</button>}<button role="menuitem" onClick={()=>void rename()}>重命名</button><button role="menuitem" onClick={()=>void chmod()}>修改权限</button><button role="menuitem" className="danger" onClick={()=>void remove()}><Trash2 size={14}/>删除</button></div>}
-    <footer className="file-status"><span>{background?<><LoaderCircle className="spin" size={12}/>{background.label}<button onClick={()=>void api.cancelTask(background.id)}>取消</button></>:`${files.length} 个项目`}</span><span>{selected?selected.path:(api.isDesktop()?"SFTP 已就绪":"等待桌面连接")}</span></footer>
-    {editor&&<Suspense fallback={<div className="connection-overlay"><LoaderCircle className="spin"/><span>加载远端编辑器…</span></div>}><TextEditor sessionId={session.id} path={editor} onClose={()=>setEditor(null)}/></Suspense>}
-  </div>;
+  );
 }
 
-const normalizeRemotePath=(value:string)=>{const parts=value.split("/").filter((part)=>part&&part!==".");const normalized:string[]=[];for(const part of parts){if(part==="..")normalized.pop();else normalized.push(part);}return`/${normalized.join("/")}`;};
+const normalizeRemotePath = (value: string) => {
+  const parts = value.split("/").filter((part) => part && part !== ".");
+  const normalized: string[] = [];
+  for (const part of parts) {
+    if (part === "..") normalized.pop();
+    else normalized.push(part);
+  }
+  return `/${normalized.join("/")}`;
+};

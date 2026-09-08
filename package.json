@@ -1,7 +1,7 @@
 {
   "name": "cnshell",
   "private": true,
-  "version": "0.2.0-beta.10",
+  "version": "0.2.0-beta.11",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:protocol": "./scripts/protocol-test.sh",
+    "test:transfer-acceptance": "./scripts/transfer-acceptance-test.sh",
     "test:pty-fixture": "./scripts/pty-fixture-test.sh",
     "test:windows-installer": "powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/test-windows-installer.ps1",
     "test:soak": "./scripts/soak-test.sh",

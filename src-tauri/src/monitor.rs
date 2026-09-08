@@ -39,15 +39,22 @@ echo __DISK__; df -Pk 2>/dev/null; \
 echo __END__"#;
 
 const SYSTEM_COMMAND: &str = r#"LC_ALL=C; \
-echo __BASIC__; hostname; . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown Linux}"; uname -r; uname -m; \
-echo __CPU__; grep -m1 'model name\|Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2-; grep -c '^processor' /proc/cpuinfo 2>/dev/null; \
-echo __MEM__; awk '/MemTotal/{print $2}' /proc/meminfo 2>/dev/null; \
+echo __BASIC__; hostname 2>/dev/null; . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown Linux}"; uname -s 2>/dev/null; uname -r 2>/dev/null; uname -m 2>/dev/null; cat /proc/uptime 2>/dev/null; cat /proc/loadavg 2>/dev/null; \
+echo __CPU_META__; lscpu_output="$(lscpu 2>/dev/null)"; cpu_model="$(grep -m1 'model name\|Hardware\|^Processor' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)"; [ -n "$cpu_model" ] || cpu_model="$(printf '%s\n' "$lscpu_output" | awk -F: '/^[ \t]*Model name/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}')"; cpu_cores="$(grep -c '^processor' /proc/cpuinfo 2>/dev/null)"; [ "${cpu_cores:-0}" -gt 0 ] 2>/dev/null || cpu_cores="$(printf '%s\n' "$lscpu_output" | awk -F: '/^[ \t]*CPU\(s\)/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}')"; cpu_frequency="$(awk -F: '/cpu MHz/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"; [ -n "$cpu_frequency" ] || cpu_frequency="$(printf '%s\n' "$lscpu_output" | awk -F: '/^[ \t]*CPU max MHz/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; found=1; exit} /^[ \t]*CPU MHz/{gsub(/^[ \t]+|[ \t]+$/, "", $2); fallback=$2} END{if(!found && fallback!="") print fallback}')"; cpu_cache="$(awk -F: '/cache size/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"; [ -n "$cpu_cache" ] || cpu_cache="$(printf '%s\n' "$lscpu_output" | awk -F: '/^[ \t]*L[123][di]? cache/{key=$1; value=$2; gsub(/^[ \t]+|[ \t]+$/, "", key); gsub(/^[ \t]+|[ \t]+$/, "", value); printf "%s%s %s", separator, key, value; separator=" · "} END{if(separator!="") print ""}')"; cpu_bogomips="$(awk -F: '/bogomips/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}' /proc/cpuinfo 2>/dev/null)"; [ -n "$cpu_bogomips" ] || cpu_bogomips="$(printf '%s\n' "$lscpu_output" | awk -F: '/^[ \t]*BogoMIPS/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}')"; printf 'model=%s\ncores=%s\nfrequency_mhz=%s\ncache=%s\nbogomips=%s\n' "$cpu_model" "$cpu_cores" "$cpu_frequency" "$cpu_cache" "$cpu_bogomips"; \
+echo __MEM__; cat /proc/meminfo 2>/dev/null; \
 echo __ADDR__; ip -o addr show 2>/dev/null; \
+echo __TIME_A__; awk '{print $1}' /proc/uptime 2>/dev/null; \
+echo __CPU_A__; head -n1 /proc/stat 2>/dev/null; \
+echo __NET_A__; cat /proc/net/dev 2>/dev/null; \
+sleep 0.2 2>/dev/null || sleep 1; \
+echo __TIME_B__; awk '{print $1}' /proc/uptime 2>/dev/null; \
+echo __CPU_B__; head -n1 /proc/stat 2>/dev/null; \
+echo __NET_B__; cat /proc/net/dev 2>/dev/null; \
 echo __DISK__; df -Pk 2>/dev/null; echo __END__"#;
 
 const MCP_SYSTEM_COMMAND: &str = r#"LC_ALL=C; \
 echo __BASIC__; hostname 2>/dev/null; . /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-Unknown Linux}"; uname -r 2>/dev/null; uname -m 2>/dev/null; \
-echo __CPU__; grep -m1 'model name\|Hardware' /proc/cpuinfo 2>/dev/null | cut -d: -f2-; grep -c '^processor' /proc/cpuinfo 2>/dev/null; \
+echo __CPU__; cpu_model="$(grep -m1 'model name\|Hardware\|^Processor' /proc/cpuinfo 2>/dev/null | cut -d: -f2-)"; [ -n "$cpu_model" ] || cpu_model="$(lscpu 2>/dev/null | awk -F: '/^[ \t]*Model name/{gsub(/^[ \t]+|[ \t]+$/, "", $2); print $2; exit}')"; printf '%s\n' "$cpu_model"; grep -c '^processor' /proc/cpuinfo 2>/dev/null; \
 echo __MEM__; cat /proc/meminfo 2>/dev/null; \
 echo __LOAD__; cat /proc/uptime 2>/dev/null; cat /proc/loadavg 2>/dev/null; \
 echo __ADDR__; ip -o addr show 2>/dev/null; \
@@ -155,6 +162,46 @@ fn parse_cpu(line: &str) -> Option<(u64, u64)> {
     }
     let idle = values[3] + values.get(4).copied().unwrap_or(0);
     Some((values.iter().sum(), idle))
+}
+
+fn parse_cpu_times(line: &str) -> Option<[u64; 8]> {
+    let values = line
+        .split_whitespace()
+        .skip(1)
+        .take(8)
+        .map(str::parse::<u64>)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    values.try_into().ok()
+}
+
+fn cpu_usage_breakdown(before: Option<[u64; 8]>, after: Option<[u64; 8]>) -> CpuUsageBreakdown {
+    let (Some(before), Some(after)) = (before, after) else {
+        return CpuUsageBreakdown::default();
+    };
+    let deltas = std::array::from_fn::<_, 8, _>(|index| after[index].saturating_sub(before[index]));
+    let total = deltas.iter().sum::<u64>();
+    if total == 0 {
+        return CpuUsageBreakdown::default();
+    }
+    let percent = |index: usize| deltas[index] as f64 * 100.0 / total as f64;
+    CpuUsageBreakdown {
+        user_percent: percent(0),
+        nice_percent: percent(1),
+        system_percent: percent(2),
+        idle_percent: percent(3),
+        io_wait_percent: percent(4),
+        irq_percent: percent(5),
+        soft_irq_percent: percent(6),
+        steal_percent: percent(7),
+    }
+}
+
+fn parse_key_values(body: &str) -> HashMap<&str, &str> {
+    body.lines()
+        .filter_map(|line| line.split_once('='))
+        .map(|(key, value)| (key.trim(), value.trim()))
+        .collect()
 }
 
 fn bytes_from_kb(value: u64) -> u64 {
@@ -576,17 +623,17 @@ pub async fn system_info_cancelable(
     cancelled: Arc<std::sync::atomic::AtomicBool>,
 ) -> AppResult<SystemInfo> {
     let output = exec_cancelable(&db, &manager, &session_id, SYSTEM_COMMAND, cancelled).await?;
-    let basic = section(&output, "__BASIC__", "__CPU__")
+    Ok(parse_system_info(&output))
+}
+
+fn parse_system_info(output: &str) -> SystemInfo {
+    let basic = section(output, "__BASIC__", "__CPU_META__")
         .lines()
         .collect::<Vec<_>>();
-    let cpu = section(&output, "__CPU__", "__MEM__")
-        .lines()
-        .collect::<Vec<_>>();
-    let memory = section(&output, "__MEM__", "__ADDR__")
-        .trim()
-        .parse::<u64>()
-        .unwrap_or(0);
-    let addresses = section(&output, "__ADDR__", "__DISK__");
+    let cpu = parse_key_values(section(output, "__CPU_META__", "__MEM__"));
+    let (memory_used_bytes, memory_total_bytes, swap_used_bytes, swap_total_bytes) =
+        parse_memory(section(output, "__MEM__", "__ADDR__"));
+    let addresses = section(output, "__ADDR__", "__TIME_A__");
     let mut interface_map: HashMap<String, Vec<String>> = HashMap::new();
     for line in addresses.lines() {
         let c = line.split_whitespace().collect::<Vec<_>>();
@@ -597,20 +644,102 @@ pub async fn system_info_cancelable(
                 .push(c[3].into());
         }
     }
-    Ok(SystemInfo {
+    let network_before = parse_network(section(output, "__NET_A__", "__TIME_B__"));
+    let network_after = parse_network(section(output, "__NET_B__", "__DISK__"));
+    for name in network_after.keys() {
+        interface_map.entry(name.clone()).or_default();
+    }
+    let sample_started = section(output, "__TIME_A__", "__CPU_A__")
+        .trim()
+        .parse::<f64>()
+        .unwrap_or(0.0);
+    let sample_finished = section(output, "__TIME_B__", "__CPU_B__")
+        .trim()
+        .parse::<f64>()
+        .unwrap_or(sample_started + 1.0);
+    let elapsed = (sample_finished - sample_started).max(0.001);
+    let mut interfaces = interface_map
+        .into_iter()
+        .map(|(name, addresses)| {
+            let (rx_total_bytes, tx_total_bytes) =
+                network_after.get(&name).copied().unwrap_or_default();
+            let (rx_before, tx_before) = network_before
+                .get(&name)
+                .copied()
+                .unwrap_or((rx_total_bytes, tx_total_bytes));
+            NetworkInterface {
+                name,
+                addresses,
+                rx_bytes_per_second: (rx_total_bytes.saturating_sub(rx_before) as f64 / elapsed)
+                    .round() as u64,
+                tx_bytes_per_second: (tx_total_bytes.saturating_sub(tx_before) as f64 / elapsed)
+                    .round() as u64,
+                rx_total_bytes,
+                tx_total_bytes,
+            }
+        })
+        .collect::<Vec<_>>();
+    interfaces.sort_by(|left, right| left.name.cmp(&right.name));
+    let uptime_seconds = basic
+        .get(5)
+        .and_then(|value| value.split_whitespace().next())
+        .and_then(|value| value.parse::<f64>().ok())
+        .unwrap_or(0.0) as u64;
+    let load_values = basic
+        .get(6)
+        .into_iter()
+        .flat_map(|value| value.split_whitespace().take(3))
+        .map(|value| value.parse::<f64>().unwrap_or(0.0))
+        .collect::<Vec<_>>();
+    SystemInfo {
         hostname: basic.first().unwrap_or(&"").to_string(),
         os: basic.get(1).unwrap_or(&"Unknown Linux").to_string(),
-        kernel: basic.get(2).unwrap_or(&"").to_string(),
-        architecture: basic.get(3).unwrap_or(&"").to_string(),
-        cpu_model: cpu.first().unwrap_or(&"").trim().to_string(),
-        cpu_cores: cpu.get(1).and_then(|v| v.parse().ok()).unwrap_or(0),
-        memory_total_bytes: bytes_from_kb(memory),
-        interfaces: interface_map
-            .into_iter()
-            .map(|(name, addresses)| NetworkInterface { name, addresses })
-            .collect(),
-        disks: parse_disks(section(&output, "__DISK__", "__END__")),
-    })
+        kernel_name: basic.get(2).unwrap_or(&"").to_string(),
+        kernel: basic.get(3).unwrap_or(&"").to_string(),
+        architecture: basic.get(4).unwrap_or(&"").to_string(),
+        cpu_model: cpu.get("model").unwrap_or(&"").to_string(),
+        cpu_cores: cpu
+            .get("cores")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0),
+        cpu_frequency_mhz: cpu
+            .get("frequency_mhz")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0.0),
+        cpu_cache: cpu.get("cache").unwrap_or(&"").to_string(),
+        cpu_bogomips: cpu
+            .get("bogomips")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0.0),
+        cpu_usage: cpu_usage_breakdown(
+            parse_cpu_times(
+                section(output, "__CPU_A__", "__NET_A__")
+                    .lines()
+                    .next()
+                    .unwrap_or(""),
+            ),
+            parse_cpu_times(
+                section(output, "__CPU_B__", "__NET_B__")
+                    .lines()
+                    .next()
+                    .unwrap_or(""),
+            ),
+        ),
+        memory_used_bytes,
+        memory_total_bytes,
+        memory_available_bytes: memory_total_bytes.saturating_sub(memory_used_bytes),
+        swap_used_bytes,
+        swap_total_bytes,
+        swap_available_bytes: swap_total_bytes.saturating_sub(swap_used_bytes),
+        uptime_seconds,
+        load: [
+            *load_values.first().unwrap_or(&0.0),
+            *load_values.get(1).unwrap_or(&0.0),
+            *load_values.get(2).unwrap_or(&0.0),
+        ],
+        interfaces,
+        disks: parse_disks(section(output, "__DISK__", "__END__")),
+    }
 }
 
 pub async fn mcp_system_info_cancelable(
@@ -658,7 +787,14 @@ fn parse_mcp_system_info(output: &str) -> McpSystemInfo {
     }
     let mut interfaces = interface_map
         .into_iter()
-        .map(|(name, addresses)| NetworkInterface { name, addresses })
+        .map(|(name, addresses)| NetworkInterface {
+            name,
+            addresses,
+            rx_bytes_per_second: 0,
+            tx_bytes_per_second: 0,
+            rx_total_bytes: 0,
+            tx_total_bytes: 0,
+        })
         .collect::<Vec<_>>();
     interfaces.sort_by(|left, right| left.name.cmp(&right.name));
     McpSystemInfo {
@@ -708,10 +844,37 @@ mod tests {
     #[test]
     fn parses_cpu_and_memory() {
         assert_eq!(parse_cpu("cpu 10 2 3 85 0 0"), Some((100, 85)));
+        let usage = cpu_usage_breakdown(
+            parse_cpu_times("cpu 100 10 40 800 20 5 15 10"),
+            parse_cpu_times("cpu 130 15 60 850 30 10 25 10"),
+        );
+        assert!((usage.user_percent - 23.08).abs() < 0.01);
+        assert!((usage.idle_percent - 38.46).abs() < 0.01);
+        assert!((usage.io_wait_percent - 7.69).abs() < 0.01);
         let (m, t, s, st) = parse_memory(
             "MemTotal: 1000 kB\nMemAvailable: 250 kB\nSwapTotal: 500 kB\nSwapFree: 400 kB",
         );
         assert_eq!((m, t, s, st), (768000, 1024000, 102400, 512000));
+    }
+    #[test]
+    fn parses_complete_system_information() {
+        let output = "__BASIC__\nvm-example\nUbuntu 24.04 LTS\nLinux\n6.8.0\nx86_64\n90061.00 0.00\n0.10 0.20 0.30 1/10 1\n__CPU_META__\nmodel=Example CPU\ncores=4\nfrequency_mhz=2595.12\ncache=512 KB\nbogomips=5190.24\n__MEM__\nMemTotal: 2000000 kB\nMemAvailable: 500000 kB\nSwapTotal: 8000000 kB\nSwapFree: 7000000 kB\n__ADDR__\n2: eth0 inet 10.0.4.9/22 scope global eth0\n__TIME_A__\n100.00\n__CPU_A__\ncpu 100 10 40 800 20 5 15 10\n__NET_A__\nInter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n eth0: 1000 0 0 0 0 0 0 0 1000 0 0 0 0 0 0 0\n__TIME_B__\n100.20\n__CPU_B__\ncpu 130 15 60 850 30 10 25 10\n__NET_B__\nInter-| Receive | Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n eth0: 2000 0 0 0 0 0 0 0 4000 0 0 0 0 0 0 0\n__DISK__\nFilesystem 1024-blocks Used Available Capacity Mounted on\n/dev/vda2 1000 400 600 40% /\n__END__\n";
+        let info = parse_system_info(output);
+        assert_eq!(info.hostname, "vm-example");
+        assert_eq!(info.kernel_name, "Linux");
+        assert_eq!(info.kernel, "6.8.0");
+        assert_eq!(info.cpu_model, "Example CPU");
+        assert_eq!(info.cpu_cores, 4);
+        assert_eq!(info.cpu_cache, "512 KB");
+        assert_eq!(info.memory_available_bytes, 512_000_000);
+        assert_eq!(info.swap_used_bytes, 1_024_000_000);
+        assert_eq!(info.uptime_seconds, 90_061);
+        assert_eq!(info.load, [0.1, 0.2, 0.3]);
+        assert_eq!(info.interfaces[0].name, "eth0");
+        assert_eq!(info.interfaces[0].rx_total_bytes, 2_000);
+        assert_eq!(info.interfaces[0].rx_bytes_per_second, 5_000);
+        assert_eq!(info.interfaces[0].tx_bytes_per_second, 15_000);
+        assert_eq!(info.disks[0].mount_point, "/");
     }
     #[test]
     fn parses_bounded_mcp_system_snapshot() {
@@ -788,11 +951,23 @@ mod tests {
         let info = SystemInfo {
             hostname: "host".into(),
             os: "Linux".into(),
+            kernel_name: "Linux".into(),
             kernel: "6".into(),
             architecture: "arm64".into(),
             cpu_model: "cpu".into(),
             cpu_cores: 2,
+            cpu_frequency_mhz: 2400.0,
+            cpu_cache: "4 MB".into(),
+            cpu_bogomips: 4800.0,
+            cpu_usage: CpuUsageBreakdown::default(),
+            memory_used_bytes: 512,
             memory_total_bytes: 1024,
+            memory_available_bytes: 512,
+            swap_used_bytes: 0,
+            swap_total_bytes: 0,
+            swap_available_bytes: 0,
+            uptime_seconds: 120,
+            load: [0.1, 0.2, 0.3],
             interfaces: vec![],
             disks: vec![],
         };

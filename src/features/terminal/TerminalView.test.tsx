@@ -134,7 +134,17 @@ describe("TerminalView resize", () => {
   });
 
   it("replaces the native terminal context menu with Chinese actions", async () => {
-    const view = render(<TerminalView session={moshSession} visible focused />);
+    const toggleBottomPanel = vi.fn();
+    const view = render(
+      <TerminalView
+        session={moshSession}
+        visible
+        focused
+        bottomPanelOpen={false}
+        bottomPanelShortcut="Ctrl+J"
+        onToggleBottomPanel={toggleBottomPanel}
+      />,
+    );
 
     await waitFor(() => expect(terminalMock.instance.open).toHaveBeenCalled());
     const host = view.container.querySelector(".terminal-host");
@@ -144,6 +154,15 @@ describe("TerminalView resize", () => {
     expect(screen.getByRole("menu", { name: "终端右键菜单" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "复制" })).toBeDisabled();
     expect(screen.getByRole("menuitem", { name: "粘贴" })).toHaveFocus();
+    expect(
+      screen.getByRole("menuitem", { name: "显示底部工具面板 Ctrl+J" }),
+    ).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "显示底部工具面板 Ctrl+J" }),
+    );
+    expect(toggleBottomPanel).toHaveBeenCalledTimes(1);
+
+    fireEvent.contextMenu(host!);
     fireEvent.click(screen.getByRole("menuitem", { name: "全选" }));
     expect(terminalMock.instance.selectAll).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("menu", { name: "终端右键菜单" })).not.toBeInTheDocument();

@@ -1,3 +1,4 @@
+import { useShallow } from "zustand/react/shallow";
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Eye, EyeOff, FolderOpen, HardDrive, KeyRound, LoaderCircle, Monitor, RefreshCw, ShieldCheck, TerminalSquare, Usb, Volume2, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -12,7 +13,7 @@ import { usePlatformCapabilities } from "../../lib/platform";
 
 export function ConnectionEditor() {
   const platform=usePlatformCapabilities();
-  const { connectionEditorOpen, editingConnection, closeConnectionEditor, refreshConnections, setError, settings, saveSettings } = useAppStore();
+  const { connectionEditorOpen, editingConnection, closeConnectionEditor, refreshConnections, setError, settings, saveSettings } = useAppStore(useShallow((state) => ({connectionEditorOpen: state.connectionEditorOpen, editingConnection: state.editingConnection, closeConnectionEditor: state.closeConnectionEditor, refreshConnections: state.refreshConnections, setError: state.setError, settings: state.settings, saveSettings: state.saveSettings})));
   const initial = useMemo<SaveConnectionInput>(() => editingConnection ? { ...editingConnection, credential: "" } : {
     id: crypto.randomUUID(), folderId: null, protocol: "ssh", name: "", host: "", port: 22, username: "root", authType: "password", privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict", note: "", tags: [], encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, credential: ""
   }, [editingConnection]);

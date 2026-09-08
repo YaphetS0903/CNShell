@@ -5,7 +5,14 @@ import {
   useRef,
   useState,
 } from "react";
-import { ClipboardPaste, Copy, Eraser, TextSelect } from "lucide-react";
+import {
+  ClipboardPaste,
+  Copy,
+  Eraser,
+  PanelBottomClose,
+  PanelBottomOpen,
+  TextSelect,
+} from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
@@ -51,9 +58,25 @@ export const TerminalView = forwardRef<
     visible: boolean;
     focused: boolean;
     showTimestamps?: boolean;
+    bottomPanelOpen?: boolean;
+    bottomPanelShortcut?: string;
+    onToggleBottomPanel?: () => void;
     style?: React.CSSProperties;
   }
->(({ session, visible, focused, showTimestamps = false, style }, ref) => {
+>(
+  (
+    {
+      session,
+      visible,
+      focused,
+      showTimestamps = false,
+      bottomPanelOpen = false,
+      bottomPanelShortcut,
+      onToggleBottomPanel,
+      style,
+    },
+    ref,
+  ) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -578,7 +601,7 @@ export const TerminalView = forwardRef<
         terminalRef.current?.focus();
         setContextMenu({
           x: Math.max(8, Math.min(event.clientX, window.innerWidth - 176)),
-          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 154)),
+          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 196)),
           hasSelection: terminalRef.current?.hasSelection() ?? false,
         });
       }}
@@ -624,6 +647,28 @@ export const TerminalView = forwardRef<
           >
             <Eraser size={14} />清屏
           </button>
+          {onToggleBottomPanel && (
+            <>
+              <div className="terminal-context-separator" role="separator" />
+              <button
+                role="menuitem"
+                onClick={() => {
+                  onToggleBottomPanel();
+                  setContextMenu(null);
+                }}
+              >
+                {bottomPanelOpen ? (
+                  <PanelBottomClose size={14} />
+                ) : (
+                  <PanelBottomOpen size={14} />
+                )}
+                <span>
+                  {bottomPanelOpen ? "隐藏" : "显示"}底部工具面板
+                </span>
+                {bottomPanelShortcut && <kbd>{bottomPanelShortcut}</kbd>}
+              </button>
+            </>
+          )}
         </div>
       )}
       {zmodem&&<section className="zmodem-card" role="status" aria-live="polite">
@@ -654,6 +699,7 @@ export const TerminalView = forwardRef<
       )}
     </div>
   );
-});
+  },
+);
 
 TerminalView.displayName = "TerminalView";

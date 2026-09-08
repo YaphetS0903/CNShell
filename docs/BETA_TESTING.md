@@ -1,12 +1,12 @@
-# CNshell v0.2.0-beta.10 跨平台 Beta
+# CNshell v0.2.0-beta.11 跨平台 Beta
 
 这是供真实设备测试的未签名预发布版，不是已完成商业代码签名的正式版本。
 
 ## 下载选择
 
-- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.10_universal.dmg`
-- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.10_x64-setup.exe`，状态为 **Beta**
-- Windows 11 ARM64：`CNshell_0.2.0-beta.10_arm64-setup.exe`，状态为 **Preview**
+- macOS 13 或更高版本、Apple Silicon/Intel：`CNshell_0.2.0-beta.11_universal.dmg`
+- Windows 10 22H2（build 19045）或 Windows 11 x64：`CNshell_0.2.0-beta.11_x64-setup.exe`，状态为 **Beta**
+- Windows 11 ARM64：`CNshell_0.2.0-beta.11_arm64-setup.exe`，状态为 **Preview**
 
 安装前必须从本 Release 下载 `SHA256SUMS.txt` 并核对 SHA-256。不要从第三方分发站、网盘或聊天附件安装 CNshell。
 
