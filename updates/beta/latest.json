@@ -1,23 +1,23 @@
 {
-  "version": "0.2.0-beta.10",
-  "notes": "### 新增\n\n- 监控栏和远端文件管理区新增独立字号调节控件（10–16px）；自动模式会结合显示器分辨率与系统 DPI，在低缩放 2K/4K 大屏上分别提高到 12/13px，避免与 Windows 系统缩放重复放大。\n- 目录树、文件表格、磁盘详情和操作提示会同步缩放；手动字号按面板分别保存在本机，重启 CNshell 或切换连接后仍保留，点击“字”图标可恢复自动模式。",
-  "pub_date": "2026-09-02T15:12:53.228Z",
+  "version": "0.2.0-beta.11",
+  "notes": "### 新增\n\n- 系统信息重构为“概览、CPU 与内存、网络、磁盘、端口与连接”五个固定分类；新增内核名称、运行时间、负载、CPU 分项占用、内存/Swap 明细、网络累计流量和实时速率，并兼容 ARM Linux 的 `lscpu` 硬件信息。\n- 远程文本编辑器提升为应用级宿主，支持按连接和路径恢复本机草稿、三方冲突处理，以及切换会话、关闭会话和退出应用时的未保存内容保护。\n- 底部工具面板新增常驻按钮、终端右键菜单入口和 `⌘J`/`Ctrl+J` 快捷键；帮助页补充明确操作说明，重新打开时保留上次工具页。\n- 新增真实 OpenSSH/SFTP 传输验收入口，覆盖四路并发、暂停/恢复/取消、冲突策略、失败重试和最终文件完整性。\n\n### 修复\n\n- 传输事件改由应用级监听，即使关闭或切换传输面板，进度、速度和最终状态仍持续同步；退出时会提示未完成任务。\n- 修复下载冲突改名后数据库仍记录旧目标、SCP 长度校验误判、同名连接双击错配和并发传输目标冲突等问题。\n- 修复编辑器切换工具页或会话后丢失内容、关闭期间保存竞态、外部编辑副本未回传以及草稿空间不足仍允许关闭的问题。\n- 修复应用退出只销毁窗口却遗留后台进程的问题，统一由前端检查未保存编辑和后台传输后调用后端退出。\n- 全局隐藏视觉滚动条，同时保留鼠标滚轮、触控板和键盘滚动能力，减少界面中的高亮滚动轨道。\n\n### 验证\n\n- 前端 64 个测试文件、272 项测试通过；Rust 监控模块 10 项测试通过，生产构建、ad-hoc 签名校验及 macOS ARM 云服务器实时系统信息验证通过。\n- 完整传输验收覆盖 1 GiB 往返、10 万目录项、真实队列与 SHA-256 一致性；本轮发布不重复执行长时间 soak。\n\n### 已知限制\n\n- macOS 仍未配置 Developer ID 与公证；Windows 仍未配置 Authenticode。x64 保持 Beta，ARM64 保持 Preview。\n- Windows ARM64、Intel Mac、不同 macOS 版本与完整弱网/辅助功能矩阵仍需对应外部环境继续验收。",
+  "pub_date": "2026-09-08T09:16:03.383Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.10/CNshell_0.2.0-beta.10_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVV4SXZObkhIOWFNTXBRbkQ4NjJFOHlRR1ZuSWx3WHdLTUJ6Z3ZXNGJCNVJxaDAxNVVIUWVvNXgxZmE2Z0ZKUFRSSmhMZGZSY2tRS3grMEhobzNnd2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzYwMzM0CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cmo4dzBqTUEzSE5JdlIrZEJRMVNTYUdaSUxGZmxIOFdZVzA1T0tPN3NSRjR4U2tjK21VM2dBVDFoR1BGRDV3MXdwVTUvNzNCWmlGUVRRN1IwNnN2RENRPT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.11/CNshell_0.2.0-beta.11_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVl4aTZPRzhQUmZzL3FycXR1TEdaN3B5ZHV5dnhyRG0wZFJHeFl1ZTRZZjB6R1UzbEM3Rkw4cldNU2tMVndvUlFIcWVadDdHVWNCbitmWUdQYXFXd2drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODU2Njc4CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cll2ajNobTJiai9OOG5MNzZtcHdOTitMSWlBcjdja25TQ0IzVVFYdXJOa3UrTVgrcHIyNjFQZjY2NStwS2ZBYjUvWEVkWmE4aDd2TldXWmdoa0JnakNnPT0K"
     },
     "darwin-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.10/CNshell_0.2.0-beta.10_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVV4SXZObkhIOWFNTXBRbkQ4NjJFOHlRR1ZuSWx3WHdLTUJ6Z3ZXNGJCNVJxaDAxNVVIUWVvNXgxZmE2Z0ZKUFRSSmhMZGZSY2tRS3grMEhobzNnd2dVPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzYwMzM0CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cmo4dzBqTUEzSE5JdlIrZEJRMVNTYUdaSUxGZmxIOFdZVzA1T0tPN3NSRjR4U2tjK21VM2dBVDFoR1BGRDV3MXdwVTUvNzNCWmlGUVRRN1IwNnN2RENRPT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.11/CNshell_0.2.0-beta.11_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVl4aTZPRzhQUmZzL3FycXR1TEdaN3B5ZHV5dnhyRG0wZFJHeFl1ZTRZZjB6R1UzbEM3Rkw4cldNU2tMVndvUlFIcWVadDdHVWNCbitmWUdQYXFXd2drPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODU2Njc4CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cll2ajNobTJiai9OOG5MNzZtcHdOTitMSWlBcjdja25TQ0IzVVFYdXJOa3UrTVgrcHIyNjFQZjY2NStwS2ZBYjUvWEVkWmE4aDd2TldXWmdoa0JnakNnPT0K"
     },
     "windows-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.10/CNshell_0.2.0-beta.10_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWNYZk5UZzNPbFNzZVBHUEhpSGNIUGNTSVdBeUhOMS8yZmt4YkZNVldhb1NBWGs3WHVxTVRzT2wvdWVxMTh0TUFVb2NIaEp3REZobkFKbVN4bXZOOUFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzYxNTgwCWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEwX3g2NC1zZXR1cC5leGUKYi9FSGY5RUxtMHBJc2tzY01LNVBJQlNFNGV3amxJZVphY1hVbmprOWR0Q010aVBqbzQ2S0JsOGlvMXN4Y0dIUENTejB3NFdDdzhnTnhGdjlwOHdJQ0E9PQo="
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.11/CNshell_0.2.0-beta.11_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVgzd0RtY0JHMWdPbG1QY0NVU0YyVGFLNC9jVEFCWmtpRnFKeFNJekczTHh0Mkx2VE1VdmQ2RE5KZE5TUFdMTVJaMFhhbVVZYktkNm8zTXR3c1hvb0FFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODU4NTk0CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjExX3g2NC1zZXR1cC5leGUKbXJBWi8wUUlNVEd6eUgvYnYrQWVjSUlVRm5rZUpYekVweDZuc0NYTWcrSGgvTzBOTTBXZjVhdjdFZHM4Y0FHdHlvbElmVmxlYnYzbEU1UnFyOS9DRFE9PQo="
     },
     "windows-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.10/CNshell_0.2.0-beta.10_arm64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWVjeThWN3dhdkJqRmdMQ3ZTSFVKL3BPV2dUNW4zN3JwQS9qTUlZMVNWZmpzZ0ltK2hHNFhhS0xTN2Npc2lEM1ZvaUtvWjFTcDBnUkM4Vnk0KzBjSFFnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MzYwODIxCWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEwX2FybTY0LXNldHVwLmV4ZQp4WFRNRktTSWs4NmVoUTM4VnMyU3ljRUQ0Y2EwOFNZTjdKeEZHSWRHdzdoVU1lL01tUkJiQjZUeVQ2UjMxZmtVeEdPcmVtMWl0ZU1uNHczeGVVb0tEZz09Cg=="
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.11/CNshell_0.2.0-beta.11_arm64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVNkMUtYTEt1enlqKzVMZlNMellFTW9PL2FJVXRyRU1tUHA1bG5aa2F5V1haVkpCM1dmUUFZUEZYcGg0ZXQ4ZUJWUWZxQmljSkxXR2hobms5NWU1bkFRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4ODU3Nzk1CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjExX2FybTY0LXNldHVwLmV4ZQovMTJTZFBReWd3ZWdLODNwRWcya1paeHVCVjVhWWJZRnRMTlpHdk4zcU5SMm9iNzE1MnVtcnJab3RvM2IyZ0N0TWM3Z3dtQlE5VkVtZzB3NEE1RlpDZz09Cg=="
     }
   }
 }
