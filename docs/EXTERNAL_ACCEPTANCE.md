@@ -1,6 +1,6 @@
 # 外部验收执行说明
 
-总规划中的本机代码主线和短时自动化已经完成。本文只用于 Developer ID、不同设备、真实网络和生产服务到位后的外部验收，不会把“检测到条件”写成“场景通过”。
+总规划中的本机代码主线和短时自动化已经完成。本文用于不同设备、真实网络和生产服务到位后的外部验收；Developer ID 与公证仅在以后选择系统代码签名时适用。文档不会把“检测到条件”写成“场景通过”。
 
 ## 安全预检
 
@@ -35,13 +35,13 @@ npm run preflight:external
 | `CNSHELL_ACCEPTANCE_RELAY_URL` | 正式 HTTPS/WSS Relay 已准备 |
 | `CNSHELL_ACCEPTANCE_RELAY_BACKUP_TARGET` | 异地加密备份目标已准备 |
 
-正式发布预检沿用发布工作流变量：`APPLE_SIGNING_IDENTITY`、`APPLE_API_ISSUER`、`APPLE_API_KEY`、`APPLE_API_KEY_PATH`、`TAURI_SIGNING_PRIVATE_KEY` 和 `UPDATER_DOWNLOAD_BASE_URL`。API 私钥必须是权限为 `0400` 或 `0600` 的普通文件。不要把这些变量值或 Developer ID `.p12` 写入仓库、报告或聊天记录。
+GitHub 一键更新发布只需要 `TAURI_SIGNING_PRIVATE_KEY`、对应密码和固定的 HTTPS Beta endpoint。`APPLE_SIGNING_IDENTITY`、`APPLE_API_ISSUER`、`APPLE_API_KEY`、`APPLE_API_KEY_PATH` 与 `UPDATER_DOWNLOAD_BASE_URL` 仅供可选的系统代码签名候选流程预检。API 私钥必须是权限为 `0400` 或 `0600` 的普通文件。不要把这些变量值或 Developer ID `.p12` 写入仓库、报告或聊天记录。
 
 ## 验收边界
 
 以下操作必须由人在对应环境中完成，预检不会替代：
 
-1. Developer ID 签名、公证、Gatekeeper、正式 updater 升级与失败回滚。
+1. GitHub Tauri updater 的跨版本升级与失败回滚；若以后启用 Developer ID，再补充签名、公证和 Gatekeeper 验收。
 2. Ventura、Sonoma、Sequoia、Intel 和无开发环境 Mac 的安装、升级、卸载与数据保留。
 3. Windows 10/11/Server 的 RDP 首帧、中文 IME、键鼠、剪贴板、音频、缩放和重连。
 4. XQuartz 图形窗口、FIDO2 触摸/PIN/取消/拔出、Touch ID 保存/解锁/取消/指纹变化。

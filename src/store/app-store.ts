@@ -34,6 +34,12 @@ function cachePendingSessionUpdate(
 
 type Panel = "files" | "commands" | "transfers" | "system";
 
+export interface SettingsNavigationTarget {
+  category: "basic" | "connection" | "automation" | "team" | "support";
+  moduleId?: string;
+  basicId?: string;
+}
+
 interface AppState {
   connections: ConnectionProfile[];
   sessions: TerminalSession[];
@@ -47,6 +53,7 @@ interface AppState {
   connectionEditorOpen: boolean;
   editingConnection: ConnectionProfile | null;
   settingsOpen: boolean;
+  settingsTarget: SettingsNavigationTarget | null;
   helpOpen: boolean;
   loading: boolean;
   error: string | null;
@@ -66,7 +73,10 @@ interface AppState {
   addTransfer: (task: TransferTask) => void;
   openConnectionEditor: (connection?: ConnectionProfile | null) => void;
   closeConnectionEditor: () => void;
-  setSettingsOpen: (open: boolean) => void;
+  setSettingsOpen: (
+    open: boolean,
+    target?: SettingsNavigationTarget | null,
+  ) => void;
   setHelpOpen: (open: boolean) => void;
   saveSettings: (settings: AppSettings) => Promise<void>;
   setError: (error: string | null) => void;
@@ -90,6 +100,7 @@ export const useAppStore = create<AppState>((set, get) => {
     connectionEditorOpen: false,
     editingConnection: null,
     settingsOpen: false,
+    settingsTarget: null,
     helpOpen: false,
     loading: true,
     error: null,
@@ -189,7 +200,8 @@ export const useAppStore = create<AppState>((set, get) => {
       set({ editingConnection: connection, connectionEditorOpen: true }),
     closeConnectionEditor: () =>
       set({ connectionEditorOpen: false, editingConnection: null }),
-    setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+    setSettingsOpen: (settingsOpen, settingsTarget = null) =>
+      set({ settingsOpen, settingsTarget }),
     setHelpOpen: (helpOpen) => set({ helpOpen }),
     saveSettings: (settings) => {
       if (pendingSettings === 0) confirmedSettings = get().settings;

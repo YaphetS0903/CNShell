@@ -39,7 +39,7 @@ const info: SystemInfo = {
   interfaces: [
     {
       name: "eth0",
-      addresses: ["10.0.4.9/22"],
+      addresses: ["10.0.4.9/22", "2001:db8::42/64"],
       rxBytesPerSecond: 4_915,
       txBytesPerSecond: 44_400,
       rxTotalBytes: 61_200_000_000,
@@ -55,12 +55,24 @@ const info: SystemInfo = {
       availableBytes: 11.5 * 1024 ** 3,
       usedPercent: 66.4,
     },
+    {
+      filesystem: "tmpfs",
+      mountPoint: "/run",
+      totalBytes: 512 * 1024 ** 2,
+      usedBytes: 8 * 1024 ** 2,
+      availableBytes: 504 * 1024 ** 2,
+      usedPercent: 1.6,
+    },
   ],
 };
 
 describe("SystemInfoPanel", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+    });
     useAppStore.setState({ error: null });
     vi.spyOn(api, "systemInfo").mockResolvedValue(info);
   });
@@ -69,6 +81,7 @@ describe("SystemInfoPanel", () => {
     render(<SystemInfoPanel sessionId="session-1" />);
 
     expect(await screen.findByText("vm-example")).toBeInTheDocument();
+    expect(screen.getByText(/^采集于 /)).toBeInTheDocument();
     expect(screen.getByText("Linux 6.8.0-101-generic")).toBeInTheDocument();
     expect(screen.getByText("1 天 1 小时 1 分钟")).toBeInTheDocument();
 
@@ -81,10 +94,36 @@ describe("SystemInfoPanel", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "网络" }));
     expect(screen.getByText("10.0.4.9/22")).toBeInTheDocument();
+    expect(screen.queryByText("2001:db8::42/64")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "IPv6 1" }));
+    expect(screen.getByText("2001:db8::42/64")).toBeInTheDocument();
     expect(screen.getByText("↓ 4.8 KB/s")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "复制 eth0 网络信息" }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      expect.stringContaining("接口：eth0"),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "筛选网络接口" }), {
+      target: { value: "missing" },
+    });
+    expect(screen.getByText("没有匹配的网络接口")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "磁盘" }));
     expect(screen.getByText("/dev/vda2")).toBeInTheDocument();
     expect(screen.getByText(/26.1 GB \(66%\)/)).toBeInTheDocument();
+    expect(screen.queryByText("/run")).not.toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "显示全部挂载点（另 1 项）" }),
+    );
+    expect(screen.getByText("/run")).toBeInTheDocument();
+    fireEvent.click(
+      screen.getByRole("button", { name: "复制 / 文件系统信息" }),
+    );
+    expect(navigator.clipboard.writeText).toHaveBeenLastCalledWith(
+      expect.stringContaining("挂载点：/"),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "筛选文件系统" }), {
+      target: { value: "missing" },
+    });
+    expect(screen.getByText("没有匹配的文件系统")).toBeInTheDocument();
   });
 });

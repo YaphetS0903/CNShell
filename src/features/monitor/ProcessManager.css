@@ -1,0 +1,58 @@
+.process-search {
+  height: 38px;
+}
+
+.process-search input {
+  font-size: 11px;
+}
+
+.process-table {
+  min-width: 650px;
+}
+
+.process-table header,
+.process-table > div {
+  grid-template-columns: 52px 72px minmax(240px, 1fr) 58px 58px 52px;
+  min-height: 32px;
+}
+
+.process-actions {
+  position: relative;
+  justify-content: flex-end;
+}
+
+.process-actions .process-menu-trigger {
+  width: 30px;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+}
+
+.process-signal-menu {
+  position: absolute;
+  z-index: 15;
+  top: calc(100% + 3px);
+  right: 0;
+  width: 158px;
+  display: grid !important;
+  gap: 2px;
+  overflow: visible !important;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.process-signal-menu button {
+  width: 100%;
+  min-height: 30px;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  font-size: 10px;
+}
+
+.process-signal-menu button:hover {
+  background: var(--surface-3);
+}

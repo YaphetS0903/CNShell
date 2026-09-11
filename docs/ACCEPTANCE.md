@@ -1,4 +1,4 @@
-# CNshell v0.2.0-beta.11 验收矩阵
+# CNshell v0.2.0-beta.12 验收矩阵
 
 > 最后核验：2026-09-08（传输队列真实协议、编辑器生命周期、应用退出保护与 macOS arm64 成品 App 增量验收完成；其余外部边界按各条记录保留）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
@@ -311,7 +311,7 @@
 | Ventura、Sonoma、Sequoia 与 Intel 真机 | 外部阻塞 | 最低版本和 universal 构建可静态验证；仍需对应设备运行 |
 | 连续 SSH + 监控、空闲内存 < 150 MB | 用户验收通过 | 用户于约 2 小时 50 分钟时主动结束长测并认可结果；期间 4 条 SSH TCP 连接持续建立，RSS 从约 36 MB 降至并稳定在约 21 MB。未宣称实际运行满 8 小时 |
 | 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 本机已完成可回滚生命周期回归：覆盖安装、临时移除 App、恢复启动后，6 条连接记录稳定哈希与 6 个关联 Keychain 条目均保持不变；文档已提供。仍需另一台无开发环境的干净 Mac 验收首次安装与 Gatekeeper 流程 |
-| Developer ID 签名、公证、正式 updater | 外部阻塞 | 应用内已实现手动检查、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。GitHub release workflow 已能把 `.p12` 导入临时 Keychain，并在任何第三方上传 Action 执行前清理全部发布凭据；FreeRDP、Mosh、G-Kermit 从固定哈希源码重建，候选与正式构建均启用 Hardened Runtime，正式构建使用同一 Developer ID 与时间戳，CI/发布门禁逐个校验 runtime/架构/对应源码，正式门禁额外校验 Authority。签名 universal 归档会在内置同算法验签确认归档、`.sig` 与 release 公钥匹配后，生成包含 Apple Silicon/Intel 两个目标的 HTTPS `latest.json`。增量 migration 可供旧版回退读取且已知 checksum 仍严格校验。Tauri 提供 RDP 麦克风用途说明；App Sandbox 因 PTY/X11/Serial/sidecar 架构明确不启用。仍需要 Apple 证书、notary 凭据、正式 endpoint 与 public key 才能完成真实更新验收；发布脚本会拒绝占位、签名错配和不安全 endpoint 配置，数据库代码证据不替代正式更新/回滚实测 |
+| GitHub Releases 与 Tauri 签名 updater | 通过 | 应用内已实现检查更新、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。公开 Beta 通道固定 HTTPS endpoint 与 updater 公钥，GitHub Actions 使用现有私钥签名 macOS/Windows 更新包，跨平台 verifier 验签后才发布四平台 `latest.json`。Beta.1 → Beta.2 已完成真实应用内更新和数据保留验收，当前 Beta.11 Release、签名附件与在线清单均已公开。Developer ID、公证和 Authenticode 只影响操作系统首次安装信任提示，不属于当前 GitHub 一键更新的前置条件。|
 
 本机候选包另已完成以下桌面证据：DMG 只读挂载后，包内应用通过 `codesign --verify --deep --strict` 并连续运行；辅助功能树可识别原生菜单、主工具栏、连接表单字段和安全密码输入框，模态打开后焦点进入关闭按钮，Escape 可关闭。该 ad-hoc 签名只用于本机结构验收，不等同 Developer ID 签名或 Apple 公证。
 
@@ -333,11 +333,11 @@
 
 ## 5. 结论
 
-当前工作区版本为 **v0.2.0-beta.11**；本文记录的公开发布链路基线仍为 **v0.2.0-beta.2 未签名跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试按用户认可的约 2 小时 50 分钟结果保留，Beta updater 签名、四平台清单、公开下载入口和 Beta.1 → Beta.2 应用内更新均已有历史证据。当前 beta.11 增量以各日期小节的本机证据为准，不能表述为已经公开发布。升级为正式稳定版本前仍必须完成第 3 节标为“外部阻塞”的真机矩阵、Developer ID 签名、公证、Windows Authenticode 和正式更新服务配置。
+当前工作区版本为 **v0.2.0-beta.12 发布候选**，公开 GitHub 发布链路基线为 **v0.2.0-beta.11 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试按用户认可的约 2 小时 50 分钟结果保留；Tauri updater 签名、四平台清单、公开下载入口和 Beta.1 → Beta.2 应用内更新均已有真实证据。Beta.12 只有在当前改动提交、完整门禁通过并由对应标签构建后才能表述为公开包。不同设备、真实服务和辅助功能验收仍按第 3 节边界继续；Developer ID、公证和 Authenticode 为未来可选的首次安装体验增强项。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 
-GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 PTY 和 universal App 构建门禁，以及需要受保护 environment 和发行 secrets 的手动签名/公证候选流程。1 GB 协议与耐久测试不会在普通 CI 中重复消耗资源。
+GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 PTY 和 universal App 构建门禁，以及只依赖 Tauri updater Secrets 的 GitHub Beta 发布流程；需要 Apple/Windows 发行凭据的系统代码签名流程作为可选能力保留。1 GB 协议与耐久测试不会在普通 CI 中重复消耗资源。
 
 ## 6. PLAN 架构偏差与后续范围
 

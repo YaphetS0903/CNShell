@@ -1,0 +1,140 @@
+.folder-toolbar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.folder-toolbar select {
+  grid-column: 1 / -1;
+}
+
+.connection-inline-action {
+  flex: 0 0 auto;
+}
+
+.favorite-action:not(.is-active) {
+  opacity: 0;
+}
+
+.connection-row:hover .favorite-action,
+.favorite-action:focus-visible,
+.favorite-action.is-active {
+  opacity: 1;
+}
+
+.favorite-action.is-active {
+  color: var(--warning);
+}
+
+.favorite-action.is-active svg {
+  fill: currentColor;
+}
+
+.connection-copy .deleted-at {
+  color: var(--muted);
+}
+
+@media (hover: none) {
+  .favorite-action:not(.is-active) {
+    opacity: 1;
+  }
+}
+
+.diagnostic-remedy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.diagnostic-remedy p {
+  flex: 1;
+  margin: 0;
+  color: var(--warning);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.diagnostic-footer {
+  flex-wrap: wrap;
+}
+
+.diagnostic-copy-status {
+  flex: 1 1 160px;
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.tunnel-form .tunnel-type-field,
+.tunnel-route-preview,
+.tunnel-auto-start,
+.tunnel-form-actions {
+  grid-column: 1 / -1;
+}
+
+.tunnel-route-preview {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--blue);
+}
+
+.tunnel-route-preview > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.tunnel-route-preview small {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.tunnel-route-preview strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.tunnel-endpoint {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 110px;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 9px;
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+}
+
+.tunnel-endpoint legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 5px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.tunnel-auto-start {
+  flex-direction: row !important;
+  align-items: center;
+}
+
+@media (max-width: 620px) {
+  .tunnel-form,
+  .tunnel-endpoint {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tunnel-form .form-actions,
+  .tunnel-form .inline-warning {
+    grid-column: 1;
+  }
+}

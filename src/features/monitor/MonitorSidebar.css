@@ -1,0 +1,64 @@
+.monitor-network-heading {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+}
+
+.monitor-network-heading h3 {
+  margin: 0;
+}
+
+.monitor-network-heading select {
+  min-width: 0;
+  max-width: 118px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  padding: 0 22px 0 7px;
+  font-size: var(--monitor-font-size);
+}
+
+.monitor-network-heading code {
+  overflow: hidden;
+  color: var(--faint);
+  font-size: var(--monitor-font-size);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.process-list .process-list-header {
+  margin-bottom: 2px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--faint);
+}
+
+.process-list .process-list-header code {
+  color: var(--faint);
+  font-family: inherit;
+}
+
+.monitor-disk-heading {
+  display: flex;
+  min-height: 28px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.monitor-disk-heading h3 {
+  margin: 0;
+}
+
+.monitor-disk-heading button {
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: var(--blue);
+  font-size: var(--monitor-font-size);
+}

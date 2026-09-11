@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
+import { useAppStore } from "../../store/app-store";
 import type {
   TeamDevice,
   TeamMember,
@@ -219,6 +220,35 @@ describe("TeamTerminalCenter", () => {
     terminalOutputHandler = null;
     terminalMock.dataHandlers.length = 0;
     terminalMock.writes.length = 0;
+    useAppStore.setState({ settingsOpen: false, settingsTarget: null });
+  });
+
+  it("guides unconfigured users to the team settings module", async () => {
+    const user = userEvent.setup();
+    mockBase();
+    vi.mocked(api.listTeamWorkspaces).mockResolvedValue([]);
+    vi.mocked(api.listTeamRelayBindings).mockResolvedValue([]);
+    const onClose = vi.fn();
+    render(
+      <TeamTerminalCenter
+        open
+        onClose={onClose}
+        sessions={[]}
+        activeSessionId={null}
+        onError={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("配置在线服务")).toBeVisible();
+    expect(screen.getByText("登录账号")).toBeVisible();
+    expect(screen.getByText("发布工作区")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "前往团队设置" }));
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState()).toMatchObject({
+      settingsOpen: true,
+      settingsTarget: { category: "team", moduleId: "team" },
+    });
   });
 
   it("starts an online room from the active SSH session", async () => {

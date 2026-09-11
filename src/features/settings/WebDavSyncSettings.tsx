@@ -1,14 +1,29 @@
-import { Cloud, KeyRound, Play, Save, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Cloud, CloudDownload, CloudUpload, Save, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { IconButton } from "../../components/IconButton";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
-import type { BackgroundTask, SaveWebDavProfileInput, SyncOptions, SyncResult, WebDavProfile } from "../../types";
+import type {
+  BackgroundTask,
+  SaveWebDavProfileInput,
+  SyncOptions,
+  SyncResult,
+  WebDavProfile,
+} from "../../types";
 import { usePlatformCapabilities } from "../../lib/platform";
+import { useSettingsModuleDraftState } from "./settings-module-draft";
 
-const defaultOptions: SyncOptions = { includeHosts: true, includePrivateKeyPaths: false, includeCredentials: false };
+const defaultOptions: SyncOptions = {
+  includeHosts: true,
+  includePrivateKeyPaths: false,
+  includeCredentials: false,
+};
 
-export function WebDavSyncSettings({ onError }: { onError: (message: string) => void }) {
+export function WebDavSyncSettings({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
   const platform = usePlatformCapabilities();
   const [profiles, setProfiles] = useState<WebDavProfile[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -22,59 +37,369 @@ export function WebDavSyncSettings({ onError }: { onError: (message: string) => 
   const [options, setOptions] = useState(defaultOptions);
   const [task, setTask] = useState<BackgroundTask | null>(null);
   const [result, setResult] = useState<SyncResult | null>(null);
-  const [progress, setProgress] = useState<{ phase: string; transferredBytes: number; totalBytes: number } | null>(null);
+  const [lastDirection, setLastDirection] = useState<"write" | "read" | null>(
+    null,
+  );
+  const [progress, setProgress] = useState<{
+    phase: string;
+    transferredBytes: number;
+    totalBytes: number;
+  } | null>(null);
+  const selectedProfile = profiles.find((profile) => profile.id === selectedId);
+  const profileDraftDirty = useMemo(
+    () =>
+      selectedProfile
+        ? name !== selectedProfile.name ||
+          url !== selectedProfile.url ||
+          username !== selectedProfile.username ||
+          Boolean(password) ||
+          syncOnStartup !== selectedProfile.syncOnStartup ||
+          Boolean(startupPassphrase) ||
+          JSON.stringify(options) !==
+            JSON.stringify(selectedProfile.syncOptions)
+        : Boolean(
+            name ||
+            url ||
+            username ||
+            password ||
+            syncOnStartup ||
+            startupPassphrase ||
+            JSON.stringify(options) !== JSON.stringify(defaultOptions),
+          ),
+    [
+      name,
+      options,
+      password,
+      selectedProfile,
+      startupPassphrase,
+      syncOnStartup,
+      url,
+      username,
+    ],
+  );
+  useSettingsModuleDraftState(profileDraftDirty);
 
-  const select = (profile: WebDavProfile) => { setSelectedId(profile.id); setName(profile.name); setUrl(profile.url); setUsername(profile.username); setPassword(""); setSyncOnStartup(profile.syncOnStartup); setStartupPassphrase(""); setOptions(profile.syncOptions); setResult(null); };
-  const load = useCallback(() => void api.listWebDavProfiles().then((items) => { setProfiles(items); if (items[0] && !selectedId) select(items[0]); }).catch((error) => onError(errorMessage(error))), [onError, selectedId]);
-  useEffect(() => { load(); }, [load]);
+  const select = (profile: WebDavProfile) => {
+    setSelectedId(profile.id);
+    setName(profile.name);
+    setUrl(profile.url);
+    setUsername(profile.username);
+    setPassword("");
+    setSyncOnStartup(profile.syncOnStartup);
+    setStartupPassphrase("");
+    setOptions(profile.syncOptions);
+    setResult(null);
+    setLastDirection(null);
+  };
+  const load = useCallback(
+    () =>
+      void api
+        .listWebDavProfiles()
+        .then((items) => {
+          setProfiles(items);
+          if (items[0] && !selectedId) select(items[0]);
+        })
+        .catch((error) => onError(errorMessage(error))),
+    [onError, selectedId],
+  );
   useEffect(() => {
-    if (!task || ["completed", "failed", "cancelled"].includes(task.status)) return;
+    load();
+  }, [load]);
+  useEffect(() => {
+    if (!task || ["completed", "failed", "cancelled"].includes(task.status))
+      return;
     const timer = window.setInterval(() => {
-      void api.getTask(task.id).then((next) => { setTask(next); if (next.status === "completed") setResult(next.result as SyncResult); }).catch((error) => onError(errorMessage(error)));
+      void api
+        .getTask(task.id)
+        .then((next) => {
+          setTask(next);
+          if (next.status === "completed") setResult(next.result as SyncResult);
+        })
+        .catch((error) => onError(errorMessage(error)));
     }, 400);
     return () => window.clearInterval(timer);
   }, [task, onError]);
   useEffect(() => {
     let active = true;
     let unlisten: (() => void) | undefined;
-    void api.onWebDavSyncProgress((next) => { if (active && next.profileId === selectedId) setProgress(next); }).then((stop) => { unlisten = stop; });
-    return () => { active = false; unlisten?.(); };
+    void api
+      .onWebDavSyncProgress((next) => {
+        if (active && next.profileId === selectedId) setProgress(next);
+      })
+      .then((stop) => {
+        unlisten = stop;
+      });
+    return () => {
+      active = false;
+      unlisten?.();
+    };
   }, [selectedId]);
 
-  const reset = () => { setSelectedId(""); setName(""); setUrl(""); setUsername(""); setPassword(""); setSyncOnStartup(false); setStartupPassphrase(""); setResult(null); };
+  const reset = () => {
+    setSelectedId("");
+    setName("");
+    setUrl("");
+    setUsername("");
+    setPassword("");
+    setSyncOnStartup(false);
+    setStartupPassphrase("");
+    setOptions(defaultOptions);
+    setResult(null);
+    setLastDirection(null);
+  };
   const save = async () => {
     try {
-      const input: SaveWebDavProfileInput = { id: selectedId || crypto.randomUUID(), name, url, username, password: password || null, syncOnStartup, syncOptions: options, syncPassphrase: syncOnStartup ? (startupPassphrase || null) : "" };
+      const input: SaveWebDavProfileInput = {
+        id: selectedId || crypto.randomUUID(),
+        name,
+        url,
+        username,
+        password: password || null,
+        syncOnStartup,
+        syncOptions: options,
+        syncPassphrase: syncOnStartup ? startupPassphrase || null : "",
+      };
       const saved = await api.saveWebDavProfile(input);
-      setProfiles((current) => [...current.filter((item) => item.id !== saved.id), saved]);
+      setProfiles((current) => [
+        ...current.filter((item) => item.id !== saved.id),
+        saved,
+      ]);
       select(saved);
-    } catch (error) { onError(errorMessage(error)); }
+    } catch (error) {
+      onError(errorMessage(error));
+    }
   };
   const remove = async () => {
-    if (!selectedId || !confirm(`删除这条 WebDAV 配置及${platform.credentialStoreName}密码？远端同步文件不会删除。`)) return;
-    try { await api.deleteWebDavProfile(selectedId); setProfiles((current) => current.filter((item) => item.id !== selectedId)); reset(); } catch (error) { onError(errorMessage(error)); }
+    if (
+      !selectedId ||
+      !confirm(
+        `删除这条 WebDAV 配置及${platform.credentialStoreName}密码？远端同步文件不会删除。`,
+      )
+    )
+      return;
+    try {
+      await api.deleteWebDavProfile(selectedId);
+      setProfiles((current) =>
+        current.filter((item) => item.id !== selectedId),
+      );
+      reset();
+    } catch (error) {
+      onError(errorMessage(error));
+    }
   };
   const run = async (direction: "write" | "read") => {
-    if (!selectedId || passphrase.length < 8) { onError("请选择 WebDAV 配置并输入至少 8 位同步口令"); return; }
-    if (options.includeCredentials && !confirm(`${platform.credentialStoreName}凭据会在本机加密后上传，服务端只看到密文。确认继续？`)) return;
-    try { setResult(null); setProgress(null); setTask(direction === "write" ? await api.startWebDavWrite(selectedId, passphrase, options) : await api.startWebDavRead(selectedId, passphrase)); setPassphrase(""); } catch (error) { onError(errorMessage(error)); }
+    if (!selectedId || passphrase.length < 8) {
+      onError("请选择 WebDAV 配置并输入至少 8 位同步口令");
+      return;
+    }
+    if (
+      options.includeCredentials &&
+      !confirm(
+        `${platform.credentialStoreName}凭据会在本机加密后上传，服务端只看到密文。确认继续？`,
+      )
+    )
+      return;
+    try {
+      setResult(null);
+      setProgress(null);
+      setLastDirection(direction);
+      setTask(
+        direction === "write"
+          ? await api.startWebDavWrite(selectedId, passphrase, options)
+          : await api.startWebDavRead(selectedId, passphrase),
+      );
+      setPassphrase("");
+    } catch (error) {
+      onError(errorMessage(error));
+    }
   };
 
-  return <section className="webdav-sync" aria-label="WebDAV 同步">
-    <div className="section-heading"><div><h3><Cloud size={16} /> WebDAV 同步</h3></div></div>
-    <div className="webdav-profile-list">{profiles.map((profile) => <button key={profile.id} className={profile.id === selectedId ? "active" : ""} onClick={() => select(profile)}><strong>{profile.name}</strong><small>{profile.url} · {profile.hasCredential ? "已保存密码" : "未保存密码"}</small></button>)}</div>
-    <div className="automation-meta">
-      <label><span>名称</span><input value={name} onChange={(event) => setName(event.target.value)} /></label>
-      <label><span>HTTPS 地址</span><input value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://dav.example/remote.php/dav/files/user/" /></label>
-      <label><span>用户名</span><input value={username} onChange={(event) => setUsername(event.target.value)} /></label>
-      <label><span>密码</span><input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder={selectedId ? "留空保持原密码" : "输入 WebDAV 密码"} /></label>
-    </div>
-    <label><span>同步口令（至少 8 位；默认不保存）</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} autoComplete="new-password" /></label>
-    <div className="webdav-startup"><label className="check-row"><input type="checkbox" checked={syncOnStartup} onChange={(event) => setSyncOnStartup(event.target.checked)} /><span>启动时自动导入（需保存独立同步口令）</span></label>{syncOnStartup && <label><span>启动同步口令</span><input type="password" value={startupPassphrase} onChange={(event) => setStartupPassphrase(event.target.value)} placeholder="留空保持已保存口令" /></label>}<small>{syncOnStartup ? "CNshell 启动后只导入远端加密包；未保存口令时不会联网。" : "默认关闭启动同步。"}</small></div>
-    <div className="sync-toggles"><label className="check-row"><input type="checkbox" checked={options.includeHosts} onChange={(event) => setOptions({ ...options, includeHosts: event.target.checked })} /><span>同步主机资料</span></label><label className="check-row"><input type="checkbox" checked={options.includePrivateKeyPaths} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includePrivateKeyPaths: event.target.checked })} /><span>同步私钥路径</span></label><label className="check-row"><input type="checkbox" checked={options.includeCredentials} disabled={!options.includeHosts} onChange={(event) => setOptions({ ...options, includeCredentials: event.target.checked })} /><span>同步{platform.credentialStoreName}凭据</span></label></div>
-    <div className="backup-actions"><button className="button secondary" onClick={() => void save()}><Save size={14} /> 保存配置</button><button className="button secondary" disabled={!selectedId || !!task && !["completed", "failed", "cancelled"].includes(task.status)} onClick={() => void run("write")}><Play size={14} /> 上传</button><button className="button secondary" disabled={!selectedId || !!task && !["completed", "failed", "cancelled"].includes(task.status)} onClick={() => void run("read")}><KeyRound size={14} /> 下载导入</button><IconButton icon={Trash2} label="删除 WebDAV 配置" disabled={!selectedId} onClick={() => void remove()} /></div>
-    {task && <p className="muted-copy" aria-live="polite">任务状态：{task.status}{task.error ? ` · ${task.error}` : ""}</p>}
-    {progress && <p className="muted-copy" aria-live="polite">{progress.phase}{progress.totalBytes ? ` · ${progress.transferredBytes}/${progress.totalBytes} bytes` : ""}</p>}
-    {result && <p className="muted-copy" aria-live="polite">已同步 {result.connectionCount} 条连接：{result.path}{result.conflictCopy ? `；冲突副本：${result.conflictCopy}` : ""}</p>}
-  </section>;
+  return (
+    <section className="webdav-sync" aria-label="WebDAV 同步">
+      <div className="section-heading">
+        <div>
+          <h3>
+            <Cloud size={16} /> WebDAV 同步
+          </h3>
+        </div>
+      </div>
+      <div className="webdav-profile-list">
+        {profiles.map((profile) => (
+          <button
+            key={profile.id}
+            className={profile.id === selectedId ? "active" : ""}
+            onClick={() => select(profile)}
+          >
+            <strong>{profile.name}</strong>
+            <small>
+              {profile.url} ·{" "}
+              {profile.hasCredential ? "已保存密码" : "未保存密码"}
+            </small>
+          </button>
+        ))}
+      </div>
+      <div className="automation-meta">
+        <label>
+          <span>名称</span>
+          <input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>HTTPS 地址</span>
+          <input
+            value={url}
+            onChange={(event) => setUrl(event.target.value)}
+            placeholder="https://dav.example/remote.php/dav/files/user/"
+          />
+        </label>
+        <label>
+          <span>用户名</span>
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>密码</span>
+          <input
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            placeholder={selectedId ? "留空保持原密码" : "输入 WebDAV 密码"}
+          />
+        </label>
+      </div>
+      <label>
+        <span>同步口令（至少 8 位；默认不保存）</span>
+        <input
+          type="password"
+          value={passphrase}
+          onChange={(event) => setPassphrase(event.target.value)}
+          autoComplete="new-password"
+        />
+      </label>
+      <div className="webdav-startup">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={syncOnStartup}
+            onChange={(event) => setSyncOnStartup(event.target.checked)}
+          />
+          <span>启动时自动导入（需保存独立同步口令）</span>
+        </label>
+        {syncOnStartup && (
+          <label>
+            <span>启动同步口令</span>
+            <input
+              type="password"
+              value={startupPassphrase}
+              onChange={(event) => setStartupPassphrase(event.target.value)}
+              placeholder="留空保持已保存口令"
+            />
+          </label>
+        )}
+        <small>
+          {syncOnStartup
+            ? "CNshell 启动后只导入远端加密包；未保存口令时不会联网。"
+            : "默认关闭启动同步。"}
+        </small>
+      </div>
+      <div className="sync-toggles">
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={options.includeHosts}
+            onChange={(event) =>
+              setOptions({ ...options, includeHosts: event.target.checked })
+            }
+          />
+          <span>同步主机资料</span>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={options.includePrivateKeyPaths}
+            disabled={!options.includeHosts}
+            onChange={(event) =>
+              setOptions({
+                ...options,
+                includePrivateKeyPaths: event.target.checked,
+              })
+            }
+          />
+          <span>同步私钥路径</span>
+        </label>
+        <label className="check-row">
+          <input
+            type="checkbox"
+            checked={options.includeCredentials}
+            disabled={!options.includeHosts}
+            onChange={(event) =>
+              setOptions({
+                ...options,
+                includeCredentials: event.target.checked,
+              })
+            }
+          />
+          <span>同步{platform.credentialStoreName}凭据</span>
+        </label>
+      </div>
+      <div className="backup-actions">
+        <button className="button secondary" onClick={() => void save()}>
+          <Save size={14} /> 保存配置
+        </button>
+        <button
+          className="button secondary"
+          disabled={
+            !selectedId ||
+            (!!task &&
+              !["completed", "failed", "cancelled"].includes(task.status))
+          }
+          onClick={() => void run("write")}
+        >
+          <CloudUpload size={14} /> 上传加密包
+        </button>
+        <button
+          className="button secondary"
+          disabled={
+            !selectedId ||
+            (!!task &&
+              !["completed", "failed", "cancelled"].includes(task.status))
+          }
+          onClick={() => void run("read")}
+        >
+          <CloudDownload size={14} /> 下载并导入
+        </button>
+        <IconButton
+          icon={Trash2}
+          label="删除 WebDAV 配置"
+          disabled={!selectedId}
+          onClick={() => void remove()}
+        />
+      </div>
+      {task && (
+        <p className="muted-copy" aria-live="polite">
+          {lastDirection === "write" ? "上传" : "下载导入"}任务：{task.status}
+          {task.error ? ` · ${task.error}` : ""}
+        </p>
+      )}
+      {progress && (
+        <p className="muted-copy" aria-live="polite">
+          {progress.phase}
+          {progress.totalBytes
+            ? ` · ${progress.transferredBytes}/${progress.totalBytes} bytes`
+            : ""}
+        </p>
+      )}
+      {result && (
+        <p className="muted-copy" aria-live="polite">
+          {lastDirection === "write" ? "上传完成" : "下载导入完成"}：处理了{" "}
+          {result.connectionCount} 条连接，文件位于 {result.path}
+          {result.conflictCopy ? `；冲突副本：${result.conflictCopy}` : ""}
+        </p>
+      )}
+    </section>
+  );
 }

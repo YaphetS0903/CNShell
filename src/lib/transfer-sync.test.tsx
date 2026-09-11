@@ -94,7 +94,7 @@ it("continues updating status and speed while the panel is hidden without re-sub
   act(() => receive(task("file", "completed", 1_000)));
   expect(hasActiveTransfers()).toBe(false);
   view.rerender(<Harness visible />);
-  expect(screen.getByText(/已完成/)).toBeInTheDocument();
+  expect(screen.getByText(/1000 B \/ 1000 B · 已完成/)).toBeInTheDocument();
   expect(api.onTransfer).toHaveBeenCalledOnce();
   expect(api.listTransfers).toHaveBeenCalledOnce();
   view.unmount();

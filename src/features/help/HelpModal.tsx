@@ -1,31 +1,57 @@
+import { useDeferredValue, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { Command, FileUp, Search, ShieldCheck, TerminalSquare } from "lucide-react";
+import {
+  FileUp,
+  Plus,
+  Search,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react";
 import { Modal } from "../../components/Modal";
 import { useAppStore } from "../../store/app-store";
 import { usePlatformCapabilities } from "../../lib/platform";
+import "./HelpModal.css";
 
 export default function HelpModal() {
   const platform = usePlatformCapabilities();
-  const { helpOpen, setHelpOpen, settings, saveSettings } = useAppStore(
-    useShallow((state) => ({
-      helpOpen: state.helpOpen,
-      setHelpOpen: state.setHelpOpen,
-      settings: state.settings,
-      saveSettings: state.saveSettings,
+  const [query, setQuery] = useState("");
+  const normalizedQuery = useDeferredValue(query.trim().toLowerCase());
+  const state = useAppStore(
+    useShallow((item) => ({
+      helpOpen: item.helpOpen,
+      setHelpOpen: item.setHelpOpen,
+      settings: item.settings,
+      saveSettings: item.saveSettings,
+      openConnectionEditor: item.openConnectionEditor,
     })),
   );
-  if (!helpOpen) return null;
-  const modifier = platform.shortcutModifier;
+  if (!state.helpOpen) return null;
   const shortcut = (key: string) =>
-    modifier === "⌘"
+    platform.shortcutModifier === "⌘"
       ? `⌘${key.replace("Shift+", "⇧")}`
       : `Ctrl+${key}`;
+  const rows = [
+    [shortcut("N"), "新建连接", "全局"],
+    [shortcut("T"), "打开新终端", "终端"],
+    [shortcut("W"), "关闭当前会话", "终端"],
+    [shortcut("F"), "搜索当前终端输出", "终端"],
+    [shortcut("Shift+F"), "跨标签搜索", "终端"],
+    [shortcut("K"), "清空当前终端", "终端"],
+    [shortcut("J"), "显示或隐藏底部工具", "工作区"],
+    [`${shortcut("+")} / ${shortcut("-")}`, "调整终端字号", "终端"],
+    [shortcut("0"), "恢复终端默认字号", "终端"],
+    [shortcut("1…9"), "切换会话标签", "终端"],
+    [shortcut("?"), "打开使用帮助", "全局"],
+  ];
+  const filtered = rows.filter((row) =>
+    normalizedQuery
+      ? row.some((value) => value.toLowerCase().includes(normalizedQuery))
+      : true,
+  );
+  const close = () => state.setHelpOpen(false);
+
   return (
-    <Modal
-      title="CNshell 使用帮助"
-      onClose={() => setHelpOpen(false)}
-      wide
-    >
+    <Modal title="CNshell 使用帮助" onClose={close} wide>
       <div className="help-content">
         <div className="help-hero">
           <TerminalSquare size={34} />
@@ -36,26 +62,70 @@ export default function HelpModal() {
               保护凭据，并严格校验每台服务器的主机指纹。
             </p>
           </div>
+          <button
+            type="button"
+            className="button primary"
+            onClick={() => {
+              close();
+              state.openConnectionEditor();
+            }}
+          >
+            <Plus size={14} />
+            新建第一个连接
+          </button>
         </div>
+        <section className="help-shortcuts" aria-labelledby="shortcut-heading">
+          <header>
+            <div>
+              <h3 id="shortcut-heading">快捷键</h3>
+              <p>
+                {filtered.length}/{rows.length} 项
+              </p>
+            </div>
+            <label>
+              <Search size={14} />
+              <input
+                data-modal-initial-focus
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="搜索操作或按键"
+                aria-label="搜索帮助与快捷键"
+              />
+            </label>
+          </header>
+          {filtered.length ? (
+            <div
+              className="help-shortcut-table"
+              role="table"
+              aria-label="快捷键表"
+            >
+              <div role="row">
+                <span role="columnheader">按键</span>
+                <span role="columnheader">操作</span>
+                <span role="columnheader">范围</span>
+              </div>
+              {filtered.map(([keys, action, area]) => (
+                <div role="row" key={`${keys}-${action}`}>
+                  <span role="cell">
+                    <kbd>{keys}</kbd>
+                  </span>
+                  <span role="cell">{action}</span>
+                  <span role="cell">{area}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="help-empty" role="status">
+              没有匹配的快捷键
+            </p>
+          )}
+        </section>
         <div className="help-grid">
           <Help
-            icon={Command}
-            title="终端快捷键"
-            lines={[
-              `${shortcut("T")} 新终端`,
-              `${shortcut("W")} 关闭会话`,
-              `${shortcut("F")} 搜索输出`,
-              `${shortcut("Shift+F")} 跨标签搜索`,
-              `${shortcut("K")} 清屏`,
-              `${shortcut("+")} / ${shortcut("-")} 调整终端字号`,
-              `${shortcut("1…9")} 切换标签`,
-            ]}
-          />
-          <Help
             icon={FileUp}
-            title="底部工具与远程文件"
+            title="远程文件"
             lines={[
-              `${shortcut("J")} 显示或隐藏底部工具面板`,
               "终端右键菜单也可显示或隐藏工具面板",
               "双击文件夹进入，双击文本打开编辑器",
               "上传下载进入后台队列",
@@ -86,21 +156,18 @@ export default function HelpModal() {
           <label>
             <input
               type="checkbox"
-              checked={!settings.showWelcomeHelp}
+              checked={!state.settings.showWelcomeHelp}
               onChange={(event) =>
-                void saveSettings({
-                  ...settings,
+                void state.saveSettings({
+                  ...state.settings,
                   showWelcomeHelp: !event.target.checked,
                 })
               }
             />
             不再自动显示
           </label>
-          <button
-            className="button primary"
-            onClick={() => setHelpOpen(false)}
-          >
-            知道了
+          <button className="button secondary" onClick={close}>
+            关闭
           </button>
         </footer>
       </div>
@@ -113,7 +180,7 @@ function Help({
   title,
   lines,
 }: {
-  icon: typeof Command;
+  icon: typeof FileUp;
   title: string;
   lines: string[];
 }) {

@@ -66,7 +66,7 @@ test("keeps a dirty CodeMirror document when collapsing the panel and switching 
     page.getByRole("tablist", { name: "打开的会话" }).getByRole("tab").nth(1),
   ).toHaveAttribute("aria-selected", "true");
   await expect(editor).toHaveText("未保存的编辑 🚀");
-  await page.getByRole("button", { name: "原子保存" }).click();
+  await page.getByRole("button", { name: "保存到服务器" }).click();
   await expect(page.getByText(/· 已保存/)).toBeVisible();
   const saved = await page.evaluate(() =>
     JSON.parse(localStorage.getItem("test-editor-save")!),

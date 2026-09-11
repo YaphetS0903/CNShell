@@ -123,6 +123,14 @@ pub struct CommandSnippet {
     pub sort_order: i64,
 }
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommandHistorySummary {
+    pub command: String,
+    pub count: i64,
+    pub last_used_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
 pub struct Folder {
@@ -372,7 +380,7 @@ pub struct AutomationStep {
     pub remote_path: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomationStepResult {
     pub step_id: String,
@@ -384,7 +392,7 @@ pub struct AutomationStepResult {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AutomationRun {
     pub run_id: String,
@@ -392,6 +400,22 @@ pub struct AutomationRun {
     pub status: String,
     pub current_step: Option<String>,
     pub results: Vec<AutomationStepResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AutomationRunRecord {
+    pub id: String,
+    pub plan_id: String,
+    pub plan_name: String,
+    pub connection_id: String,
+    pub source: String,
+    pub schedule_id: Option<String>,
+    pub started_at: String,
+    pub finished_at: String,
+    pub status: String,
+    pub results: Vec<AutomationStepResult>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1441,6 +1465,8 @@ impl Default for TerminalPreferences {
 #[serde(rename_all = "camelCase")]
 pub struct AppSettings {
     pub theme: String,
+    #[serde(default = "default_interface_scale_percent")]
+    pub interface_scale_percent: u16,
     pub monitor_interval_ms: u64,
     pub remember_command_history: bool,
     pub confirm_close_active_session: bool,
@@ -1457,6 +1483,7 @@ impl Default for AppSettings {
     fn default() -> Self {
         Self {
             theme: "system".into(),
+            interface_scale_percent: default_interface_scale_percent(),
             monitor_interval_ms: 2000,
             remember_command_history: true,
             confirm_close_active_session: true,
@@ -1466,6 +1493,9 @@ impl Default for AppSettings {
             terminal_overrides: Default::default(),
         }
     }
+}
+fn default_interface_scale_percent() -> u16 {
+    100
 }
 fn default_true() -> bool {
     true

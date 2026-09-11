@@ -2,7 +2,12 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { api } from "../../lib/api";
-import type { ConnectionProfile, PluginAuditEvent, PluginInstallRecord, PluginPublisherRoot } from "../../types";
+import type {
+  ConnectionProfile,
+  PluginAuditEvent,
+  PluginInstallRecord,
+  PluginPublisherRoot,
+} from "../../types";
 import { PluginSettings } from "./PluginSettings";
 
 const dialog = vi.hoisted(() => ({ open: vi.fn(), save: vi.fn() }));
@@ -61,20 +66,42 @@ describe("PluginSettings", () => {
     vi.spyOn(api, "listPluginAudit").mockResolvedValue([audit]);
   });
 
+  it("guides first-time setup through publisher trust before plugin actions", async () => {
+    vi.mocked(api.listPlugins).mockResolvedValue([]);
+    vi.mocked(api.listPluginPublishers).mockResolvedValue([]);
+    vi.mocked(api.listPluginAudit).mockResolvedValue([]);
+
+    render(<PluginSettings connections={[]} onError={vi.fn()} />);
+
+    expect(await screen.findByText("尚未配置插件信任")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "导入发布者根" })).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "检查 manifest" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "登记插件" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("shows verified plugin and publisher state and records removal", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const remove = vi.spyOn(api, "removePlugin").mockResolvedValue();
     dialog.save.mockResolvedValue("/tmp/plugin-audit.json");
     const exportAudit = vi.spyOn(api, "exportPluginAudit").mockResolvedValue(1);
-    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
+    render(<PluginSettings connections={[]} onError={vi.fn()} />);
 
     expect(await screen.findByText("Status 1.0.0")).toBeInTheDocument();
     expect(screen.getByText(/签名可执行 · 已禁用/)).toBeInTheDocument();
     expect(screen.getByText(/com\.example · 已信任/)).toBeInTheDocument();
     expect(screen.getByText(/registered-blocked/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("combobox", { name: /本次运行使用的连接/ }),
+    ).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "导出" }));
-    await waitFor(() => expect(exportAudit).toHaveBeenCalledWith("/tmp/plugin-audit.json"));
+    await waitFor(() =>
+      expect(exportAudit).toHaveBeenCalledWith("/tmp/plugin-audit.json"),
+    );
     await user.click(screen.getByRole("button", { name: "移除 Status" }));
     await waitFor(() => expect(remove).toHaveBeenCalledWith(record.id));
   });
@@ -84,27 +111,45 @@ describe("PluginSettings", () => {
     dialog.open.mockResolvedValue("/tmp/plugin/manifest.json");
     vi.spyOn(window, "confirm").mockReturnValue(true);
     const register = vi.spyOn(api, "registerPlugin").mockResolvedValue(record);
-    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
+    render(<PluginSettings connections={[]} onError={vi.fn()} />);
 
-    await user.click(screen.getByRole("button", { name: "登记插件" }));
-    await waitFor(() => expect(register).toHaveBeenCalledWith("/tmp/plugin/manifest.json"));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("固定 manifest 与 WASM 摘要"));
+    await user.click(
+      await screen.findByRole("button", { name: "登记插件" }),
+    );
+    await waitFor(() =>
+      expect(register).toHaveBeenCalledWith("/tmp/plugin/manifest.json"),
+    );
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("固定 manifest 与 WASM 摘要"),
+    );
   });
 
   it("requires confirmation before enabling a verified plugin", async () => {
     const user = userEvent.setup();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    const enable = vi.spyOn(api, "enablePlugin").mockResolvedValue({ ...record, enabled: true, grantedPermissions: ["ui"] });
-    render(<PluginSettings connections={[]} onError={vi.fn()}/>);
+    const enable = vi
+      .spyOn(api, "enablePlugin")
+      .mockResolvedValue({
+        ...record,
+        enabled: true,
+        grantedPermissions: ["ui"],
+      });
+    render(<PluginSettings connections={[]} onError={vi.fn()} />);
 
     await user.click(await screen.findByRole("button", { name: "启用" }));
     await waitFor(() => expect(enable).toHaveBeenCalledWith(record.id, ["ui"]));
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("无 WASI"));
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("无 WASI"),
+    );
   });
 
   it("passes only the selected connection and exposes a rejectable one-shot proxy request", async () => {
     const user = userEvent.setup();
-    const enabled = { ...record, enabled: true, grantedPermissions: ["connectionMetadata", "credentialProxy"] };
+    const enabled = {
+      ...record,
+      enabled: true,
+      grantedPermissions: ["connectionMetadata", "credentialProxy"],
+    };
     vi.spyOn(api, "listPlugins").mockResolvedValue([enabled]);
     const run = vi.spyOn(api, "runPlugin").mockResolvedValue({
       pluginId: enabled.id,
@@ -124,13 +169,30 @@ describe("PluginSettings", () => {
         expiresAt: "2026-07-15T00:02:00Z",
       },
     });
-    const reject = vi.spyOn(api, "rejectPluginCredentialProxy").mockResolvedValue();
-    render(<PluginSettings connections={[connection]} onError={vi.fn()}/>);
+    const reject = vi
+      .spyOn(api, "rejectPluginCredentialProxy")
+      .mockResolvedValue();
+    render(<PluginSettings connections={[connection]} onError={vi.fn()} />);
 
-    await user.selectOptions(await screen.findByRole("combobox", { name: /本次运行使用的连接/ }), connection.id);
+    await user.selectOptions(
+      await screen.findByRole("combobox", { name: /本次运行使用的连接/ }),
+      connection.id,
+    );
     await user.click(screen.getByRole("button", { name: "运行" }));
-    await waitFor(() => expect(run).toHaveBeenCalledWith({ id: enabled.id, connectionId: connection.id, selectedText: null, networkUrl: null, directoryPath: null, directoryRelativePath: null, terminalSessionId: null }));
-    expect(await screen.findByText(/请求一次性 connectionTest/)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({
+        id: enabled.id,
+        connectionId: connection.id,
+        selectedText: null,
+        networkUrl: null,
+        directoryPath: null,
+        directoryRelativePath: null,
+        terminalSessionId: null,
+      }),
+    );
+    expect(
+      await screen.findByText(/请求一次性 connectionTest/),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "拒绝" }));
     await waitFor(() => expect(reject).toHaveBeenCalledWith("request-1"));
   });

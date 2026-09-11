@@ -4,6 +4,65 @@
   border-top: 1px solid var(--border-soft);
   padding-top: 13px !important;
 }
+
+.automation-tool-tabs,
+.settings-mode-tabs {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  background: var(--surface-2);
+}
+
+.automation-center-dialog {
+  width: min(1040px, calc(100vw / var(--interface-scale) - 48px));
+  height: min(780px, calc(100vh / var(--interface-scale) - 56px));
+}
+
+.automation-center-body {
+  padding: 18px 20px;
+}
+
+.automation-center-body > .automation-settings {
+  border-top: 0;
+  padding-top: 0 !important;
+}
+
+.automation-settings-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.automation-settings-entry p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.automation-tool-tabs button,
+.settings-mode-tabs button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 4px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.automation-tool-tabs button:hover,
+.automation-tool-tabs button.active,
+.settings-mode-tabs button:hover,
+.settings-mode-tabs button.active {
+  background: var(--surface-3);
+  color: var(--text);
+}
 .capability-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -124,6 +183,278 @@
 
 .automation-schedules .automation-meta {
   align-items: end;
+}
+
+.automation-schedule-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.automation-schedule-list-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.automation-schedule-list-heading strong {
+  color: var(--text);
+  font-size: 10px;
+}
+
+.automation-schedule-list-heading > div small {
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--surface-3);
+}
+
+.automation-schedule-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 7px;
+}
+
+.automation-schedule-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.automation-schedule-copy {
+  min-width: 0;
+}
+
+.automation-schedule-copy > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.automation-schedule-copy > p {
+  margin: 5px 0 3px;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.automation-schedule-copy > small {
+  display: block;
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.automation-schedule-copy dl {
+  display: flex;
+  gap: 14px;
+  margin: 7px 0 0;
+}
+
+.automation-schedule-copy dl > div {
+  display: flex;
+  gap: 5px;
+  font-size: 9px;
+}
+
+.automation-schedule-copy dt {
+  color: var(--faint);
+}
+
+.automation-schedule-copy dd {
+  margin: 0;
+  color: var(--muted);
+}
+
+.automation-schedule-status {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.automation-schedule-status.enabled {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--accent);
+}
+
+.automation-schedule-card .automation-actions {
+  justify-content: flex-end;
+}
+
+.automation-schedule-empty {
+  min-height: 86px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 7px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  color: var(--faint);
+}
+
+.automation-schedule-empty > span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.automation-schedule-empty strong {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.automation-schedule-empty small {
+  font-size: 9px;
+}
+
+.automation-run-history {
+  display: grid;
+  gap: 10px;
+}
+
+.automation-history-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.automation-history-filter {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.automation-history-filter label {
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.automation-history-filter select {
+  min-width: 160px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  padding: 0 7px;
+}
+
+.automation-history-filter > span {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.automation-run-list {
+  display: grid;
+  gap: 7px;
+}
+
+.automation-run-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: 7px;
+  background: var(--surface-2);
+}
+
+.automation-run-card.failed {
+  border-left-color: var(--danger);
+}
+
+.automation-run-card.cancelled {
+  border-left-color: var(--warning);
+}
+
+.automation-run-card > header,
+.automation-run-card > header > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.automation-run-card > header {
+  justify-content: space-between;
+}
+
+.automation-run-card > header time,
+.automation-run-card > p {
+  color: var(--faint);
+  font-size: 9px;
+}
+
+.automation-run-card > p {
+  margin: 5px 0 7px;
+}
+
+.automation-run-status {
+  padding: 1px 5px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 8px;
+}
+
+.automation-run-status.failed {
+  color: var(--danger);
+}
+
+.automation-run-status.cancelled {
+  color: var(--warning);
+}
+
+.automation-run-card details {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 7px;
+}
+
+.automation-run-card summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.automation-run-card details > section {
+  margin-top: 7px;
+  border-left: 2px solid var(--accent);
+  padding: 6px 8px;
+  background: var(--bg);
+}
+
+.automation-run-card details > section.failed {
+  border-left-color: var(--danger);
+}
+
+.automation-run-card details pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.automation-run-card details p,
+.automation-run-error {
+  color: var(--danger);
+  font-size: 9px;
+  overflow-wrap: anywhere;
 }
 
 .python-automation {
@@ -294,6 +625,38 @@
   padding-top: 16px;
 }
 
+.plugin-onboarding {
+  min-height: 76px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  padding: 12px;
+}
+
+.plugin-onboarding > svg {
+  color: var(--accent);
+}
+
+.plugin-onboarding > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.plugin-onboarding small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.plugin-onboarding[role="status"] {
+  display: flex;
+  color: var(--muted);
+}
+
 .plugin-report {
   display: grid;
   gap: 6px;
@@ -415,7 +778,10 @@
 .team-relay-token code {
   overflow-wrap: anywhere;
   user-select: text;
-  font: 10px SFMono-Regular, Menlo, monospace;
+  font:
+    10px SFMono-Regular,
+    Menlo,
+    monospace;
 }
 
 .team-relay-verification {
@@ -553,6 +919,13 @@
   color: var(--warning);
 }
 @media (max-width: 700px) {
+  .automation-center-body {
+    padding: 12px;
+  }
+  .automation-settings-entry {
+    align-items: flex-start;
+    flex-direction: column;
+  }
   .capability-grid,
   .automation-meta {
     grid-template-columns: 1fr;
@@ -566,5 +939,16 @@
   }
   .automation-actions {
     flex-wrap: wrap;
+  }
+  .automation-schedule-card {
+    grid-template-columns: 1fr;
+  }
+  .automation-schedule-card .automation-actions {
+    justify-content: flex-start;
+  }
+  .automation-schedule-copy dl,
+  .automation-schedule-list-heading {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

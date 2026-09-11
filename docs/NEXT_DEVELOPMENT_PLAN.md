@@ -1,6 +1,6 @@
 # CNshell 后续功能开发总规划
 
-> 文档状态：v2.7 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，正式 updater 验签、回滚兼容和发布供应链固定已完成并通过远端 CI；正式发布、生产部署与外部真机验收待补）
+> 文档状态：v2.7 执行中（阶段 1–9 本机可实现代码主线和短时自动化验收已完成，生产 relay 邮箱验证、代理限速与监控部署代码已补齐，GitHub Tauri updater 验签、回滚兼容和发布供应链固定已完成并通过远端 CI；生产部署与外部真机验收待补）
 >
 > 制定日期：2026-07-14
 >
@@ -23,7 +23,7 @@
 
 | 阶段 | 主题 | 优先级 | 主要前置条件 | 计划交付版本 |
 | --- | --- | --- | --- | --- |
-| 0 | 发布与权限基线 | P0 | Apple 开发者账号、更新服务 | v1.0 正式版 |
+| 0 | 发布与权限基线 | P0 | GitHub Releases、Tauri updater 密钥 | v1.0 正式版 |
 | 1 | Zmodem 完整传输 | P0 | 本机与测试服务器安装 `lrzsz` | v1.1 |
 | 2 | Mosh 漫游连接 | P1 | 本机/远端 Mosh、UDP 测试端口 | v1.2 |
 | 3 | 高级 SSH 与密钥 | P1 | XQuartz、硬件密钥测试设备 | v1.3 |
@@ -44,40 +44,40 @@
 └─ 云同步客户端 ─ 插件权限 ─ 团队协作
 ```
 
-## 3. 阶段 0：正式发布与权限基线
+## 3. 阶段 0：GitHub 发布与权限基线
 
 ### 当前进度（2026-07-17）
 
-- 已完成正式发布代码链路：GitHub Actions 从 secrets 导入 Developer ID `.p12` 到临时 Keychain，校验精确身份；构建、签名、公证与验证结束后会先清理证书、API 私钥、release 配置和 Keychain，清理成功后才调用 Artifact 上传 Action。
+- 已完成当前 GitHub 发布代码链路：GitHub Actions 使用仓库 Secrets 中的 Tauri updater 私钥签名 macOS/Windows 更新包，跨平台验签、版本清单和附件校验通过后才公开 Pre-release。可选的 Developer ID 候选流程仍会在上传前清理证书、API 私钥、release 配置和临时 Keychain。
 - CI 与 release workflow 的外部 Actions 已固定到审计过的 40 位 commit SHA；Dependabot 首次运行后已把 `checkout`、`setup-node` 和 `upload-artifact` 合并升级到当前稳定的 7.0.0/7.0.0/7.0.1。两个 workflow 的 `GITHUB_TOKEN` 只授予 `contents: read`，checkout 不持久化凭据供后续构建步骤读取。Node 固定为 `20.20.2`，Rust 固定为 `1.96.0`；执行 `cargo clippy` 的 workflow 显式安装 minimal profile 默认不包含的 Clippy 组件。Dependabot 每月提出 GitHub Actions 更新供审查，测试会拒绝浮动 tag、过期精确引用、缺失 Clippy、checkout 凭据持久化或发布凭据清理顺序回退。
-- FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；候选包使用带 Hardened Runtime 的 ad-hoc 签名，正式包使用同一 Developer ID、Hardened Runtime 与可信时间戳，CI/发布门禁逐个验证 runtime flag、universal 架构、最低系统版本，正式门禁额外验证 Authority。
+- FreeRDP、Mosh 与 G-Kermit 会从固定哈希源码重建；当前 GitHub 包使用带 Hardened Runtime 的 ad-hoc 签名，CI/发布门禁逐个验证 runtime flag、universal 架构和最低系统版本。以后若启用 Developer ID，可选门禁会额外验证统一身份与可信时间戳。
 - GitHub Actions run `29467617374` 已在干净的 macOS 15 arm64 托管 runner 上完成 universal App 候选构建，并验证主程序、FreeRDP、Mosh、G-Kermit 的 arm64/x86_64 架构、Hardened Runtime、最低 macOS 13、许可与固定哈希源码。该证据不包含 Developer ID、公证或 Intel 真机运行。
-- 已明确采用 Developer ID 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。
-- 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和候选版空 endpoint 已完成。发布脚本会让刚构建的 CNshell 可执行文件使用与 Tauri 客户端相同的 Base64/minisign 规则，实际验证 universal 归档、`.sig` 与 release 配置公钥匹配，验证通过后才生成同时覆盖 Apple Silicon/Intel 的 HTTPS `latest.json`；无效公钥、篡改归档、不安全 endpoint 和签名错配均会阻断。真实 Developer ID、公证、正式 endpoint 部署、更新与回滚、干净 Mac 和跨版本/Intel 验收仍需外部凭据或设备，不声明通过。
+- 已明确采用 GitHub Releases 站外分发、Hardened Runtime 开启、App Sandbox 关闭的权限策略；PTY、X11 Unix socket、Serial 和受管 sidecar 保持可用，文件继续使用原生授权与 security-scoped Bookmark。RDP 麦克风默认关闭，并已加入用途说明。
+- 应用内签名 updater 的手动检查、版本与发布说明预览、用户确认、下载进度、安装失败保留当前版本和开发构建空 endpoint 已完成。GitHub 发布脚本会让 CNshell 使用与客户端相同的 Base64/minisign 规则验证归档、`.sig` 与 Beta 公钥，验证通过后才生成四平台 HTTPS `latest.json`；无效公钥、篡改归档、不安全 endpoint 和签名错配均会阻断。Beta.1 → Beta.2 已完成真实更新与数据保留验收；干净 Mac、后续跨版本和 Intel 验收仍需对应设备。
 - 数据库迁移已建立正式回滚兼容基线：后续 migration 必须保持增量和向后兼容，旧版本可忽略不认识的更高 migration 并读取原有数据，但仍严格验证所有已知 migration 的 checksum；自动化测试覆盖未来增量 schema 回退读取、迁移前备份和已知 migration 篡改拒绝。该代码证据不替代正式 updater 安装失败与人工回滚验收。
 - GitHub Actions run `29523263973`（CI #74）已通过 updater 真实验签、数据库回滚兼容及当时完整短时门禁；它早于本次 workflow 固定提交，不作为新 Action SHA 的远端执行证据。
-- GitHub Actions run `29527312962`（CI #81）已在固定 Actions 7.x、Node 20.20.2 和 Rust 1.96.0 下完成四个 job：前端/Rust/Clippy/audit、Relay Docker 与生产配置 smoke、WebKit/PT Y、universal App 均通过。成功 job 日志确认 `GITHUB_TOKEN` 只有 `Contents: read`、checkout 使用 `persist-credentials: false`，并显式安装 Clippy；该证据不包含需要发行 secrets 的 Developer ID/公证流程。
+- GitHub Actions run `29527312962`（CI #81）已在固定 Actions 7.x、Node 20.20.2 和 Rust 1.96.0 下完成四个 job：前端/Rust/Clippy/audit、Relay Docker 与生产配置 smoke、WebKit/PTY、universal App 均通过。成功 job 日志确认 `GITHUB_TOKEN` 只有 `Contents: read`、checkout 使用 `persist-credentials: false`，并显式安装 Clippy；Developer ID/公证流程作为可选能力单独验收。
 
 ### 范围
 
-- 使用 Developer ID Application 为主程序和所有 sidecar 签名。
-- 完成 Apple 公证、票据装订和 Gatekeeper 验证。
-- 配置 Tauri 正式更新公钥、HTTPS endpoint、签名归档和回滚策略。
+- 使用 GitHub Releases 托管跨平台安装包、签名更新包和版本清单。
+- 配置 Tauri updater 公钥、HTTPS endpoint、签名归档和回滚策略。
+- 保留 Developer ID、公证和 Authenticode 流程，作为以后可选的首次安装体验增强项。
 - 确定 App Sandbox、Hardened Runtime、网络、文件、自动化和辅助功能权限策略。
 - 建立崩溃诊断的本地导出流程；默认不自动上传遥测。
 - 在干净 Mac 上验证安装、首次启动、升级、卸载和数据保留。
 
 ### 验收标准
 
-- `spctl --assess`、`codesign --verify --deep --strict` 和 `stapler validate` 全部通过。
+- GitHub Release、在线 `latest.json` 与本次发布的签名附件完全一致，客户端可验证并安装更新。
 - 更新失败时保留当前可运行版本和用户数据。
 - 更新服务不可用、签名错误或版本降级时明确拒绝安装。
 - Ventura、Sonoma、Sequoia、Apple Silicon 和 Intel 至少各有一次真实运行证据。
 
 ### 外部输入
 
-- Apple Developer Program 账号、Developer ID 证书和公证凭据。
 - Tauri updater 密钥对和稳定 HTTPS 发布地址。
+- Apple Developer Program、Developer ID 和公证凭据仅在选择系统代码签名时需要。
 - Intel Mac、不同 macOS 版本设备或可信云 Mac 测试资源。
 
 ## 4. 阶段 1：Zmodem 完整传输

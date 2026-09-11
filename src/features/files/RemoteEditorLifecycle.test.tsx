@@ -78,7 +78,7 @@ it("keeps the editor and its save destination when switching sessions and tool p
   expect(screen.getByLabelText("远程文本内容")).toBe(editor);
   expect(editor).toHaveValue("local draft");
   expect(api.openText).toHaveBeenCalledOnce();
-  fireEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   await waitFor(() =>
     expect(api.saveText).toHaveBeenCalledWith(
       "ssh-1",
@@ -168,7 +168,7 @@ it("preserves edits made during a save, including their updated draft baseline",
   );
   await openEditor();
   edit("first edit");
-  fireEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   edit("second edit");
   act(() => {
     expect(useAppStore.getState().prepareCloseSession("ssh-1")).toBe(false);
@@ -189,7 +189,7 @@ it("preserves edits made during a save, including their updated draft baseline",
     content: "second edit",
     modifiedAt: 12,
   });
-  fireEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  fireEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   await waitFor(() =>
     expect(readTextDraft(target.connectionId, target.path)).toBeNull(),
   );

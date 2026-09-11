@@ -5,19 +5,29 @@ import {
   ArrowDownToLine,
   ArrowLeft,
   ArrowUpToLine,
+  Check,
   ChevronDown,
+  ChevronRight,
   Clipboard,
+  Columns3,
   File,
   FileCode2,
   FilePlus,
   Folder,
   FolderPlus,
+  FolderRoot,
+  House,
   LoaderCircle,
   MoreHorizontal,
+  PanelLeftClose,
+  PanelLeftOpen,
   PackageOpen,
+  Pencil,
   RefreshCw,
   RotateCcw,
+  Search,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   useCallback,
@@ -26,6 +36,8 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
@@ -52,8 +64,25 @@ import {
   panelFontSizeStorageKeys,
   usePanelFontSize,
 } from "../../lib/panel-font-size";
+import "./FileManager.css";
 
 type SortKey = "name" | "size" | "modifiedAt";
+type FileColumn = "size" | "kind" | "modifiedAt" | "permissions" | "owner";
+type FileTableColumn = "name" | FileColumn;
+type FileColumnWidths = Record<FileTableColumn, number>;
+type RemoteBreadcrumb = {
+  label: string;
+  path: string;
+  collapsed?: boolean;
+};
+
+const defaultFileColumns: FileColumn[] = [
+  "size",
+  "kind",
+  "modifiedAt",
+  "permissions",
+  "owner",
+];
 
 export function FileManager({ session }: { session: TerminalSession }) {
   const platform = usePlatformCapabilities();
@@ -76,9 +105,23 @@ export function FileManager({ session }: { session: TerminalSession }) {
     );
   const [path, setPath] = useState(restored?.path ?? "/");
   const [draftPath, setDraftPath] = useState(restored?.path ?? "/");
+  const [pathEditing, setPathEditing] = useState(false);
+  const [pathSubmitting, setPathSubmitting] = useState(false);
+  const [pathEditError, setPathEditError] = useState<string | null>(null);
+  const [remoteHomePath, setRemoteHomePath] = useState<string | null>(null);
+  const [homeLoading, setHomeLoading] = useState(false);
   const [files, setFiles] = useState<RemoteFile[]>([]);
   const [loading, setLoading] = useState(false);
   const [directoryError, setDirectoryError] = useState<string | null>(null);
+  const [fileQuery, setFileQuery] = useState("");
+  const [treeOpen, setTreeOpen] = useState(
+    () => localStorage.getItem("cnshell-file-tree-open") !== "0",
+  );
+  const [visibleColumns, setVisibleColumns] = useState<Set<FileColumn>>(
+    () => new Set(readFileColumns()),
+  );
+  const [columnWidths, setColumnWidths] =
+    useState<FileColumnWidths>(readFileColumnWidths);
   const [selected, setSelected] = useState<RemoteFile | null>(null);
   const [sort, setSort] = useState<{ key: SortKey; asc: boolean }>({
     key: "name",
@@ -105,11 +148,27 @@ export function FileManager({ session }: { session: TerminalSession }) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const browserRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
+  const pathInputRef = useRef<HTMLInputElement>(null);
   const loadRequestRef = useRef(0);
   const listRequestsRef = useRef(new Map<string, Promise<RemoteFile[]>>());
   const uploadPathsRef = useRef<(paths: string[]) => Promise<void>>(
     async () => {},
   );
+  const beginPathEditing = useCallback(() => {
+    setDraftPath(path);
+    setPathEditError(null);
+    setPathEditing(true);
+  }, [path]);
+  const cancelPathEditing = useCallback(() => {
+    setDraftPath(path);
+    setPathEditError(null);
+    setPathEditing(false);
+  }, [path]);
+  useEffect(() => {
+    if (!pathEditing) return;
+    pathInputRef.current?.focus();
+    pathInputRef.current?.select();
+  }, [pathEditing]);
   const rememberBrowser = useCallback(
     (patch: Partial<{ path: string; expandedPaths: string[] }>) => {
       const current = workspaceRuntime.remoteFileBrowserBySession.get(
@@ -175,15 +234,41 @@ export function FileManager({ session }: { session: TerminalSession }) {
   }, [load]);
   const sorted = useMemo(
     () =>
-      [...files].sort((a, b) => {
-        if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
-        const direction = sort.asc ? 1 : -1;
-        if (sort.key === "size") return (a.size - b.size) * direction;
-        if (sort.key === "modifiedAt")
-          return ((a.modifiedAt ?? 0) - (b.modifiedAt ?? 0)) * direction;
-        return a.name.localeCompare(b.name, "zh-CN") * direction;
-      }),
-    [files, sort],
+      files
+        .filter((item) =>
+          `${item.name} ${item.kind} ${item.permissions} ${item.owner ?? ""} ${item.group ?? ""}`
+            .toLocaleLowerCase("zh-CN")
+            .includes(fileQuery.trim().toLocaleLowerCase("zh-CN")),
+        )
+        .sort((a, b) => {
+          if (a.kind !== b.kind) return a.kind === "directory" ? -1 : 1;
+          const direction = sort.asc ? 1 : -1;
+          if (sort.key === "size") return (a.size - b.size) * direction;
+          if (sort.key === "modifiedAt")
+            return ((a.modifiedAt ?? 0) - (b.modifiedAt ?? 0)) * direction;
+          return a.name.localeCompare(b.name, "zh-CN") * direction;
+        }),
+    [fileQuery, files, sort],
+  );
+  useEffect(
+    () => localStorage.setItem("cnshell-file-tree-open", treeOpen ? "1" : "0"),
+    [treeOpen],
+  );
+  useEffect(
+    () =>
+      localStorage.setItem(
+        "cnshell-file-columns",
+        JSON.stringify([...visibleColumns]),
+      ),
+    [visibleColumns],
+  );
+  useEffect(
+    () =>
+      localStorage.setItem(
+        "cnshell-file-column-widths",
+        JSON.stringify(columnWidths),
+      ),
+    [columnWidths],
   );
   const windowRange = virtualWindow(sorted.length, scrollTop, viewportHeight);
   const visibleFiles = sorted.slice(windowRange.start, windowRange.end);
@@ -231,9 +316,67 @@ export function FileManager({ session }: { session: TerminalSession }) {
     const normalized = target.startsWith("cnshell-raw-path:")
       ? target
       : normalizeRemotePath(target);
+    setDraftPath(normalized);
+    setPathEditing(false);
+    setPathEditError(null);
     setPath(normalized);
     rememberBrowser({ path: normalized });
   };
+  const submitEditedPath = async () => {
+    if (pathSubmitting) return;
+    const normalized = draftPath.startsWith("cnshell-raw-path:")
+      ? draftPath
+      : normalizeRemotePath(draftPath.trim());
+    if (normalized === path) {
+      cancelPathEditing();
+      return;
+    }
+    setPathSubmitting(true);
+    setPathEditError(null);
+    try {
+      await withTimeout(
+        listRemoteFiles(normalized),
+        DIRECTORY_REQUEST_TIMEOUT_MS,
+        `目录读取 ${normalized} 超时，请重试`,
+      );
+      navigate(normalized);
+    } catch (reason) {
+      setPathEditError(errorMessage(reason));
+      pathInputRef.current?.focus();
+      pathInputRef.current?.select();
+    } finally {
+      setPathSubmitting(false);
+    }
+  };
+  const goHome = async () => {
+    if (homeLoading) return;
+    setHomeLoading(true);
+    try {
+      const target =
+        remoteHomePath ?? (await api.remoteHomeDirectory(session.id));
+      setRemoteHomePath(target);
+      navigate(target);
+    } catch (reason) {
+      setError(`无法打开用户主目录：${errorMessage(reason)}`);
+    } finally {
+      setHomeLoading(false);
+    }
+  };
+  useEffect(() => {
+    const focusPath = (event: KeyboardEvent) => {
+      if (
+        (event.metaKey || event.ctrlKey) &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key.toLocaleLowerCase() === "l"
+      ) {
+        event.preventDefault();
+        beginPathEditing();
+      }
+    };
+    window.addEventListener("keydown", focusPath);
+    return () => window.removeEventListener("keydown", focusPath);
+  }, [beginPathEditing]);
   const parent = () => {
     if (path.startsWith("cnshell-raw-path:")) {
       navigate("/");
@@ -442,6 +585,13 @@ export function FileManager({ session }: { session: TerminalSession }) {
     setSort((current) =>
       current.key === key ? { key, asc: !current.asc } : { key, asc: true },
     );
+  const toggleColumn = (column: FileColumn) =>
+    setVisibleColumns((current) => {
+      const next = new Set(current);
+      if (next.has(column)) next.delete(column);
+      else next.add(column);
+      return next;
+    });
   const runBackground = async (
     label: string,
     start: () => ReturnType<typeof api.startArchiveRemote>,
@@ -461,6 +611,45 @@ export function FileManager({ session }: { session: TerminalSession }) {
     } finally {
       setBackground(null);
     }
+  };
+  const resizeColumn = (column: FileTableColumn, width: number) =>
+    setColumnWidths((current) => ({
+      ...current,
+      [column]: clampFileColumnWidth(column, width),
+    }));
+  const startColumnResize = (
+    column: FileTableColumn,
+    event: ReactPointerEvent<HTMLSpanElement>,
+  ) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = columnWidths[column];
+    const pointerId = event.pointerId;
+    event.currentTarget.setPointerCapture(pointerId);
+    const move = (moveEvent: globalThis.PointerEvent) => {
+      if (moveEvent.pointerId === pointerId)
+        resizeColumn(column, startWidth + moveEvent.clientX - startX);
+    };
+    const stop = (upEvent: globalThis.PointerEvent) => {
+      if (upEvent.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+  const resizeColumnByKeyboard = (
+    column: FileTableColumn,
+    event: ReactKeyboardEvent<HTMLSpanElement>,
+  ) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    resizeColumn(
+      column,
+      columnWidths[column] + (event.key === "ArrowRight" ? 10 : -10),
+    );
   };
   const archive = async (extract: boolean) => {
     if (!selected) return;
@@ -574,6 +763,7 @@ export function FileManager({ session }: { session: TerminalSession }) {
   };
   const fileStyle = {
     "--file-font-size": `${fileFontSize}px`,
+    "--file-columns": fileGridTemplate(visibleColumns, columnWidths),
   } as CSSProperties;
   return (
     <div className="file-manager" style={fileStyle}>
@@ -584,18 +774,107 @@ export function FileManager({ session }: { session: TerminalSession }) {
           onClick={parent}
           disabled={path === "/"}
         />
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            navigate(draftPath);
-          }}
-        >
-          <input
-            value={draftPath}
-            onChange={(event) => setDraftPath(event.target.value)}
-            aria-label="远程路径"
-          />
-        </form>
+        <div className={`file-path-control${pathEditing ? " is-editing" : ""}`}>
+          {pathEditing ? (
+            <form
+              className="file-path-editor"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void submitEditedPath();
+              }}
+            >
+              <input
+                ref={pathInputRef}
+                value={draftPath}
+                onChange={(event) => {
+                  setDraftPath(event.target.value);
+                  setPathEditError(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== "Escape") return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  cancelPathEditing();
+                }}
+                aria-label="远程路径"
+                aria-invalid={Boolean(pathEditError)}
+                aria-describedby={
+                  pathEditError ? "remote-path-edit-error" : undefined
+                }
+                disabled={pathSubmitting}
+              />
+              <IconButton
+                icon={Check}
+                label="前往输入路径"
+                onClick={() => void submitEditedPath()}
+                disabled={pathSubmitting}
+              />
+              <IconButton
+                icon={X}
+                label="取消编辑路径"
+                onClick={cancelPathEditing}
+                disabled={pathSubmitting}
+              />
+            </form>
+          ) : (
+            <>
+              <IconButton
+                icon={homeLoading ? LoaderCircle : House}
+                label="用户主目录"
+                className={homeLoading ? "file-path-home-loading" : ""}
+                onClick={() => void goHome()}
+                disabled={homeLoading}
+              />
+              <nav className="file-breadcrumbs" aria-label="当前远程路径">
+                {compactRemoteBreadcrumbs(path).map((item, index, items) => {
+                  const current = index === items.length - 1;
+                  return (
+                    <span key={`${item.path}:${item.label}`}>
+                      {index > 0 && (
+                        <ChevronRight size={12} aria-hidden="true" />
+                      )}
+                      <button
+                        onClick={() =>
+                          item.collapsed || current
+                            ? beginPathEditing()
+                            : navigate(item.path)
+                        }
+                        aria-current={current ? "page" : undefined}
+                        aria-label={index === 0 ? "根目录 /" : item.label}
+                        title={
+                          item.collapsed
+                            ? `完整路径：${path}`
+                            : current
+                              ? `编辑路径 ${path}`
+                              : item.path
+                        }
+                      >
+                        {index === 0 && (
+                          <FolderRoot size={13} aria-hidden="true" />
+                        )}
+                        <span>{item.label}</span>
+                      </button>
+                    </span>
+                  );
+                })}
+              </nav>
+              <IconButton
+                icon={Pencil}
+                label="编辑远程路径"
+                onClick={beginPathEditing}
+              />
+            </>
+          )}
+          {pathEditError && (
+            <div
+              className="file-path-edit-error"
+              id="remote-path-edit-error"
+              role="alert"
+            >
+              {pathEditError}
+            </div>
+          )}
+        </div>
         <IconButton
           icon={RefreshCw}
           label="刷新"
@@ -699,9 +978,46 @@ export function FileManager({ session }: { session: TerminalSession }) {
           )}
         </div>
       </div>
+      <div className="file-filter-bar">
+        <IconButton
+          icon={treeOpen ? PanelLeftClose : PanelLeftOpen}
+          label={treeOpen ? "折叠目录树" : "展开目录树"}
+          active={treeOpen}
+          onClick={() => setTreeOpen((open) => !open)}
+        />
+        <label>
+          <Search size={14} />
+          <input
+            value={fileQuery}
+            onChange={(event) => setFileQuery(event.target.value)}
+            placeholder="筛选当前目录"
+            aria-label="筛选当前目录文件"
+          />
+          <span>
+            {sorted.length}/{files.length}
+          </span>
+        </label>
+        <details className="file-column-picker">
+          <summary aria-label="选择显示列" title="选择显示列">
+            <Columns3 size={15} />
+          </summary>
+          <div>
+            {fileColumnOptions.map((option) => (
+              <label key={option.value}>
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.has(option.value)}
+                  onChange={() => toggleColumn(option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+      </div>
       <div
         ref={browserRef}
-        className={`file-browser ${dragging ? "dragging" : ""}`}
+        className={`file-browser ${treeOpen ? "" : "tree-hidden"} ${dragging ? "dragging" : ""}`}
         onDragEnter={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -713,67 +1029,93 @@ export function FileManager({ session }: { session: TerminalSession }) {
         }}
         onDrop={(event) => void drop(event)}
       >
-        <RemoteDirectoryTree
-          key={`${session.id}-${settings.showHiddenFiles}`}
-          activePath={path}
-          initialExpanded={restored?.expandedPaths}
-          listDirectories={listTreeDirectories}
-          onNavigate={navigate}
-          onError={reportTreeError}
-          onExpandedChange={rememberExpanded}
-        />
+        {treeOpen && (
+          <RemoteDirectoryTree
+            key={`${session.id}-${settings.showHiddenFiles}`}
+            activePath={path}
+            initialExpanded={restored?.expandedPaths}
+            listDirectories={listTreeDirectories}
+            onNavigate={navigate}
+            onError={reportTreeError}
+            onExpandedChange={rememberExpanded}
+          />
+        )}
         <div
           className="file-table"
           role="table"
           aria-label={`远程目录 ${path}`}
-          aria-rowcount={files.length + 1}
-          aria-colcount={6}
+          aria-rowcount={sorted.length + 1}
+          aria-colcount={visibleColumns.size + 1}
           aria-busy={loading}
         >
           <div className="file-head" role="row" aria-rowindex={1}>
-            <button
-              role="columnheader"
-              aria-sort={
-                sort.key === "name"
-                  ? sort.asc
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              onClick={() => sortBy("name")}
-            >
-              名称
-              <ChevronDown size={12} aria-hidden="true" />
-            </button>
-            <button
-              role="columnheader"
-              aria-sort={
-                sort.key === "size"
-                  ? sort.asc
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              onClick={() => sortBy("size")}
-            >
-              大小
-            </button>
-            <span role="columnheader">类型</span>
-            <button
-              role="columnheader"
-              aria-sort={
-                sort.key === "modifiedAt"
-                  ? sort.asc
-                    ? "ascending"
-                    : "descending"
-                  : "none"
-              }
-              onClick={() => sortBy("modifiedAt")}
-            >
-              修改时间
-            </button>
-            <span role="columnheader">权限</span>
-            <span role="columnheader">用户/组</span>
+            <FileColumnHeader
+              column="name"
+              label="名称"
+              width={columnWidths.name}
+              sort={sort}
+              sortKey="name"
+              onSort={sortBy}
+              onPointerDown={startColumnResize}
+              onKeyDown={resizeColumnByKeyboard}
+            />
+            {visibleColumns.has("size") && (
+              <FileColumnHeader
+                column="size"
+                label="大小"
+                width={columnWidths.size}
+                sort={sort}
+                sortKey="size"
+                onSort={sortBy}
+                onPointerDown={startColumnResize}
+                onKeyDown={resizeColumnByKeyboard}
+              />
+            )}
+            {visibleColumns.has("kind") && (
+              <FileColumnHeader
+                column="kind"
+                label="类型"
+                width={columnWidths.kind}
+                sort={sort}
+                onSort={sortBy}
+                onPointerDown={startColumnResize}
+                onKeyDown={resizeColumnByKeyboard}
+              />
+            )}
+            {visibleColumns.has("modifiedAt") && (
+              <FileColumnHeader
+                column="modifiedAt"
+                label="修改时间"
+                width={columnWidths.modifiedAt}
+                sort={sort}
+                sortKey="modifiedAt"
+                onSort={sortBy}
+                onPointerDown={startColumnResize}
+                onKeyDown={resizeColumnByKeyboard}
+              />
+            )}
+            {visibleColumns.has("permissions") && (
+              <FileColumnHeader
+                column="permissions"
+                label="权限"
+                width={columnWidths.permissions}
+                sort={sort}
+                onSort={sortBy}
+                onPointerDown={startColumnResize}
+                onKeyDown={resizeColumnByKeyboard}
+              />
+            )}
+            {visibleColumns.has("owner") && (
+              <FileColumnHeader
+                column="owner"
+                label="用户/组"
+                width={columnWidths.owner}
+                sort={sort}
+                onSort={sortBy}
+                onPointerDown={startColumnResize}
+                onKeyDown={resizeColumnByKeyboard}
+              />
+            )}
           </div>
           <div
             className="file-body"
@@ -831,19 +1173,31 @@ export function FileManager({ session }: { session: TerminalSession }) {
                       </>
                       <strong>{item.name}</strong>
                     </span>
-                    <span role="cell">
-                      {item.kind === "directory" ? "—" : formatBytes(item.size)}
-                    </span>
-                    <span role="cell">{item.kind}</span>
-                    <span role="cell">
-                      {item.modifiedAt
-                        ? new Date(item.modifiedAt * 1000).toLocaleString()
-                        : "—"}
-                    </span>
-                    <code role="cell">{item.permissions}</code>
-                    <span role="cell">
-                      {item.owner ?? "—"}/{item.group ?? "—"}
-                    </span>
+                    {visibleColumns.has("size") && (
+                      <span role="cell">
+                        {item.kind === "directory"
+                          ? "—"
+                          : formatBytes(item.size)}
+                      </span>
+                    )}
+                    {visibleColumns.has("kind") && (
+                      <span role="cell">{remoteFileKindLabel(item.kind)}</span>
+                    )}
+                    {visibleColumns.has("modifiedAt") && (
+                      <span role="cell">
+                        {item.modifiedAt
+                          ? new Date(item.modifiedAt * 1000).toLocaleString()
+                          : "—"}
+                      </span>
+                    )}
+                    {visibleColumns.has("permissions") && (
+                      <code role="cell">{item.permissions}</code>
+                    )}
+                    {visibleColumns.has("owner") && (
+                      <span role="cell">
+                        {item.owner ?? "—"}/{item.group ?? "—"}
+                      </span>
+                    )}
                   </button>
                 ))}
                 <div
@@ -852,13 +1206,15 @@ export function FileManager({ session }: { session: TerminalSession }) {
                 />
               </>
             )}
-            {!loading && !directoryError && !files.length && (
+            {!loading && !directoryError && !sorted.length && (
               <div className="empty-files">
                 <Folder size={28} />
                 <span>
-                  {api.isDesktop()
-                    ? "此目录为空"
-                    : "连接真实 SSH 会话后浏览远端文件"}
+                  {fileQuery
+                    ? "当前筛选下没有文件"
+                    : api.isDesktop()
+                      ? "此目录为空"
+                      : "连接真实 SSH 会话后浏览远端文件"}
                 </span>
               </div>
             )}
@@ -1000,6 +1356,187 @@ export function FileManager({ session }: { session: TerminalSession }) {
       </footer>
     </div>
   );
+}
+
+function FileColumnHeader({
+  column,
+  label,
+  width,
+  sort,
+  sortKey,
+  onSort,
+  onPointerDown,
+  onKeyDown,
+}: {
+  column: FileTableColumn;
+  label: string;
+  width: number;
+  sort: { key: SortKey; asc: boolean };
+  sortKey?: SortKey;
+  onSort: (key: SortKey) => void;
+  onPointerDown: (
+    column: FileTableColumn,
+    event: ReactPointerEvent<HTMLSpanElement>,
+  ) => void;
+  onKeyDown: (
+    column: FileTableColumn,
+    event: ReactKeyboardEvent<HTMLSpanElement>,
+  ) => void;
+}) {
+  const ariaSort = sortKey
+    ? sort.key === sortKey
+      ? sort.asc
+        ? "ascending"
+        : "descending"
+      : "none"
+    : undefined;
+  return (
+    <div
+      className="file-column-header"
+      role="columnheader"
+      aria-label={label}
+      aria-sort={ariaSort}
+    >
+      {sortKey ? (
+        <button type="button" onClick={() => onSort(sortKey)}>
+          {label}
+          {sort.key === sortKey && (
+            <ChevronDown
+              size={12}
+              aria-hidden="true"
+              className={sort.asc ? "" : "descending"}
+            />
+          )}
+        </button>
+      ) : (
+        <span>{label}</span>
+      )}
+      <span
+        className="file-column-resizer"
+        role="separator"
+        aria-label={`调整${label}列宽`}
+        aria-orientation="vertical"
+        aria-valuemin={fileColumnWidthBounds[column][0]}
+        aria-valuemax={fileColumnWidthBounds[column][1]}
+        aria-valuenow={width}
+        tabIndex={0}
+        onPointerDown={(event) => onPointerDown(column, event)}
+        onKeyDown={(event) => onKeyDown(column, event)}
+      />
+    </div>
+  );
+}
+
+const remoteFileKindLabel = (kind: RemoteFile["kind"]) =>
+  ({ file: "文件", directory: "文件夹", symlink: "符号链接", other: "其他" })[
+    kind
+  ] ?? kind;
+
+const fileColumnOptions: { value: FileColumn; label: string }[] = [
+  { value: "size", label: "大小" },
+  { value: "kind", label: "类型" },
+  { value: "modifiedAt", label: "修改时间" },
+  { value: "permissions", label: "权限" },
+  { value: "owner", label: "用户/组" },
+];
+
+function readFileColumns(): FileColumn[] {
+  try {
+    const value: unknown = JSON.parse(
+      localStorage.getItem("cnshell-file-columns") ?? "null",
+    );
+    if (!Array.isArray(value)) return defaultFileColumns;
+    const allowed = new Set<FileColumn>(defaultFileColumns);
+    return value.filter(
+      (item): item is FileColumn =>
+        typeof item === "string" && allowed.has(item as FileColumn),
+    );
+  } catch {
+    return defaultFileColumns;
+  }
+}
+
+const defaultFileColumnWidths: FileColumnWidths = {
+  name: 190,
+  size: 75,
+  kind: 65,
+  modifiedAt: 140,
+  permissions: 90,
+  owner: 75,
+};
+
+const fileColumnWidthBounds: Record<FileTableColumn, [number, number]> = {
+  name: [140, 520],
+  size: [58, 160],
+  kind: [58, 160],
+  modifiedAt: [110, 260],
+  permissions: [72, 180],
+  owner: [68, 220],
+};
+
+function clampFileColumnWidth(column: FileTableColumn, width: number) {
+  const [minimum, maximum] = fileColumnWidthBounds[column];
+  return Math.min(maximum, Math.max(minimum, Math.round(width)));
+}
+
+function readFileColumnWidths(): FileColumnWidths {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem("cnshell-file-column-widths") ?? "null",
+    ) as Partial<Record<FileTableColumn, unknown>> | null;
+    if (!stored || typeof stored !== "object") return defaultFileColumnWidths;
+    return Object.fromEntries(
+      (Object.keys(defaultFileColumnWidths) as FileTableColumn[]).map(
+        (column) => {
+          const width = stored[column];
+          return [
+            column,
+            typeof width === "number" && Number.isFinite(width)
+              ? clampFileColumnWidth(column, width)
+              : defaultFileColumnWidths[column],
+          ];
+        },
+      ),
+    ) as FileColumnWidths;
+  } catch {
+    return defaultFileColumnWidths;
+  }
+}
+
+function fileGridTemplate(columns: Set<FileColumn>, widths: FileColumnWidths) {
+  return [
+    `minmax(${widths.name}px, 2fr)`,
+    ...defaultFileColumns
+      .filter((column) => columns.has(column))
+      .map((column) => `${widths[column]}px`),
+  ].join(" ");
+}
+
+function remoteBreadcrumbs(path: string): RemoteBreadcrumb[] {
+  if (path.startsWith("cnshell-raw-path:"))
+    return [{ label: "原始路径", path }];
+  const parts = path.split("/").filter(Boolean);
+  const breadcrumbs = [{ label: "/", path: "/" }];
+  let current = "";
+  for (const part of parts) {
+    current += `/${part}`;
+    breadcrumbs.push({ label: part, path: current });
+  }
+  return breadcrumbs;
+}
+
+function compactRemoteBreadcrumbs(path: string): RemoteBreadcrumb[] {
+  const breadcrumbs = remoteBreadcrumbs(path);
+  if (breadcrumbs.length <= 5) return breadcrumbs;
+  return [
+    breadcrumbs[0],
+    {
+      label: "…",
+      path: breadcrumbs.at(-3)?.path ?? "/",
+      collapsed: true,
+    },
+    ...breadcrumbs.slice(-2),
+  ];
 }
 
 const normalizeRemotePath = (value: string) => {

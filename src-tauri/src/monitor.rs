@@ -376,7 +376,7 @@ pub async fn snapshot(
         .map(|(when, _)| now.duration_since(*when).as_secs_f64())
         .unwrap_or(1.0)
         .max(0.001);
-    let networks: Vec<NetworkInfo> = current_net
+    let mut networks: Vec<NetworkInfo> = current_net
         .into_iter()
         .map(|(name, (rx, tx))| {
             let (old_rx, old_tx) = previous
@@ -393,6 +393,7 @@ pub async fn snapshot(
             }
         })
         .collect();
+    networks.sort_by(|left, right| left.interface_name.cmp(&right.interface_name));
     let disks = parse_disks(disk_body);
     let hostname = host.first().unwrap_or(&"").to_string();
     let warnings = capability_warnings(

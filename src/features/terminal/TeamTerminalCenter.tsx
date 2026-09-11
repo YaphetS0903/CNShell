@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   RadioTower,
   RefreshCw,
+  Settings2,
   ShieldOff,
   UserPlus,
   Users,
@@ -61,6 +62,7 @@ export function TeamTerminalCenter({
   activeSessionId: string | null;
   onError: (message: string) => void;
 }) {
+  const setSettingsOpen = useAppStore((state) => state.setSettingsOpen);
   const [workspaces, setWorkspaces] = useState<TeamWorkspace[]>([]);
   const [bindings, setBindings] = useState<TeamRelayWorkspaceBinding[]>([]);
   const [relaySessions, setRelaySessions] = useState<
@@ -82,6 +84,7 @@ export function TeamTerminalCenter({
   const [leaseDuration, setLeaseDuration] = useState(60);
   const [busy, setBusy] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [outputVersion, setOutputVersion] = useState(0);
   const [now, setNow] = useState(Date.now());
   const outputBuffers = useRef(new Map<string, OutputBuffer>());
@@ -126,6 +129,8 @@ export function TeamTerminalCenter({
         );
       } catch (reason) {
         if (surfaceErrors) reportError(reason);
+      } finally {
+        setLoaded(true);
       }
     },
     [reportError],
@@ -394,7 +399,9 @@ export function TeamTerminalCenter({
 
   return (
     <Modal title="在线团队终端" onClose={onClose} wide>
-      <div className="team-terminal-center">
+      <div
+        className={`team-terminal-center${loaded && !workspaceBindings.length ? " is-empty" : ""}`}
+      >
         <header className="team-terminal-toolbar">
           <div
             className="team-terminal-mode"
@@ -458,11 +465,53 @@ export function TeamTerminalCenter({
           </div>
         )}
 
-        {!workspaceBindings.length ? (
+        {!loaded ? (
+          <div className="team-terminal-empty" role="status">
+            <LoaderCircle className="spin" size={26} />
+            <strong>正在读取在线工作区</strong>
+          </div>
+        ) : !workspaceBindings.length ? (
           <div className="team-terminal-empty">
             <ShieldOff size={30} />
             <strong>当前没有已发布的在线工作区</strong>
-            <span>请先在团队设置中登录 relay 并发布工作区。</span>
+            <span>完成以下设置后，即可主持或加入在线团队终端。</span>
+            <ol className="team-terminal-setup-steps">
+              <li>
+                <b>1</b>
+                <span>
+                  <strong>配置在线服务</strong>
+                  <small>填写 Relay 地址并保存服务配置</small>
+                </span>
+              </li>
+              <li>
+                <b>2</b>
+                <span>
+                  <strong>登录账号</strong>
+                  <small>在本机建立受保护的设备会话</small>
+                </span>
+              </li>
+              <li>
+                <b>3</b>
+                <span>
+                  <strong>发布工作区</strong>
+                  <small>选择本地团队工作区并发布到在线服务</small>
+                </span>
+              </li>
+            </ol>
+            <button
+              type="button"
+              className="button primary"
+              onClick={() => {
+                onClose();
+                setSettingsOpen(true, {
+                  category: "team",
+                  moduleId: "team",
+                });
+              }}
+            >
+              <Settings2 size={14} />
+              前往团队设置
+            </button>
           </div>
         ) : (
           <div className="team-terminal-layout">

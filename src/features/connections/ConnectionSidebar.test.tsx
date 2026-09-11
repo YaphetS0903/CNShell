@@ -4,6 +4,12 @@ import { expect, it, vi } from "vitest";
 import { ConnectionSidebar } from "./ConnectionSidebar";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
+import { nextConnectionCopyName } from "./connection-names";
+
+it("generates an incrementing name when a connection is copied repeatedly", () => {
+  expect(nextConnectionCopyName("Server", ["Server", "Server 副本", "Server 副本 2"])).toBe("Server 副本 3");
+  expect(nextConnectionCopyName("Server 副本 2", ["Server", "Server 副本"])).toBe("Server 副本 2");
+});
 
 it("does not rerender the connection list for transfer progress or unrelated errors", async () => {
   vi.spyOn(api, "listFolders").mockResolvedValue([]);

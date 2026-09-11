@@ -198,15 +198,22 @@ fn restore_credential(id: &str, previous: Option<&str>) {
     }
 }
 
-fn duplicate_input(source: ConnectionProfile, new_id: String) -> AppResult<SaveConnectionInput> {
+fn duplicate_input(
+    source: ConnectionProfile,
+    new_id: String,
+    new_name: String,
+) -> AppResult<SaveConnectionInput> {
     if new_id.trim().is_empty() || new_id == source.id {
         return Err(AppError::Validation("复制连接的新 ID 无效".into()));
+    }
+    if new_name.trim().is_empty() {
+        return Err(AppError::Validation("复制连接的新名称无效".into()));
     }
     Ok(SaveConnectionInput {
         id: new_id,
         folder_id: source.folder_id,
         protocol: source.protocol,
-        name: format!("{} 副本", source.name),
+        name: new_name,
         host: source.host,
         port: source.port,
         username: source.username,
@@ -228,9 +235,10 @@ pub async fn connection_duplicate(
     state: State<'_, AppState>,
     id: String,
     new_id: String,
+    new_name: String,
 ) -> AppResult<ConnectionProfile> {
     let source = state.db.get_connection(&id).await?;
-    let input = duplicate_input(source, new_id.clone())?;
+    let input = duplicate_input(source, new_id.clone(), new_name)?;
     crate::db::validate_connection(&input)?;
     if state.db.connection_id_exists(&new_id).await? {
         return Err(AppError::Validation("复制连接的新 ID 已存在".into()));
@@ -600,9 +608,23 @@ pub async fn automation_start(
     Ok(state
         .tasks
         .spawn(app, "automation", move |cancelled| async move {
-            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
-                .map_err(|error| AppError::Internal(error.to_string()))
+            serde_json::to_value(
+                crate::automation::run_recorded(db, plan, cancelled, "manual", None).await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
         }))
+}
+
+#[tauri::command]
+pub async fn automation_run_list(
+    state: State<'_, AppState>,
+) -> AppResult<Vec<AutomationRunRecord>> {
+    state.db.automation_runs().await
+}
+
+#[tauri::command]
+pub async fn automation_run_clear(state: State<'_, AppState>) -> AppResult<()> {
+    state.db.clear_automation_runs().await
 }
 
 #[tauri::command]
@@ -680,18 +702,28 @@ pub async fn automation_schedule_run_now(
         .load_named_state(crate::automation::schedules_key())
         .await?
         .unwrap_or_default();
-    let plan = schedules
+    let schedule = schedules
         .into_iter()
         .find(|item| item.id == id)
-        .ok_or_else(|| AppError::NotFound(format!("定时任务 {id}")))?
-        .plan;
+        .ok_or_else(|| AppError::NotFound(format!("定时任务 {id}")))?;
+    let schedule_id = schedule.id;
+    let plan = schedule.plan;
     crate::automation::validate(&plan)?;
     let db = state.db.clone();
     Ok(state
         .tasks
         .spawn(app, "automation-scheduled", move |cancelled| async move {
-            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
-                .map_err(|error| AppError::Internal(error.to_string()))
+            serde_json::to_value(
+                crate::automation::run_recorded(
+                    db,
+                    plan,
+                    cancelled,
+                    "scheduleManual",
+                    Some(schedule_id),
+                )
+                .await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
         }))
 }
 
@@ -716,8 +748,10 @@ pub async fn automation_python_start(
     Ok(state
         .tasks
         .spawn(app, "automation-python", move |cancelled| async move {
-            serde_json::to_value(crate::automation::run(db, plan, cancelled).await?)
-                .map_err(|error| AppError::Internal(error.to_string()))
+            serde_json::to_value(
+                crate::automation::run_recorded(db, plan, cancelled, "python", None).await?,
+            )
+            .map_err(|error| AppError::Internal(error.to_string()))
         }))
 }
 
@@ -2356,6 +2390,11 @@ pub async fn sftp_list(
 }
 
 #[tauri::command]
+pub async fn sftp_home(state: State<'_, AppState>, session_id: String) -> AppResult<String> {
+    crate::sftp::home(state.db.clone(), state.sessions.clone(), session_id).await
+}
+
+#[tauri::command]
 pub fn sftp_join_path(parent: String, name: String) -> AppResult<String> {
     crate::sftp::join_path(&parent, &name)
 }
@@ -2739,6 +2778,14 @@ pub async fn history_list(
     connection_id: String,
 ) -> AppResult<Vec<String>> {
     state.db.history(&connection_id).await
+}
+
+#[tauri::command]
+pub async fn history_summary(
+    state: State<'_, AppState>,
+    connection_id: String,
+) -> AppResult<Vec<CommandHistorySummary>> {
+    state.db.history_summary(&connection_id).await
 }
 #[tauri::command]
 pub async fn history_clear(state: State<'_, AppState>) -> AppResult<u64> {
@@ -3176,11 +3223,12 @@ mod tests {
     }
     #[test]
     fn duplicate_requires_a_distinct_id_and_resets_runtime_metadata() {
-        assert!(duplicate_input(profile(), "".into()).is_err());
-        assert!(duplicate_input(profile(), "source".into()).is_err());
-        let duplicate = duplicate_input(profile(), "copy".into()).unwrap();
+        assert!(duplicate_input(profile(), "".into(), "Server 副本".into()).is_err());
+        assert!(duplicate_input(profile(), "source".into(), "Server 副本".into()).is_err());
+        assert!(duplicate_input(profile(), "copy".into(), "".into()).is_err());
+        let duplicate = duplicate_input(profile(), "copy".into(), "Server 副本 2".into()).unwrap();
         assert_eq!(duplicate.id, "copy");
-        assert_eq!(duplicate.name, "Server 副本");
+        assert_eq!(duplicate.name, "Server 副本 2");
         assert_eq!(duplicate.folder_id.as_deref(), Some("folder"));
     }
 }

@@ -5,6 +5,8 @@ import {
   ChevronUp,
   ExternalLink,
   LoaderCircle,
+  Maximize2,
+  Minimize2,
   Save,
   Search,
   Upload,
@@ -61,8 +63,10 @@ export function TextEditor({
   } = useRemoteTextDocument(sessionId, path, connectionId);
   const [importing, setImporting] = useState(false);
   const [externalBusy, setExternalBusy] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   const externalBusyRef = useRef(false);
   const saving = documentSaving || importing || externalBusy;
+  const supportsFormatting = /\.(jsonc?|ya?ml)$/i.test(path);
   const [externalEdit, setExternalEdit] = useState<ExternalEditSession | null>(
     null,
   );
@@ -219,6 +223,7 @@ export function TextEditor({
       title={`${connectionName ? `${connectionName} · ` : ""}${path.split("/").at(-1) ?? path}`}
       onClose={close}
       wide
+      dialogClassName={maximized ? "text-editor-modal-maximized" : undefined}
     >
       {loading ? (
         <div className="loading-state">
@@ -291,7 +296,16 @@ export function TextEditor({
                   onClick={() => editorRef.current?.unfold()}
                 />
                 <span className="toolbar-separator" />
-                <button className="mini-button" onClick={format}>
+                <button
+                  className="mini-button"
+                  onClick={format}
+                  disabled={!supportsFormatting}
+                  title={
+                    supportsFormatting
+                      ? "格式化当前文件"
+                      : "仅 JSON、JSONC 和 YAML 文件支持格式化"
+                  }
+                >
                   <Braces size={13} />
                   格式化
                 </button>
@@ -313,6 +327,11 @@ export function TextEditor({
                 <span className="editor-path" title={path}>
                   {path}
                 </span>
+                <IconButton
+                  icon={maximized ? Minimize2 : Maximize2}
+                  label={maximized ? "还原编辑区" : "放大编辑区"}
+                  onClick={() => setMaximized((current) => !current)}
+                />
               </div>
               <RemoteCodeEditor
                 ref={editorRef}
@@ -352,7 +371,7 @@ export function TextEditor({
                 disabled={saving || content === base}
               >
                 <Save size={15} />
-                {saving ? "保存中…" : "原子保存"}
+                {saving ? "保存中…" : "保存到服务器"}
               </button>
             </div>
           </footer>

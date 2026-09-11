@@ -1,0 +1,49 @@
+.socket-filters {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) 150px;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.socket-filters label {
+  min-width: 0;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 0 8px;
+  color: var(--faint);
+}
+
+.socket-filters input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: 0;
+}
+
+.socket-filters select {
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  padding: 0 8px;
+}
+
+.socket-empty {
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  margin: 8px 0 0;
+  color: var(--faint);
+}
+
+.socket-list-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 8px;
+}

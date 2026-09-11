@@ -1,7 +1,9 @@
 use crate::{
     db::Database,
     error::{AppError, AppResult},
-    models::{AutomationPlan, AutomationRun, AutomationStep, AutomationStepResult},
+    models::{
+        AutomationPlan, AutomationRun, AutomationRunRecord, AutomationStep, AutomationStepResult,
+    },
     ssh,
 };
 use chrono::{Datelike, LocalResult, NaiveTime, TimeZone, Utc, Weekday};
@@ -266,7 +268,7 @@ fn advance_schedule(
 fn collect_due_plans(
     schedules: &mut [crate::models::AutomationSchedule],
     now: chrono::DateTime<Utc>,
-) -> (bool, Vec<AutomationPlan>) {
+) -> (bool, Vec<(String, AutomationPlan)>) {
     let mut changed = false;
     let mut due_plans = Vec::new();
     for schedule in schedules {
@@ -307,7 +309,7 @@ fn collect_due_plans(
                 .unwrap_or(false)
         };
         if due {
-            due_plans.push(schedule.plan.clone());
+            due_plans.push((schedule.id.clone(), schedule.plan.clone()));
         }
         advance_schedule(schedule, now, scheduled_at);
         changed = true;
@@ -338,14 +340,23 @@ pub fn start_scheduler(app: tauri::AppHandle, db: Database, tasks: crate::task::
                     continue;
                 }
             }
-            for plan in due_plans {
+            for (schedule_id, plan) in due_plans {
                 let db_for_run = db.clone();
                 tasks.spawn(
                     app.clone(),
                     "automation-scheduled",
                     move |cancelled| async move {
-                        serde_json::to_value(run(db_for_run, plan, cancelled).await?)
-                            .map_err(|error| AppError::Internal(error.to_string()))
+                        serde_json::to_value(
+                            run_recorded(
+                                db_for_run,
+                                plan,
+                                cancelled,
+                                "scheduled",
+                                Some(schedule_id),
+                            )
+                            .await?,
+                        )
+                        .map_err(|error| AppError::Internal(error.to_string()))
                     },
                 );
             }
@@ -502,6 +513,53 @@ pub async fn run(
         current_step: None,
         results,
     })
+}
+
+pub async fn run_recorded(
+    db: Database,
+    plan: AutomationPlan,
+    cancelled: Arc<AtomicBool>,
+    source: &str,
+    schedule_id: Option<String>,
+) -> AppResult<AutomationRun> {
+    let started_at = Utc::now().to_rfc3339();
+    let plan_id = plan.id.clone();
+    let plan_name = plan.name.clone();
+    let connection_id = plan.connection_id.clone();
+    let outcome = run(db.clone(), plan, cancelled).await;
+    let finished_at = Utc::now().to_rfc3339();
+    let record = match &outcome {
+        Ok(run) => AutomationRunRecord {
+            id: run.run_id.clone(),
+            plan_id,
+            plan_name,
+            connection_id,
+            source: source.into(),
+            schedule_id,
+            started_at,
+            finished_at,
+            status: run.status.clone(),
+            results: run.results.clone(),
+            error: None,
+        },
+        Err(error) => AutomationRunRecord {
+            id: Uuid::new_v4().to_string(),
+            plan_id,
+            plan_name,
+            connection_id,
+            source: source.into(),
+            schedule_id,
+            started_at,
+            finished_at,
+            status: "failed".into(),
+            results: Vec::new(),
+            error: Some(error.to_string()),
+        },
+    };
+    if let Err(error) = db.save_automation_run(&record).await {
+        eprintln!("failed to save automation run {}: {error}", record.id);
+    }
+    outcome
 }
 
 enum StepOutcome {

@@ -11,11 +11,14 @@ import {
 import {
   Component,
   Suspense,
+  useCallback,
   useEffect,
+  useRef,
   useState,
   type ErrorInfo,
   type ReactNode,
 } from "react";
+import { SettingsModuleDraftContext } from "./settings-module-draft";
 
 export type SettingsModuleLevel = "standard" | "advanced" | "danger";
 
@@ -32,13 +35,14 @@ export function SettingsInlineState({
   actionLabel?: string;
   onAction?: () => void;
 }) {
-  const Icon = status === "loading"
-    ? LoaderCircle
-    : status === "empty"
-      ? Inbox
-      : status === "error"
-        ? CircleAlert
-        : CheckCircle2;
+  const Icon =
+    status === "loading"
+      ? LoaderCircle
+      : status === "empty"
+        ? Inbox
+        : status === "error"
+          ? CircleAlert
+          : CheckCircle2;
 
   return (
     <div
@@ -98,6 +102,8 @@ export function SettingsModule({
   help,
   expanded,
   onExpandedChange,
+  dirty = false,
+  onDirtyChange,
   children,
 }: {
   id: string;
@@ -108,20 +114,36 @@ export function SettingsModule({
   help: string;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
+  dirty?: boolean;
+  onDirtyChange?: (id: string, dirty: boolean) => void;
   children: ReactNode;
 }) {
   const [mounted, setMounted] = useState(expanded);
   const [helpOpen, setHelpOpen] = useState(false);
+  const moduleRef = useRef<HTMLElement>(null);
   const contentId = `settings-module-${id}-content`;
   const helpId = `settings-module-${id}-help`;
   const toggleId = `settings-module-${id}-toggle`;
+  const reportDirty = useCallback(
+    (value: boolean) => onDirtyChange?.(id, value),
+    [id, onDirtyChange],
+  );
 
   useEffect(() => {
     if (expanded) setMounted(true);
   }, [expanded]);
 
+  useEffect(() => {
+    if (!expanded) return;
+    const frame = window.requestAnimationFrame(() => {
+      moduleRef.current?.scrollIntoView?.({ block: "start" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [expanded]);
+
   return (
     <section
+      ref={moduleRef}
       className={`settings-module${expanded ? " expanded" : ""}`}
       data-settings-module={id}
     >
@@ -134,7 +156,9 @@ export function SettingsModule({
           aria-controls={contentId}
           onClick={() => onExpandedChange(!expanded)}
         >
-          <span className="settings-module-icon"><Icon size={17} /></span>
+          <span className="settings-module-icon">
+            <Icon size={17} />
+          </span>
           <span className="settings-module-copy">
             <span className="settings-module-title-row">
               <span className="settings-module-title">{title}</span>
@@ -143,6 +167,7 @@ export function SettingsModule({
                   {level === "danger" ? "敏感操作" : "高级"}
                 </span>
               )}
+              {dirty && <span className="settings-module-dirty">未保存</span>}
             </span>
             <span className="settings-module-description">{description}</span>
           </span>
@@ -172,19 +197,21 @@ export function SettingsModule({
         hidden={!expanded}
       >
         {mounted && (
-          <SettingsModuleErrorBoundary moduleTitle={title}>
-            <Suspense
-              fallback={(
-                <SettingsInlineState
-                  status="loading"
-                  message={`正在加载${title}…`}
-                  detail="首次展开时才加载，减少设置页启动开销。"
-                />
-              )}
-            >
-              {children}
-            </Suspense>
-          </SettingsModuleErrorBoundary>
+          <SettingsModuleDraftContext.Provider value={reportDirty}>
+            <SettingsModuleErrorBoundary moduleTitle={title}>
+              <Suspense
+                fallback={
+                  <SettingsInlineState
+                    status="loading"
+                    message={`正在加载${title}…`}
+                    detail="首次展开时才加载，减少设置页启动开销。"
+                  />
+                }
+              >
+                {children}
+              </Suspense>
+            </SettingsModuleErrorBoundary>
+          </SettingsModuleDraftContext.Provider>
         )}
       </div>
     </section>
@@ -210,7 +237,10 @@ export function SettingsBasicCard({
   return (
     <section className="settings-card" data-settings-basic={id}>
       <div className="settings-card-heading">
-        <h3 id={`settings-basic-${id}`} tabIndex={-1}><Icon size={16} />{title}</h3>
+        <h3 id={`settings-basic-${id}`} tabIndex={-1}>
+          <Icon size={16} />
+          {title}
+        </h3>
         <button
           type="button"
           className="settings-help-button"

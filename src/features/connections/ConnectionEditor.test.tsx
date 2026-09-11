@@ -14,27 +14,92 @@ describe("ConnectionEditor", () => {
   beforeEach(() => {
     dialog.open.mockReset();
     vi.restoreAllMocks();
-    useAppStore.setState({ connectionEditorOpen: true, editingConnection: null, connections: [], error: null });
-    vi.spyOn(api,"listFolders").mockResolvedValue([{id:"root",name:"生产",parentId:null,sortOrder:0},{id:"child",name:"华南",parentId:"root",sortOrder:0}]);
+    useAppStore.setState({
+      connectionEditorOpen: true,
+      editingConnection: null,
+      connections: [],
+      error: null,
+    });
+    vi.spyOn(api, "listFolders").mockResolvedValue([
+      { id: "root", name: "生产", parentId: null, sortOrder: 0 },
+      { id: "child", name: "华南", parentId: "root", sortOrder: 0 },
+    ]);
   });
   it("shows secure SSH defaults and switches RDP port", async () => {
     const user = userEvent.setup();
-    render(<ConnectionEditor/>);
-    expect(screen.getByRole("combobox", { name: "主机密钥策略" })).toHaveValue("strict");
-    await user.type(screen.getByPlaceholderText("例如：tmux attach || tmux"), "tmux attach");
-    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "rdp");
+    render(<ConnectionEditor />);
+    await user.click(screen.getByText("连接选项"));
+    expect(screen.getByRole("combobox", { name: "主机密钥策略" })).toHaveValue(
+      "strict",
+    );
+    await user.type(
+      screen.getByPlaceholderText("例如：tmux attach || tmux"),
+      "tmux attach",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "rdp",
+    );
     expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(3389);
     expect(screen.getByLabelText("Windows 密码")).toBeRequired();
     expect(screen.queryByText("主机密钥策略")).not.toBeInTheDocument();
-    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "ssh");
-    expect(screen.getByPlaceholderText("例如：tmux attach || tmux")).toHaveValue("");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "ssh",
+    );
+    await user.click(screen.getByText("连接选项"));
+    expect(
+      screen.getByPlaceholderText("例如：tmux attach || tmux"),
+    ).toHaveValue("tmux attach");
+  });
+
+  it("keeps protocol drafts separate and uses clean identity defaults", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "serialDevices").mockResolvedValue([]);
+    render(<ConnectionEditor />);
+    await user.type(
+      screen.getByRole("textbox", { name: "主机" }),
+      "ssh.example.test",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "serial",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "local",
+    );
+    expect(screen.getByRole("textbox", { name: "本机用户" })).toHaveValue("");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "telnet",
+    );
+    expect(screen.getByRole("textbox", { name: "主机" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "用户名" })).toHaveValue(
+      "anonymous",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "rdp",
+    );
+    expect(screen.getByRole("textbox", { name: "用户名" })).toHaveValue("");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "ssh",
+    );
+    expect(screen.getByRole("textbox", { name: "主机" })).toHaveValue(
+      "ssh.example.test",
+    );
   });
 
   it("marks Telnet as plaintext and exposes no password field", async () => {
     const user = userEvent.setup();
-    render(<ConnectionEditor/>);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "telnet");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "telnet",
+    );
 
     expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(23);
     expect(screen.getByText(/Telnet 未加密/)).toBeInTheDocument();
@@ -45,66 +110,153 @@ describe("ConnectionEditor", () => {
 
   it("enumerates Serial devices and exposes bounded line settings", async () => {
     const user = userEvent.setup();
-    vi.spyOn(api, "serialDevices").mockResolvedValue([{ path: "/dev/cu.usbserial-A", kind: "usb", label: "USB UART", vendorId: 1, productId: 2, serialNumber: "A", manufacturer: "Acme", product: "UART" }]);
-    render(<ConnectionEditor/>);
+    vi.spyOn(api, "serialDevices").mockResolvedValue([
+      {
+        path: "/dev/cu.usbserial-A",
+        kind: "usb",
+        label: "USB UART",
+        vendorId: 1,
+        productId: 2,
+        serialNumber: "A",
+        manufacturer: "Acme",
+        product: "UART",
+      },
+    ]);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "协议" }), "serial");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "serial",
+    );
 
-    expect(await screen.findByRole("option", { name: /USB UART/ })).toBeInTheDocument();
-    expect(screen.getByLabelText("设备路径")).toHaveValue("/dev/cu.usbserial-A");
-    expect(screen.getByRole("combobox", { name: "波特率" })).toHaveValue("115200");
+    expect(
+      await screen.findByRole("option", { name: /USB UART/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("设备路径")).toHaveValue(
+      "/dev/cu.usbserial-A",
+    );
+    expect(screen.getByRole("combobox", { name: "波特率" })).toHaveValue(
+      "115200",
+    );
+    await user.click(screen.getByText("串口参数"));
     expect(screen.getByRole("combobox", { name: "数据位" })).toHaveValue("8");
-    expect(screen.getByRole("checkbox", { name: "连接时启用 DTR" })).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "连接时启用 DTR" }),
+    ).toBeChecked();
   });
 
   it("configures RDP display and least-privilege redirection options", async () => {
-    const user=userEvent.setup();
-    vi.spyOn(api,"rdpDisplays").mockResolvedValue([{id:1,name:"Built-in Retina Display",width:1352,height:878,primary:true}]);
-    vi.spyOn(window,"confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    vi.spyOn(api, "rdpDisplays").mockResolvedValue([
+      {
+        id: 1,
+        name: "Built-in Retina Display",
+        width: 1352,
+        height: 878,
+        primary: true,
+      },
+    ]);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
     dialog.open.mockResolvedValue("/Users/test/RDP Share");
-    render(<ConnectionEditor/>);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox",{name:"协议"}),"rdp");
-    expect(screen.getByRole("checkbox",{name:"允许双向剪贴板"})).toBeChecked();
-    expect(screen.getByRole("checkbox",{name:"允许麦克风重定向"})).not.toBeChecked();
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "rdp",
+    );
+    await user.click(screen.getByText("显示、性能与权限"));
+    expect(
+      screen.getByRole("checkbox", { name: "允许双向剪贴板" }),
+    ).toBeChecked();
+    expect(
+      screen.getByRole("checkbox", { name: "允许麦克风重定向" }),
+    ).not.toBeChecked();
     expect(screen.getByLabelText("RDP 映射目录")).toHaveValue("");
-    await user.selectOptions(screen.getByRole("combobox",{name:"窗口模式"}),"fullscreen");
-    expect(await screen.findByRole("option",{name:/Built-in Retina Display/})).toBeInTheDocument();
-    await user.click(screen.getByRole("button",{name:"选择目录"}));
-    expect(screen.getByLabelText("RDP 映射目录")).toHaveValue("/Users/test/RDP Share");
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining("读写权限"));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "窗口模式" }),
+      "fullscreen",
+    );
+    expect(
+      await screen.findByRole("option", { name: /Built-in Retina Display/ }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "选择目录" }));
+    expect(screen.getByLabelText("RDP 映射目录")).toHaveValue(
+      "/Users/test/RDP Share",
+    );
+    expect(window.confirm).toHaveBeenCalledWith(
+      expect.stringContaining("读写权限"),
+    );
   });
 
   it("fills a persisted connection without exposing its credential", async () => {
     const connection: ConnectionProfile = {
-      id: "persisted", folderId: "child", protocol: "ssh", name: "持久化测试机", host: "example.test", port: 2222,
-      username: "ubuntu", authType: "password", privateKeyPath: null, certificatePath: null, hostKeyPolicy: "strict", note: "验收", tags: ["云主机"],
-      encoding: "UTF-8", startupCommand: null, proxyId: null, environment: {}, hasCredential: true, createdAt: "", updatedAt: "", lastConnectedAt: null
+      id: "persisted",
+      folderId: "child",
+      protocol: "ssh",
+      name: "持久化测试机",
+      host: "example.test",
+      port: 2222,
+      username: "ubuntu",
+      authType: "password",
+      privateKeyPath: null,
+      certificatePath: null,
+      hostKeyPolicy: "strict",
+      note: "验收",
+      tags: ["云主机"],
+      encoding: "UTF-8",
+      startupCommand: null,
+      proxyId: null,
+      environment: {},
+      hasCredential: true,
+      createdAt: "",
+      updatedAt: "",
+      lastConnectedAt: null,
     };
-    useAppStore.setState({ connectionEditorOpen: true, editingConnection: connection });
+    useAppStore.setState({
+      connectionEditorOpen: true,
+      editingConnection: connection,
+    });
 
-    render(<ConnectionEditor/>);
+    render(<ConnectionEditor />);
 
-    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue("持久化测试机");
-    expect(screen.getByRole("textbox", { name: "主机" })).toHaveValue("example.test");
+    expect(screen.getByRole("textbox", { name: "名称" })).toHaveValue(
+      "持久化测试机",
+    );
+    expect(screen.getByRole("textbox", { name: "主机" })).toHaveValue(
+      "example.test",
+    );
     expect(screen.getByRole("spinbutton", { name: "端口" })).toHaveValue(2222);
     expect(screen.getByLabelText("密码")).toHaveValue("");
-    expect(screen.getByPlaceholderText("留空以保留已保存凭据")).toBeInTheDocument();
-    expect(await screen.findByRole("option",{name:"生产 / 华南"})).toBeInTheDocument();
-    expect(screen.getByRole("combobox",{name:"文件夹"})).toHaveValue("child");
+    expect(
+      screen.getByPlaceholderText("留空以保留已保存凭据"),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "生产 / 华南" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "文件夹" })).toHaveValue(
+      "child",
+    );
   });
 
   it("selects an extensionless private key with the native picker", async () => {
     const user = userEvent.setup();
     vi.spyOn(api, "isDesktop").mockReturnValue(true);
     dialog.open.mockResolvedValue("/Users/test/.ssh/id_ed25519");
-    render(<ConnectionEditor/>);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "privateKey");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "认证方式" }),
+      "privateKey",
+    );
     await user.click(screen.getByRole("button", { name: "选择私钥" }));
 
-    expect(dialog.open).toHaveBeenCalledWith({ multiple: false, directory: false });
-    expect(screen.getByRole("textbox", { name: "私钥路径" })).toHaveValue("/Users/test/.ssh/id_ed25519");
+    expect(dialog.open).toHaveBeenCalledWith({
+      multiple: false,
+      directory: false,
+    });
+    expect(screen.getByRole("textbox", { name: "私钥路径" })).toHaveValue(
+      "/Users/test/.ssh/id_ed25519",
+    );
   });
 
   it("validates and previews an OpenSSH user certificate", async () => {
@@ -123,13 +275,20 @@ describe("ConnectionEditor", () => {
       validNow: true,
       status: "valid",
     });
-    render(<ConnectionEditor/>);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "sshCertificate");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "认证方式" }),
+      "sshCertificate",
+    );
     await user.click(screen.getByRole("button", { name: "选择证书" }));
 
-    expect(api.inspectSshCertificate).toHaveBeenCalledWith("/Users/test/.ssh/id_ed25519-cert.pub");
-    expect(screen.getByRole("textbox", { name: "证书路径" })).toHaveValue("/Users/test/.ssh/id_ed25519-cert.pub");
+    expect(api.inspectSshCertificate).toHaveBeenCalledWith(
+      "/Users/test/.ssh/id_ed25519-cert.pub",
+    );
+    expect(screen.getByRole("textbox", { name: "证书路径" })).toHaveValue(
+      "/Users/test/.ssh/id_ed25519-cert.pub",
+    );
     expect(screen.getByText("deploy-2026")).toBeInTheDocument();
     expect(screen.getByText("ubuntu, deploy")).toBeInTheDocument();
     expect(screen.getByText("有效")).toBeInTheDocument();
@@ -137,10 +296,19 @@ describe("ConnectionEditor", () => {
 
   it("detects and displays only the backend-provided FIDO2 identities", async () => {
     const user = userEvent.setup();
-    vi.spyOn(api, "listFido2Identities").mockResolvedValue([{keyType:"sk-ssh-ed25519@openssh.com",comment:"YubiKey 5",fingerprint:"SHA256:hardware"}]);
-    render(<ConnectionEditor/>);
+    vi.spyOn(api, "listFido2Identities").mockResolvedValue([
+      {
+        keyType: "sk-ssh-ed25519@openssh.com",
+        comment: "YubiKey 5",
+        fingerprint: "SHA256:hardware",
+      },
+    ]);
+    render(<ConnectionEditor />);
 
-    await user.selectOptions(screen.getByRole("combobox", { name: "认证方式" }), "fido2Agent");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "认证方式" }),
+      "fido2Agent",
+    );
 
     expect(await screen.findByText("YubiKey 5")).toBeInTheDocument();
     expect(screen.getByText("sk-ssh-ed25519@openssh.com")).toBeInTheDocument();
@@ -149,7 +317,189 @@ describe("ConnectionEditor", () => {
     expect(api.listFido2Identities).toHaveBeenCalledTimes(1);
   });
 
-  it("persists RDP options only after the connection is saved",async()=>{const user=userEvent.setup();vi.spyOn(api,"rdpDisplays").mockResolvedValue([]);vi.spyOn(api,"saveConnection").mockImplementation(async(input)=>({...input,hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null} as ConnectionProfile));const saveOptions=vi.spyOn(api,"saveRdpOptions").mockImplementation(async(options)=>options);vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([]);render(<ConnectionEditor/>);await user.selectOptions(screen.getByRole("combobox",{name:"协议"}),"rdp");await user.type(screen.getByRole("textbox",{name:"名称"}),"Windows");await user.type(screen.getByRole("textbox",{name:"主机"}),"windows.example.test");await user.type(screen.getByLabelText("Windows 密码"),"secret-password");await user.selectOptions(screen.getByRole("combobox",{name:"画质 / 带宽"}),"balanced");await user.selectOptions(screen.getByRole("combobox",{name:"远端声音"}),"local");await user.click(screen.getByRole("button",{name:"保存连接"}));expect(saveOptions).toHaveBeenCalledWith(expect.objectContaining({quality:"balanced",audioMode:"local",clipboard:true,microphone:false}));expect(api.saveConnection).toHaveBeenCalledBefore(saveOptions);});
+  it("persists RDP options only after the connection is saved", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(api, "rdpDisplays").mockResolvedValue([]);
+    vi.spyOn(api, "saveConnection").mockImplementation(
+      async (input) =>
+        ({
+          ...input,
+          hasCredential: true,
+          createdAt: "",
+          updatedAt: "",
+          lastConnectedAt: null,
+        }) as ConnectionProfile,
+    );
+    const saveOptions = vi
+      .spyOn(api, "saveRdpOptions")
+      .mockImplementation(async (options) => options);
+    vi.spyOn(api, "saveSettings").mockImplementation(
+      async (settings) => settings,
+    );
+    vi.spyOn(api, "listConnections").mockResolvedValue([]);
+    render(<ConnectionEditor />);
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "协议" }),
+      "rdp",
+    );
+    await user.type(screen.getByRole("textbox", { name: "名称" }), "Windows");
+    await user.type(
+      screen.getByRole("textbox", { name: "主机" }),
+      "windows.example.test",
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "用户名" }),
+      "Administrator",
+    );
+    await user.type(screen.getByLabelText("Windows 密码"), "secret-password");
+    await user.click(screen.getByText("显示、性能与权限"));
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "画质 / 带宽" }),
+      "balanced",
+    );
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: "远端声音" }),
+      "local",
+    );
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    expect(saveOptions).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quality: "balanced",
+        audioMode: "local",
+        clipboard: true,
+        microphone: false,
+      }),
+    );
+    expect(api.saveConnection).toHaveBeenCalledBefore(saveOptions);
+  });
 
-  it("saves a terminal preference override for one connection",async()=>{const user=userEvent.setup();const connection:ConnectionProfile={id:"persisted",folderId:null,protocol:"ssh",name:"测试机",host:"example.test",port:22,username:"ubuntu",authType:"password",privateKeyPath:null, certificatePath: null,hostKeyPolicy:"strict",note:"",tags:[],encoding:"UTF-8",startupCommand:null,proxyId:null,environment:{},hasCredential:true,createdAt:"",updatedAt:"",lastConnectedAt:null};useAppStore.setState({editingConnection:connection,settings:defaultSettings});vi.spyOn(api,"saveConnection").mockResolvedValue(connection);const save=vi.spyOn(api,"saveSettings").mockImplementation(async(settings)=>settings);vi.spyOn(api,"listConnections").mockResolvedValue([connection]);render(<ConnectionEditor/>);await user.click(screen.getByRole("checkbox",{name:"为此连接覆盖全局终端偏好"}));fireEvent.change(screen.getByLabelText("字号"),{target:{value:"18"}});await user.click(screen.getByRole("button",{name:"保存连接"}));expect(save).toHaveBeenCalledWith(expect.objectContaining({terminalOverrides:{persisted:expect.objectContaining({fontSize:18})}}));});
+  it("saves a terminal preference override for one connection", async () => {
+    const user = userEvent.setup();
+    const connection: ConnectionProfile = {
+      id: "persisted",
+      folderId: null,
+      protocol: "ssh",
+      name: "测试机",
+      host: "example.test",
+      port: 22,
+      username: "ubuntu",
+      authType: "password",
+      privateKeyPath: null,
+      certificatePath: null,
+      hostKeyPolicy: "strict",
+      note: "",
+      tags: [],
+      encoding: "UTF-8",
+      startupCommand: null,
+      proxyId: null,
+      environment: {},
+      hasCredential: true,
+      createdAt: "",
+      updatedAt: "",
+      lastConnectedAt: null,
+    };
+    useAppStore.setState({
+      editingConnection: connection,
+      settings: defaultSettings,
+    });
+    vi.spyOn(api, "saveConnection").mockResolvedValue(connection);
+    const save = vi
+      .spyOn(api, "saveSettings")
+      .mockImplementation(async (settings) => settings);
+    vi.spyOn(api, "listConnections").mockResolvedValue([connection]);
+    render(<ConnectionEditor />);
+    await user.click(screen.getByText("终端偏好"));
+    await user.click(
+      screen.getByRole("checkbox", { name: "为此连接覆盖全局终端偏好" }),
+    );
+    fireEvent.change(screen.getByLabelText("字号"), {
+      target: { value: "18" },
+    });
+    await user.click(screen.getByRole("button", { name: "保存连接" }));
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        terminalOverrides: {
+          persisted: expect.objectContaining({ fontSize: 18 }),
+        },
+      }),
+    );
+  });
+
+  it("keeps save actions outside the scrolling form and can save then connect", async () => {
+    const user = userEvent.setup();
+    const saved: ConnectionProfile = {
+      id: "saved",
+      folderId: null,
+      protocol: "ssh",
+      name: "测试机",
+      host: "example.test",
+      port: 22,
+      username: "root",
+      authType: "password",
+      privateKeyPath: null,
+      certificatePath: null,
+      hostKeyPolicy: "strict",
+      note: "",
+      tags: [],
+      encoding: "UTF-8",
+      startupCommand: null,
+      proxyId: null,
+      environment: {},
+      hasCredential: false,
+      createdAt: "",
+      updatedAt: "",
+      lastConnectedAt: null,
+    };
+    vi.spyOn(api, "saveConnection").mockResolvedValue(saved);
+    vi.spyOn(api, "saveSettings").mockImplementation(
+      async (settings) => settings,
+    );
+    vi.spyOn(api, "listConnections").mockResolvedValue([saved]);
+    const onConnect = vi.fn().mockResolvedValue(undefined);
+    render(<ConnectionEditor onConnect={onConnect} />);
+    const form = document.getElementById("connection-editor-form");
+    const action = screen.getByRole("button", { name: "保存并连接" });
+    expect(form).not.toContainElement(action);
+    expect(action).toHaveAttribute("form", "connection-editor-form");
+    await user.type(screen.getByRole("textbox", { name: "名称" }), "测试机");
+    await user.type(
+      screen.getByRole("textbox", { name: "主机" }),
+      "example.test",
+    );
+    await user.click(action);
+    expect(onConnect).toHaveBeenCalledWith(saved);
+  });
+
+  it("opens optional groups when persisted values need review", async () => {
+    const connection: ConnectionProfile = {
+      id: "persisted",
+      folderId: "child",
+      protocol: "ssh",
+      name: "测试机",
+      host: "example.test",
+      port: 22,
+      username: "ubuntu",
+      authType: "password",
+      privateKeyPath: null,
+      certificatePath: null,
+      hostKeyPolicy: "strict",
+      note: "负责人：运维",
+      tags: ["生产"],
+      encoding: "UTF-8",
+      startupCommand: "tmux attach",
+      proxyId: null,
+      environment: { APP_ENV: "production" },
+      hasCredential: true,
+      createdAt: "",
+      updatedAt: "",
+      lastConnectedAt: null,
+    };
+    useAppStore.setState({ editingConnection: connection });
+    render(<ConnectionEditor />);
+    expect(screen.getByText("连接选项").closest("details")).toHaveAttribute(
+      "open",
+    );
+    expect(screen.getByText("备注").closest("details")).toHaveAttribute("open");
+    expect(screen.getByText("归类").closest("details")).toHaveAttribute("open");
+  });
 });

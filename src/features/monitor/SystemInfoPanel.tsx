@@ -1,7 +1,10 @@
 import { useShallow } from "zustand/react/shallow";
 import {
   Activity,
+  ChevronDown,
+  ChevronRight,
   Clipboard,
+  Copy,
   Cpu,
   Download,
   HardDrive,
@@ -10,25 +13,22 @@ import {
   MemoryStick,
   Network,
   RefreshCw,
+  Search,
   ServerCog,
   type LucideIcon,
 } from "lucide-react";
 import { save } from "@tauri-apps/plugin-dialog";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import type { SystemInfo } from "../../types";
 import { IconButton } from "../../components/IconButton";
 import { errorMessage, formatBytes } from "../../lib/format";
 import { useAppStore } from "../../store/app-store";
 import { NetworkDiagnostics } from "./NetworkDiagnostics";
+import { isTemporaryDisk } from "../../lib/runtime-metrics";
 import "./SystemInfoPanel.css";
 
-type SectionId =
-  | "overview"
-  | "resources"
-  | "network"
-  | "disks"
-  | "connections";
+type SectionId = "overview" | "resources" | "network" | "disks" | "connections";
 
 const sections: { id: SectionId; label: string; icon: LucideIcon }[] = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
@@ -41,6 +41,7 @@ const sections: { id: SectionId; label: string; icon: LucideIcon }[] = [
 export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
   const [info, setInfo] = useState<SystemInfo | null>(null);
   const [loading, setLoading] = useState(true);
+  const [collectedAt, setCollectedAt] = useState<Date | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("overview");
   const { setError } = useAppStore(
     useShallow((state) => ({ setError: state.setError })),
@@ -49,7 +50,10 @@ export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
     setLoading(true);
     api
       .systemInfo(sessionId)
-      .then(setInfo)
+      .then((value) => {
+        setInfo(value);
+        setCollectedAt(new Date());
+      })
       .catch((reason) => setError(errorMessage(reason)))
       .finally(() => setLoading(false));
   }, [sessionId, setError]);
@@ -59,19 +63,23 @@ export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
   if (loading)
     return (
       <div className="loading-state">
-        <LoaderCircle className="spin" />读取系统信息…
+        <LoaderCircle className="spin" />
+        读取系统信息…
       </div>
     );
   if (!info)
     return (
       <div className="empty-files">
-        <ServerCog size={28} />无法读取系统信息
+        <ServerCog size={28} />
+        无法读取系统信息
       </div>
     );
 
   const text = JSON.stringify(info, null, 2);
   const exportInfo = async () => {
-    const path = await save({ defaultPath: `${info.hostname}-system-info.json` });
+    const path = await save({
+      defaultPath: `${info.hostname}-system-info.json`,
+    });
     if (!path) return;
     try {
       await api.exportSystemInfo(sessionId, path);
@@ -92,6 +100,11 @@ export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
       <div className="system-info-toolbar">
         <strong>{info.hostname}</strong>
         <span>{info.os}</span>
+        <small className="system-info-collected">
+          {collectedAt
+            ? `采集于 ${collectedAt.toLocaleTimeString()}`
+            : "等待采集"}
+        </small>
         <IconButton icon={RefreshCw} label="刷新系统信息" onClick={load} />
         <IconButton
           icon={Clipboard}
@@ -112,7 +125,9 @@ export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
             return;
           event.preventDefault();
-          const current = sections.findIndex((item) => item.id === activeSection);
+          const current = sections.findIndex(
+            (item) => item.id === activeSection,
+          );
           const next =
             event.key === "Home"
               ? 0
@@ -153,8 +168,10 @@ export function SystemInfoPanel({ sessionId }: { sessionId: string }) {
       >
         {activeSection === "overview" && <Overview info={info} />}
         {activeSection === "resources" && <Resources info={info} />}
-        {activeSection === "network" && <Interfaces info={info} />}
-        {activeSection === "disks" && <Disks info={info} />}
+        {activeSection === "network" && (
+          <Interfaces info={info} onError={setError} />
+        )}
+        {activeSection === "disks" && <Disks info={info} onError={setError} />}
         {activeSection === "connections" && (
           <NetworkDiagnostics
             sessionId={sessionId}
@@ -213,7 +230,8 @@ function Resources({ info }: { info: SystemInfo }) {
     <>
       <section className="system-info-block">
         <h3>
-          <Cpu size={14} />CPU 硬件
+          <Cpu size={14} />
+          CPU 硬件
         </h3>
         <dl className="hardware-details">
           <Detail label="型号" value={info.cpuModel} wide />
@@ -237,7 +255,8 @@ function Resources({ info }: { info: SystemInfo }) {
       </section>
       <section className="system-info-block">
         <h3>
-          <Activity size={14} />CPU 实时占用
+          <Activity size={14} />
+          CPU 实时占用
         </h3>
         <div className="cpu-usage-grid">
           {cpuMetrics.map(([label, value]) => (
@@ -247,7 +266,8 @@ function Resources({ info }: { info: SystemInfo }) {
       </section>
       <section className="system-info-block memory-block">
         <h3>
-          <MemoryStick size={14} />内存与交换空间
+          <MemoryStick size={14} />
+          内存与交换空间
         </h3>
         <ResourceUsage
           label="内存"
@@ -266,12 +286,57 @@ function Resources({ info }: { info: SystemInfo }) {
   );
 }
 
-function Interfaces({ info }: { info: SystemInfo }) {
+function Interfaces({
+  info,
+  onError,
+}: {
+  info: SystemInfo;
+  onError: (message: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [expandedIpv6, setExpandedIpv6] = useState(() => new Set<string>());
+  const interfaces = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase("zh-CN");
+    return info.interfaces.filter((item) =>
+      `${item.name} ${item.addresses.join(" ")}`
+        .toLocaleLowerCase("zh-CN")
+        .includes(normalized),
+    );
+  }, [info.interfaces, query]);
+  const copy = async (item: SystemInfo["interfaces"][number]) => {
+    try {
+      await navigator.clipboard.writeText(
+        [
+          `接口：${item.name}`,
+          `地址：${item.addresses.join(", ") || "无"}`,
+          `接收：${formatBytes(item.rxTotalBytes)} · ${formatBytes(item.rxBytesPerSecond)}/s`,
+          `发送：${formatBytes(item.txTotalBytes)} · ${formatBytes(item.txBytesPerSecond)}/s`,
+        ].join("\n"),
+      );
+    } catch (error) {
+      onError(`复制网络接口失败：${errorMessage(error)}`);
+    }
+  };
   return (
     <section className="system-info-block">
-      <h3>
-        <Network size={14} />网络接口
-      </h3>
+      <div className="system-block-heading">
+        <h3>
+          <Network size={14} />
+          网络接口
+        </h3>
+        <label className="system-table-filter">
+          <Search size={13} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="筛选接口或地址"
+            aria-label="筛选网络接口"
+          />
+          <span>
+            {interfaces.length}/{info.interfaces.length}
+          </span>
+        </label>
+      </div>
       <div className="system-table-wrap">
         <table className="network-interface-table">
           <thead>
@@ -282,38 +347,149 @@ function Interfaces({ info }: { info: SystemInfo }) {
               <th>累计发送</th>
               <th>接收速度</th>
               <th>发送速度</th>
+              <th>
+                <span className="sr-only">操作</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {info.interfaces.map((item) => (
-              <tr key={item.name}>
-                <td>{item.name}</td>
-                <td title={item.addresses.join(", ")}>
-                  {item.addresses.join(", ") || "—"}
-                </td>
-                <td>{formatBytes(item.rxTotalBytes)}</td>
-                <td>{formatBytes(item.txTotalBytes)}</td>
-                <td className="network-rate receive">
-                  ↓ {formatBytes(item.rxBytesPerSecond)}/s
-                </td>
-                <td className="network-rate send">
-                  ↑ {formatBytes(item.txBytesPerSecond)}/s
-                </td>
-              </tr>
-            ))}
+            {interfaces.map((item) => {
+              const ipv4 = item.addresses.filter(
+                (address) => !address.includes(":"),
+              );
+              const ipv6 = item.addresses.filter((address) =>
+                address.includes(":"),
+              );
+              const ipv6Open = expandedIpv6.has(item.name);
+              return (
+                <tr key={item.name}>
+                  <td>{item.name}</td>
+                  <td className="network-addresses">
+                    <span title={ipv4.join(", ")}>
+                      {ipv4.join(", ") || (!ipv6.length ? "—" : "仅 IPv6")}
+                    </span>
+                    {ipv6.length > 0 && (
+                      <>
+                        <button
+                          type="button"
+                          aria-expanded={ipv6Open}
+                          onClick={() =>
+                            setExpandedIpv6((current) => {
+                              const next = new Set(current);
+                              if (next.has(item.name)) next.delete(item.name);
+                              else next.add(item.name);
+                              return next;
+                            })
+                          }
+                        >
+                          {ipv6Open ? (
+                            <ChevronDown size={12} />
+                          ) : (
+                            <ChevronRight size={12} />
+                          )}
+                          IPv6 {ipv6.length}
+                        </button>
+                        {ipv6Open && <code>{ipv6.join("\n")}</code>}
+                      </>
+                    )}
+                  </td>
+                  <td>{formatBytes(item.rxTotalBytes)}</td>
+                  <td>{formatBytes(item.txTotalBytes)}</td>
+                  <td className="network-rate receive">
+                    ↓ {formatBytes(item.rxBytesPerSecond)}/s
+                  </td>
+                  <td className="network-rate send">
+                    ↑ {formatBytes(item.txBytesPerSecond)}/s
+                  </td>
+                  <td>
+                    <IconButton
+                      icon={Copy}
+                      label={`复制 ${item.name} 网络信息`}
+                      onClick={() => void copy(item)}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
+        {!interfaces.length && (
+          <div className="system-table-empty">没有匹配的网络接口</div>
+        )}
       </div>
     </section>
   );
 }
 
-function Disks({ info }: { info: SystemInfo }) {
+function Disks({
+  info,
+  onError,
+}: {
+  info: SystemInfo;
+  onError: (message: string) => void;
+}) {
+  const [showAll, setShowAll] = useState(false);
+  const [query, setQuery] = useState("");
+  const filteredDisks = useMemo(() => {
+    const normalized = query.trim().toLocaleLowerCase("zh-CN");
+    return info.disks.filter((disk) =>
+      `${disk.filesystem} ${disk.mountPoint}`
+        .toLocaleLowerCase("zh-CN")
+        .includes(normalized),
+    );
+  }, [info.disks, query]);
+  const primaryDisks = useMemo(
+    () => filteredDisks.filter((disk) => !isTemporaryDisk(disk)),
+    [filteredDisks],
+  );
+  const hiddenCount = filteredDisks.length - primaryDisks.length;
+  const disks = showAll ? filteredDisks : primaryDisks;
+  const copy = async (disk: SystemInfo["disks"][number]) => {
+    try {
+      await navigator.clipboard.writeText(
+        [
+          `文件系统：${disk.filesystem}`,
+          `挂载点：${disk.mountPoint}`,
+          `容量：${formatBytes(disk.totalBytes)}`,
+          `已用：${formatBytes(disk.usedBytes)} (${disk.usedPercent.toFixed(0)}%)`,
+          `可用：${formatBytes(disk.availableBytes)}`,
+        ].join("\n"),
+      );
+    } catch (error) {
+      onError(`复制文件系统失败：${errorMessage(error)}`);
+    }
+  };
   return (
     <section className="system-info-block">
-      <h3>
-        <HardDrive size={14} />文件系统
-      </h3>
+      <div className="system-block-heading system-disk-heading">
+        <h3>
+          <HardDrive size={14} />
+          文件系统
+        </h3>
+        <label className="system-table-filter">
+          <Search size={13} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="筛选设备或挂载点"
+            aria-label="筛选文件系统"
+          />
+          <span>
+            {disks.length}/{info.disks.length}
+          </span>
+        </label>
+        {hiddenCount > 0 && (
+          <button
+            type="button"
+            className="mini-button"
+            onClick={() => setShowAll((value) => !value)}
+          >
+            {showAll
+              ? "隐藏临时挂载"
+              : `显示全部挂载点（另 ${hiddenCount} 项）`}
+          </button>
+        )}
+      </div>
       <div className="system-table-wrap">
         <table className="disk-info-table">
           <thead>
@@ -323,10 +499,13 @@ function Disks({ info }: { info: SystemInfo }) {
               <th>大小</th>
               <th>已用</th>
               <th>可用</th>
+              <th>
+                <span className="sr-only">操作</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {info.disks.map((disk) => (
+            {disks.map((disk) => (
               <tr key={`${disk.filesystem}-${disk.mountPoint}`}>
                 <td>{disk.filesystem}</td>
                 <td>{disk.mountPoint}</td>
@@ -335,10 +514,20 @@ function Disks({ info }: { info: SystemInfo }) {
                   {formatBytes(disk.usedBytes)} ({disk.usedPercent.toFixed(0)}%)
                 </td>
                 <td>{formatBytes(disk.availableBytes)}</td>
+                <td>
+                  <IconButton
+                    icon={Copy}
+                    label={`复制 ${disk.mountPoint} 文件系统信息`}
+                    onClick={() => void copy(disk)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
+        {!disks.length && (
+          <div className="system-table-empty">没有匹配的文件系统</div>
+        )}
       </div>
     </section>
   );

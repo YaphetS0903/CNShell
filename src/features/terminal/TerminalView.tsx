@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { SearchAddon } from "@xterm/addon-search";
+import { SearchAddon, type ISearchOptions } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { api } from "../../lib/api";
 import type { TerminalSession } from "../../types";
@@ -44,12 +44,27 @@ import { useSystemPrefersDark } from "../../lib/system-theme";
 
 export interface TerminalActions {
   findNext: (term: string) => boolean;
+  findPrevious: (term: string) => boolean;
+  searchResult: () => { resultIndex: number; resultCount: number };
+  clearSearch: () => void;
   clear: () => void;
   focus: () => void;
   paste: (text: string) => void;
   copyMode: (action: "start" | "up" | "down" | "copy" | "exit") => void;
   selectLine: (line: number) => void;
 }
+
+const terminalSearchOptions: ISearchOptions = {
+  incremental: true,
+  decorations: {
+    matchBackground: "#665500",
+    matchBorder: "#facc15",
+    matchOverviewRuler: "#facc15",
+    activeMatchBackground: "#2869bd",
+    activeMatchBorder: "#dce6f4",
+    activeMatchColorOverviewRuler: "#6ea8ff",
+  },
+};
 
 export const TerminalView = forwardRef<
   TerminalActions,
@@ -93,6 +108,7 @@ export const TerminalView = forwardRef<
   const fitRef = useRef<FitAddon | null>(null);
   const triggerConfigRef = useRef<TriggerConfig | null>(null);
   const searchRef = useRef<SearchAddon | null>(null);
+  const searchResultRef = useRef({ resultIndex: -1, resultCount: 0 });
   const activeRef = useRef(focused);
   const settings = useAppStore((state)=>state.settings);
   const setError = useAppStore((state)=>state.setError);
@@ -113,7 +129,14 @@ export const TerminalView = forwardRef<
     ref,
     () => ({
       findNext: (term) =>
-        searchRef.current?.findNext(term, { incremental: true }) ?? false,
+        searchRef.current?.findNext(term, terminalSearchOptions) ?? false,
+      findPrevious: (term) =>
+        searchRef.current?.findPrevious(term, terminalSearchOptions) ?? false,
+      searchResult: () => searchResultRef.current,
+      clearSearch: () => {
+        searchRef.current?.clearDecorations();
+        searchResultRef.current = { resultIndex: -1, resultCount: 0 };
+      },
       clear: () => terminalRef.current?.clear(),
       focus: () => terminalRef.current?.focus(),
       paste: (text) => terminalRef.current?.paste(text),
@@ -174,6 +197,9 @@ export const TerminalView = forwardRef<
     terminal.loadAddon(search);
     terminal.loadAddon(new WebLinksAddon());
     searchRef.current = search;
+    const searchResultHandler = search.onDidChangeResults?.((result) => {
+      searchResultRef.current = result;
+    });
     const cwdHandler = terminal.parser.registerOscHandler(7, (value) => {
       const cwd = parseOsc7Cwd(value);
       if (cwd) workspaceRuntime.cwdBySession.set(session.id, cwd);
@@ -320,11 +346,21 @@ export const TerminalView = forwardRef<
         }),
       );
     };
+    let disposed = false;
+    let ready = false;
     terminal.open(container);
-    fit.fit();
-    terminal.focus();
     terminalRef.current = terminal;
-    updateTimestampRows();
+    const initializeFrame = window.requestAnimationFrame(() => {
+      if (disposed) return;
+      ready = true;
+      fit.fit();
+      terminal.focus();
+      updateTimestampRows();
+      if (!api.isDesktop())
+        terminal.writeln(
+          "\x1b[1;32mCNshell 浏览器预览\x1b[0m\r\n\r\n请运行 \x1b[36mnpm run tauri dev\x1b[0m 建立真实 SSH 会话。\r\n",
+        );
+    });
     const enqueueInput = createTerminalInputQueue((data) =>
       api.terminalInput(session.id, data),
     );
@@ -376,6 +412,7 @@ export const TerminalView = forwardRef<
     });
     const scrollDisposable = terminal.onScroll(updateTimestampRows);
     const resize = new ResizeObserver(() => {
+      if (disposed || !ready || !container.isConnected) return;
       fit.fit();
       updateTimestampRows();
       void api.terminalResize(session.id, terminal.cols, terminal.rows);
@@ -392,7 +429,6 @@ export const TerminalView = forwardRef<
     workspaceRuntime.terminalSearchBySession.set(session.id, searchLines);
     const pending: Uint8Array[] = [];
     let writing = false;
-    let disposed = false;
     const flush = () => {
       if (disposed || writing || !pending.length) return;
       writing = true;
@@ -462,12 +498,9 @@ export const TerminalView = forwardRef<
         flush();
       }
     });
-    if (!api.isDesktop())
-      terminal.writeln(
-        "\x1b[1;32mCNshell 浏览器预览\x1b[0m\r\n\r\n请运行 \x1b[36mnpm run tauri dev\x1b[0m 建立真实 SSH 会话。\r\n",
-      );
     return () => {
       disposed = true;
+      window.cancelAnimationFrame(initializeFrame);
       pending.length = 0;
       if (taskTimer != null) window.clearTimeout(taskTimer);
       window.removeEventListener("cnshell-trigger-config", configHandler);
@@ -483,6 +516,7 @@ export const TerminalView = forwardRef<
       selectionDisposable.dispose();
       cwdHandler.dispose();
       promptHandler.dispose();
+      searchResultHandler?.dispose();
       terminal.dispose();
       terminalRef.current = null;
       fitRef.current = null;

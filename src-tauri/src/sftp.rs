@@ -364,6 +364,17 @@ pub async fn list(
     .await
 }
 
+pub async fn home(db: Database, manager: SessionManager, session_id: String) -> AppResult<String> {
+    with_sftp_timeout(
+        db,
+        manager,
+        session_id,
+        Some(("获取用户主目录", DIRECTORY_READ_TIMEOUT)),
+        move |sftp| Ok(wire_path(&sftp.realpath(Path::new("."))?)),
+    )
+    .await
+}
+
 /// List a directory for MCP with a hard entry-count boundary.
 ///
 /// The regular file browser intentionally keeps its historical unbounded

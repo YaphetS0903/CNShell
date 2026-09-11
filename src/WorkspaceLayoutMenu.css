@@ -1,0 +1,82 @@
+.workspace-layout-menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.workspace-layout-menu {
+  position: absolute;
+  z-index: 60;
+  top: calc(100% + 7px);
+  right: -8px;
+  width: 220px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+}
+
+.workspace-layout-menu::before {
+  position: absolute;
+  right: 17px;
+  bottom: 100%;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--surface-2);
+  content: "";
+  transform: translateY(5px) rotate(45deg);
+}
+
+.workspace-layout-menu button {
+  position: relative;
+  width: 100%;
+  min-height: 48px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 6px 8px;
+  color: var(--muted);
+  text-align: left;
+}
+
+.workspace-layout-menu button:hover,
+.workspace-layout-menu button[aria-checked="true"] {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.workspace-layout-menu button[aria-checked="true"]::after {
+  position: absolute;
+  right: 9px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: "";
+}
+
+.workspace-layout-menu button > svg {
+  color: var(--blue);
+}
+
+.workspace-layout-menu button > span {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-layout-menu strong {
+  font-size: 11px;
+}
+
+.workspace-layout-menu small {
+  color: var(--faint);
+  font-size: 9px;
+}

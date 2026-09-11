@@ -1,5 +1,11 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { CloudCog, Fingerprint, FolderOpen, LockKeyhole, Trash2 } from "lucide-react";
+import {
+  CloudCog,
+  Fingerprint,
+  FolderOpen,
+  LockKeyhole,
+  Trash2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { api } from "../../lib/api";
 import { errorMessage } from "../../lib/format";
@@ -21,24 +27,34 @@ export function EncryptedSyncSettings({
     includeCredentials: false,
   });
   const [result, setResult] = useState<SyncResult | null>(null);
+  const [lastDirection, setLastDirection] = useState<"write" | "read" | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [touchBusy, setTouchBusy] = useState(false);
-  const [touchStatus, setTouchStatus] = useState<TouchIdSyncStatus | null>(null);
+  const [touchStatus, setTouchStatus] = useState<TouchIdSyncStatus | null>(
+    null,
+  );
   useEffect(() => {
     if (!folder) {
       setTouchStatus(null);
       return;
     }
     let active = true;
-    void api.touchIdSyncStatus(folder).then((status) => {
-      if (active) setTouchStatus(status);
-    }).catch((error) => {
-      if (active) {
-        setTouchStatus(null);
-        onError(errorMessage(error));
-      }
-    });
-    return () => { active = false; };
+    void api
+      .touchIdSyncStatus(folder)
+      .then((status) => {
+        if (active) setTouchStatus(status);
+      })
+      .catch((error) => {
+        if (active) {
+          setTouchStatus(null);
+          onError(errorMessage(error));
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [folder, onError]);
   const choose = async () => {
     const path = await open({
@@ -46,7 +62,11 @@ export function EncryptedSyncSettings({
       multiple: false,
       title: "选择同步文件夹",
     });
-    if (path) setFolder(path);
+    if (path) {
+      setFolder(path);
+      setResult(null);
+      setLastDirection(null);
+    }
   };
   const sync = async () => {
     if (
@@ -58,6 +78,7 @@ export function EncryptedSyncSettings({
       return;
     setBusy(true);
     try {
+      setLastDirection("write");
       setResult(await api.writeEncryptedSync(folder, passphrase, options));
       setPassphrase("");
     } catch (error) {
@@ -69,10 +90,14 @@ export function EncryptedSyncSettings({
   const touchSync = async () => {
     if (
       options.includeCredentials &&
-      !confirm(`凭据将从${platform.credentialStoreName}读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？`)
-    ) return;
+      !confirm(
+        `凭据将从${platform.credentialStoreName}读取，并在本机加密后写入同步包。服务端只看到密文。确认继续？`,
+      )
+    )
+      return;
     setTouchBusy(true);
     try {
+      setLastDirection("write");
       setResult(await api.writeEncryptedSyncWithTouchId(folder, options));
     } catch (error) {
       onError(errorMessage(error));
@@ -89,6 +114,7 @@ export function EncryptedSyncSettings({
       return;
     setBusy(true);
     try {
+      setLastDirection("read");
       setResult(await api.readEncryptedSync(folder, passphrase));
       setPassphrase("");
     } catch (error) {
@@ -98,9 +124,15 @@ export function EncryptedSyncSettings({
     }
   };
   const touchPull = async () => {
-    if (!confirm(`使用${biometric}解锁并从同步目录导入连接？同 ID 的本地连接不会被覆盖，将保留为双方冲突副本。`)) return;
+    if (
+      !confirm(
+        `使用${biometric}解锁并从同步目录导入连接？同 ID 的本地连接不会被覆盖，将保留为双方冲突副本。`,
+      )
+    )
+      return;
     setTouchBusy(true);
     try {
+      setLastDirection("read");
       setResult(await api.readEncryptedSyncWithTouchId(folder));
     } catch (error) {
       onError(errorMessage(error));
@@ -120,7 +152,12 @@ export function EncryptedSyncSettings({
     }
   };
   const deleteTouchId = async () => {
-    if (!confirm(`移除此同步文件夹保存的${biometric}口令？现有加密同步包不会被删除，之后仍可用手动口令恢复。`)) return;
+    if (
+      !confirm(
+        `移除此同步文件夹保存的${biometric}口令？现有加密同步包不会被删除，之后仍可用手动口令恢复。`,
+      )
+    )
+      return;
     setTouchBusy(true);
     try {
       await api.deleteTouchIdSyncKey(folder);
@@ -139,9 +176,7 @@ export function EncryptedSyncSettings({
             <CloudCog size={16} />
             本地目录加密同步
           </h3>
-          <p>
-            选择 iCloud Drive、WebDAV 挂载点或 Git 检出目录。
-          </p>
+          <p>选择 iCloud Drive、WebDAV 挂载点或 Git 检出目录。</p>
         </div>
       </div>
       <label>
@@ -163,14 +198,49 @@ export function EncryptedSyncSettings({
           autoComplete="new-password"
         />
       </label>
-      {folder && touchStatus && <div className={`touch-id-vault ${touchStatus.supported ? "available" : "unavailable"}`}>
-        <div><Fingerprint size={17}/><span><strong>{biometric}本地保护</strong><small>{touchStatus.message}</small></span></div>
-        <div className="backup-actions">
-          {!touchStatus.saved && <button className="button secondary" disabled={!touchStatus.supported || passphrase.length < 8 || busy || touchBusy} onClick={()=>void saveTouchId()}><Fingerprint size={14}/>{touchBusy?"处理中…":`用${biometric}保存当前口令`}</button>}
-          {touchStatus.saved && <button className="button secondary danger" disabled={busy || touchBusy} onClick={()=>void deleteTouchId()}><Trash2 size={14}/>移除已保存口令</button>}
+      {folder && touchStatus && (
+        <div
+          className={`touch-id-vault ${touchStatus.supported ? "available" : "unavailable"}`}
+        >
+          <div>
+            <Fingerprint size={17} />
+            <span>
+              <strong>{biometric}本地保护</strong>
+              <small>{touchStatus.message}</small>
+            </span>
+          </div>
+          <div className="backup-actions">
+            {!touchStatus.saved && (
+              <button
+                className="button secondary"
+                disabled={
+                  !touchStatus.supported ||
+                  passphrase.length < 8 ||
+                  busy ||
+                  touchBusy
+                }
+                onClick={() => void saveTouchId()}
+              >
+                <Fingerprint size={14} />
+                {touchBusy ? "处理中…" : `用${biometric}保存当前口令`}
+              </button>
+            )}
+            {touchStatus.saved && (
+              <button
+                className="button secondary danger"
+                disabled={busy || touchBusy}
+                onClick={() => void deleteTouchId()}
+              >
+                <Trash2 size={14} />
+                移除已保存口令
+              </button>
+            )}
+          </div>
+          <small>
+            口令仅限这台电脑使用，并受当前系统生物识别策略保护；验证失败时可继续使用上方手动口令。
+          </small>
         </div>
-        <small>口令仅限这台电脑使用，并受当前系统生物识别策略保护；验证失败时可继续使用上方手动口令。</small>
-      </div>}
+      )}
       <div className="sync-toggles">
         <label className="check-row">
           <input
@@ -218,21 +288,42 @@ export function EncryptedSyncSettings({
           onClick={() => void sync()}
         >
           <LockKeyhole size={14} />
-          {busy ? "处理中…" : "用手动口令生成"}
+          {busy ? "处理中…" : "用手动口令生成加密包"}
         </button>
         <button
           className="button secondary"
           disabled={!folder || passphrase.length < 8 || busy}
           onClick={() => void pull()}
         >
-          用手动口令导入
+          用手动口令导入加密包
         </button>
-        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchSync()}><Fingerprint size={14}/>{touchBusy?`等待${biometric}…`:`用${biometric}生成`}</button>}
-        {touchStatus?.saved && <button className="button secondary" disabled={!touchStatus.supported || busy || touchBusy} onClick={()=>void touchPull()}>用{biometric}导入</button>}
+        {touchStatus?.saved && (
+          <button
+            className="button secondary"
+            disabled={!touchStatus.supported || busy || touchBusy}
+            onClick={() => void touchSync()}
+          >
+            <Fingerprint size={14} />
+            {touchBusy ? `等待${biometric}…` : `用${biometric}生成`}
+          </button>
+        )}
+        {touchStatus?.saved && (
+          <button
+            className="button secondary"
+            disabled={!touchStatus.supported || busy || touchBusy}
+            onClick={() => void touchPull()}
+          >
+            用{biometric}导入
+          </button>
+        )}
       </div>
       {result && (
         <div className="sync-result">
-          <strong>已处理 {result.connectionCount} 个连接</strong>
+          <strong>
+            {lastDirection === "write"
+              ? `加密包已生成，包含 ${result.connectionCount} 个连接`
+              : `导入完成，共处理 ${result.connectionCount} 个连接`}
+          </strong>
           <code>{result.path}</code>
           {result.conflictCopy && (
             <small>检测到旧版本，已保留冲突副本：{result.conflictCopy}</small>

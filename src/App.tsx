@@ -14,11 +14,12 @@ import {
   FolderOpen,
   HelpCircle,
   LoaderCircle,
+  LayoutTemplate,
   PanelLeftClose,
   PanelLeftOpen,
-  Plus,
   Settings,
   TerminalSquare,
+  Workflow,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { api } from "./lib/api";
@@ -47,18 +48,24 @@ import { McpApprovalCenter } from "./features/mcp/McpApprovalCenter";
 import { RemoteEditorHost } from "./features/files/RemoteEditorHost";
 import { useTransferSync } from "./lib/transfer-sync";
 import { registerWindowCloseProtection } from "./lib/window-close-protection";
+import "./WorkspaceLayoutMenu.css";
 
 const TerminalWorkspace = lazy(
   () => import("./features/terminal/TerminalWorkspace"),
 );
 const SettingsModal = lazy(() => import("./features/settings/SettingsModal"));
 const HelpModal = lazy(() => import("./features/help/HelpModal"));
+const AutomationCenter = lazy(
+  () => import("./features/automation/AutomationCenter"),
+);
 
 interface HostKeyPrompt {
   connection: ConnectionProfile;
   fingerprint: string;
   algorithm: string;
 }
+
+type WorkspacePreset = "custom" | "terminal" | "files" | "monitor";
 
 export default function App() {
   useTransferSync();
@@ -76,6 +83,8 @@ export default function App() {
     settings,
     settingsOpen,
     connectionEditorOpen,
+    sessions,
+    activeSessionId,
   } = useAppStore(
     useShallow((state) => ({
       bootstrap: state.bootstrap,
@@ -90,14 +99,25 @@ export default function App() {
       settings: state.settings,
       settingsOpen: state.settingsOpen,
       connectionEditorOpen: state.connectionEditorOpen,
+      sessions: state.sessions,
+      activeSessionId: state.activeSessionId,
     })),
   );
   const [connectionsOpen, setConnectionsOpen] = useState(true);
   const [monitorOpen, setMonitorOpen] = useState(true);
   const [connectionWidth, setConnectionWidth] = useState(260);
   const [monitorWidth, setMonitorWidth] = useState(232);
+  const [workspacePreset, setWorkspacePreset] =
+    useState<WorkspacePreset>("custom");
+  const [layoutMenuOpen, setLayoutMenuOpen] = useState(false);
+  const [automationOpen, setAutomationOpen] = useState(false);
+  const layoutMenuRef = useRef<HTMLDivElement>(null);
   const [connecting, setConnecting] = useState<string | null>(null);
   const [hostPrompt, setHostPrompt] = useState<HostKeyPrompt | null>(null);
+  const activeSession = sessions.find((item) => item.id === activeSessionId);
+  const activeConnection = connections.find(
+    (item) => item.id === activeSession?.connectionId,
+  );
   const workspaceRestoreStarted = useRef(false);
   const workspacePersistenceReady = useRef(false);
   const lastSavedWorkspace = useRef<string | null>(null);
@@ -138,6 +158,43 @@ export default function App() {
     root.dataset.theme = settings.theme;
     if (settings.theme === "system") delete root.dataset.theme;
   }, [settings.theme]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.interfaceScale = String(settings.interfaceScalePercent);
+    root.style.setProperty(
+      "--interface-scale",
+      String(settings.interfaceScalePercent / 100),
+    );
+  }, [settings.interfaceScalePercent]);
+  useEffect(() => {
+    if (!layoutMenuOpen) return;
+    const pointerDown = (event: PointerEvent) => {
+      if (!layoutMenuRef.current?.contains(event.target as Node))
+        setLayoutMenuOpen(false);
+    };
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLayoutMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", pointerDown);
+    document.addEventListener("keydown", keyDown);
+    return () => {
+      document.removeEventListener("pointerdown", pointerDown);
+      document.removeEventListener("keydown", keyDown);
+    };
+  }, [layoutMenuOpen]);
+  useEffect(() => {
+    const openAutomation = () => {
+      setHelpOpen(false);
+      setSettingsOpen(false);
+      setAutomationOpen(true);
+    };
+    window.addEventListener("cnshell-open-automation-center", openAutomation);
+    return () =>
+      window.removeEventListener(
+        "cnshell-open-automation-center",
+        openAutomation,
+      );
+  }, [setHelpOpen, setSettingsOpen]);
   const connect = useCallback(
     async (connection: ConnectionProfile) => {
       if (connection.protocol === "rdp") {
@@ -457,6 +514,40 @@ export default function App() {
     "--connections-width": `${connectionWidth}px`,
     "--monitor-width": `${monitorWidth}px`,
   } as CSSProperties;
+  const applyWorkspacePreset = (preset: Exclude<WorkspacePreset, "custom">) => {
+    setWorkspacePreset(preset);
+    setLayoutMenuOpen(false);
+    if (preset === "terminal") {
+      setConnectionsOpen(false);
+      setMonitorOpen(false);
+      window.dispatchEvent(
+        new CustomEvent("cnshell-apply-workspace-preset", {
+          detail: { bottomOpen: false },
+        }),
+      );
+      return;
+    }
+    if (preset === "files") {
+      setConnectionsOpen(true);
+      setConnectionWidth(250);
+      setMonitorOpen(false);
+      useAppStore.getState().setPanel("files");
+      window.dispatchEvent(
+        new CustomEvent("cnshell-apply-workspace-preset", {
+          detail: { bottomOpen: true, bottomHeight: 420, panel: "files" },
+        }),
+      );
+      return;
+    }
+    setConnectionsOpen(false);
+    setMonitorOpen(true);
+    setMonitorWidth(320);
+    window.dispatchEvent(
+      new CustomEvent("cnshell-apply-workspace-preset", {
+        detail: { bottomOpen: false },
+      }),
+    );
+  };
   return (
     <div
       className={`app-shell ${connectionsOpen ? "connections-open" : ""} ${monitorOpen ? "monitor-open" : ""}`}
@@ -473,29 +564,90 @@ export default function App() {
           <IconButton
             icon={connectionsOpen ? PanelLeftClose : PanelLeftOpen}
             label={connectionsOpen ? "隐藏连接库" : "显示连接库"}
-            onClick={() => setConnectionsOpen(!connectionsOpen)}
-          />
-          <IconButton
-            icon={FolderOpen}
-            label="连接管理器"
-            onClick={() => setConnectionsOpen(true)}
-          />
-          <IconButton
-            icon={Plus}
-            label="新建连接"
-            onClick={() => openConnectionEditor()}
+            onClick={() => {
+              setConnectionsOpen(!connectionsOpen);
+              setWorkspacePreset("custom");
+            }}
           />
           <span className="toolbar-separator" data-tauri-drag-region />
           <IconButton
             icon={Activity}
             label={monitorOpen ? "隐藏监控" : "显示监控"}
             active={monitorOpen}
-            onClick={() => setMonitorOpen(!monitorOpen)}
+            onClick={() => {
+              setMonitorOpen(!monitorOpen);
+              setWorkspacePreset("custom");
+            }}
+          />
+          <div className="workspace-layout-menu-wrap" ref={layoutMenuRef}>
+            <IconButton
+              icon={LayoutTemplate}
+              label="工作区布局"
+              active={layoutMenuOpen || workspacePreset !== "custom"}
+              aria-haspopup="menu"
+              aria-expanded={layoutMenuOpen}
+              onClick={() => setLayoutMenuOpen((open) => !open)}
+            />
+            {layoutMenuOpen && (
+              <div
+                className="workspace-layout-menu"
+                role="menu"
+                aria-label="工作区布局预设"
+              >
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={workspacePreset === "terminal"}
+                  onClick={() => applyWorkspacePreset("terminal")}
+                >
+                  <TerminalSquare size={15} />
+                  <span>
+                    <strong>终端优先</strong>
+                    <small>收起两侧栏和工具面板</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={workspacePreset === "files"}
+                  onClick={() => applyWorkspacePreset("files")}
+                >
+                  <FolderOpen size={15} />
+                  <span>
+                    <strong>文件优先</strong>
+                    <small>展开连接库和文件面板</small>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={workspacePreset === "monitor"}
+                  onClick={() => applyWorkspacePreset("monitor")}
+                >
+                  <Activity size={15} />
+                  <span>
+                    <strong>监控优先</strong>
+                    <small>放宽监控栏并收起工具面板</small>
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
+          <IconButton
+            icon={Workflow}
+            label="自动化中心"
+            active={automationOpen}
+            onClick={() => {
+              setHelpOpen(false);
+              setSettingsOpen(false);
+              setAutomationOpen(true);
+            }}
           />
           <IconButton
             icon={HelpCircle}
             label="使用帮助"
             onClick={() => {
+              setAutomationOpen(false);
               setSettingsOpen(false);
               setHelpOpen(true);
             }}
@@ -504,17 +656,35 @@ export default function App() {
             icon={Settings}
             label="设置"
             onClick={() => {
+              setAutomationOpen(false);
               setHelpOpen(false);
               setSettingsOpen(true);
             }}
           />
         </nav>
-        <div className="desktop-badge" data-tauri-drag-region>
+        <div
+          className="titlebar-context"
+          data-tauri-drag-region
+          title={
+            activeSession && activeConnection
+              ? `${activeSession.title} · ${activeConnection.username}@${activeConnection.host}:${activeConnection.port}`
+              : undefined
+          }
+        >
           <span
-            className={api.isDesktop() ? "online" : "preview"}
+            className={`status-dot ${activeSession?.status ?? "idle"}`}
             data-tauri-drag-region
           />
-          {api.isDesktop() ? "桌面运行" : "浏览器预览"}
+          <span data-tauri-drag-region>
+            <strong data-tauri-drag-region>
+              {activeSession?.title ?? "未连接"}
+            </strong>
+            <small data-tauri-drag-region>
+              {activeSession && activeConnection
+                ? `${activeConnection.protocol.toUpperCase()} · ${activeConnection.username}@${activeConnection.host}`
+                : "选择连接开始工作"}
+            </small>
+          </span>
         </div>
       </header>
       <div className="app-body">
@@ -530,18 +700,20 @@ export default function App() {
               aria-valuemax={420}
               aria-valuenow={connectionWidth}
               tabIndex={0}
-              onPointerDown={(event) =>
+              onPointerDown={(event) => {
+                setWorkspacePreset("custom");
                 beginResize(
                   event,
                   connectionWidth,
                   setConnectionWidth,
                   210,
                   420,
-                )
-              }
-              onKeyDown={(event) =>
-                resizeKey(event, connectionWidth, setConnectionWidth, 210, 420)
-              }
+                );
+              }}
+              onKeyDown={(event) => {
+                setWorkspacePreset("custom");
+                resizeKey(event, connectionWidth, setConnectionWidth, 210, 420);
+              }}
             />
           </>
         )}{" "}
@@ -557,12 +729,14 @@ export default function App() {
               aria-valuemax={360}
               aria-valuenow={monitorWidth}
               tabIndex={0}
-              onPointerDown={(event) =>
-                beginResize(event, monitorWidth, setMonitorWidth, 200, 360)
-              }
-              onKeyDown={(event) =>
-                resizeKey(event, monitorWidth, setMonitorWidth, 200, 360)
-              }
+              onPointerDown={(event) => {
+                setWorkspacePreset("custom");
+                beginResize(event, monitorWidth, setMonitorWidth, 200, 360);
+              }}
+              onKeyDown={(event) => {
+                setWorkspacePreset("custom");
+                resizeKey(event, monitorWidth, setMonitorWidth, 200, 360);
+              }}
             />
           </>
         )}
@@ -588,9 +762,15 @@ export default function App() {
       )}
       {error && <ErrorToast message={error} onClose={() => setError(null)} />}
       <McpApprovalCenter onError={(message) => setError(message)} />
-      <ConnectionEditor />
+      <ConnectionEditor onConnect={connect} />
       <RemoteEditorHost />
       <Suspense fallback={null}>
+        <AutomationCenter
+          open={automationOpen}
+          connections={connections}
+          onClose={() => setAutomationOpen(false)}
+          onError={(message) => setError(message)}
+        />
         <SettingsModal />
         <HelpModal />
       </Suspense>

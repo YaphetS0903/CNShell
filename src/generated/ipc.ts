@@ -99,6 +99,12 @@ export interface CommandSnippet {
   sortOrder: number;
 }
 
+export interface CommandHistorySummary {
+  command: string;
+  count: number;
+  lastUsedAt: string;
+}
+
 export interface Folder {
   id: string;
   name: string;
@@ -300,6 +306,20 @@ export interface AutomationRun {
   status: string;
   currentStep: string | null;
   results: AutomationStepResult[];
+}
+
+export interface AutomationRunRecord {
+  id: string;
+  planId: string;
+  planName: string;
+  connectionId: string;
+  source: string;
+  scheduleId: string | null;
+  startedAt: string;
+  finishedAt: string;
+  status: string;
+  results: AutomationStepResult[];
+  error: string | null;
 }
 
 export interface AutomationSchedule {
@@ -1137,6 +1157,7 @@ export interface TerminalPreferences {
 
 export interface AppSettings {
   theme: string;
+  interfaceScalePercent: number;
   monitorIntervalMs: number;
   rememberCommandHistory: boolean;
   confirmCloseActiveSession: boolean;

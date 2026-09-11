@@ -7,19 +7,37 @@ import { AiSettings } from "./AiSettings";
 describe("AiSettings", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(api, "listAiProviders").mockResolvedValue([{ id: "local", name: "本地", endpoint: "http://127.0.0.1:11434/v1", model: "model", hasApiKey: false }]);
-    vi.spyOn(api, "previewAi").mockResolvedValue({ requestId: "request", providerName: "本地", endpoint: "http://127.0.0.1:11434/v1", model: "model", kind: "command", redactedContent: "list [HOST]", redactions: ["hostname"], expiresAt: "later" });
-    vi.spyOn(api, "executeAi").mockResolvedValue({ id: "task", kind: "ai-assistant", status: "queued", result: null, error: null, createdAt: "now" });
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.spyOn(api, "listAiProviders").mockResolvedValue([
+      {
+        id: "local",
+        name: "本地",
+        endpoint: "http://127.0.0.1:11434/v1",
+        model: "model",
+        hasApiKey: false,
+      },
+    ]);
+    vi.spyOn(api, "saveAiProvider").mockImplementation(async (input) => ({
+      id: input.id,
+      name: input.name,
+      endpoint: input.endpoint,
+      model: input.model,
+      hasApiKey: Boolean(input.apiKey),
+    }));
   });
 
-  it("previews redacted text before execution", async () => {
+  it("keeps provider configuration separate from terminal AI requests", async () => {
     const user = userEvent.setup();
     render(<AiSettings onError={vi.fn()} />);
-    await user.type(screen.getByLabelText("AI 输入"), "list api.example.test");
-    await user.click(screen.getByRole("button", { name: "生成脱敏预览" }));
-    expect(await screen.findByText(/将发送的脱敏文本/)).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "确认发送" }));
-    await waitFor(() => expect(api.executeAi).toHaveBeenCalledWith("request"));
+    const model = await screen.findByRole("textbox", { name: "模型" });
+    await waitFor(() => expect(model).toHaveValue("model"));
+    await user.clear(model);
+    await user.type(model, "model-v2");
+    await user.click(screen.getByRole("button", { name: "保存 Provider" }));
+    await waitFor(() =>
+      expect(api.saveAiProvider).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "local", model: "model-v2" }),
+      ),
+    );
+    expect(screen.queryByLabelText("AI 输入")).not.toBeInTheDocument();
   });
 });

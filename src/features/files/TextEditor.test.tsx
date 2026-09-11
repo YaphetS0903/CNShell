@@ -27,7 +27,7 @@ describe("TextEditor", () => {
     );
     expect(await screen.findByLabelText("远程文本内容")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "格式化" }));
-    await user.click(screen.getByRole("button", { name: "原子保存" }));
+    await user.click(screen.getByRole("button", { name: "保存到服务器" }));
     await waitFor(() =>
       expect(api.saveText).toHaveBeenCalledWith(
         "session-1",
@@ -35,6 +35,32 @@ describe("TextEditor", () => {
         '{\n  "name": "CNshell"\n}\n',
         10,
       ),
+    );
+  });
+
+  it("disables unsupported formatting and can maximize the editor", async () => {
+    vi.mocked(api.openText).mockResolvedValue({
+      content: "plain text",
+      modifiedAt: 10,
+    });
+    const user = userEvent.setup();
+    render(
+      <TextEditor
+        sessionId="session-1"
+        path="/tmp/notes.txt"
+        onClose={vi.fn()}
+      />,
+    );
+    await screen.findByLabelText("远程文本内容");
+
+    expect(screen.getByRole("button", { name: "格式化" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "放大编辑区" }));
+    expect(screen.getByRole("dialog")).toHaveClass(
+      "text-editor-modal-maximized",
+    );
+    await user.click(screen.getByRole("button", { name: "还原编辑区" }));
+    expect(screen.getByRole("dialog")).not.toHaveClass(
+      "text-editor-modal-maximized",
     );
   });
 
@@ -55,7 +81,7 @@ describe("TextEditor", () => {
     );
     await screen.findByLabelText("远程文本内容");
     await user.click(screen.getByRole("button", { name: "格式化" }));
-    await user.click(screen.getByRole("button", { name: "原子保存" }));
+    await user.click(screen.getByRole("button", { name: "保存到服务器" }));
     expect(
       await screen.findByText("远端文件在编辑期间发生变化"),
     ).toBeInTheDocument();

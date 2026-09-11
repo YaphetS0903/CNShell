@@ -30,7 +30,9 @@ interface TauriConfig {
 
 describe("Tauri updater configuration", () => {
   it("always provides a deserializable base configuration", () => {
-    const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8")) as TauriConfig;
+    const config = JSON.parse(
+      readFileSync(resolve("src-tauri/tauri.conf.json"), "utf8"),
+    ) as TauriConfig;
 
     expect(config.plugins?.updater).toBeDefined();
     expect(config.plugins?.updater?.endpoints).toEqual([]);
@@ -38,14 +40,20 @@ describe("Tauri updater configuration", () => {
   });
 
   it("only grants the updater operations exposed by the explicit settings workflow", () => {
-    const capability = JSON.parse(readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8")) as { permissions: string[] };
+    const capability = JSON.parse(
+      readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8"),
+    ) as { permissions: string[] };
     expect(capability.permissions).toContain("updater:allow-check");
-    expect(capability.permissions).toContain("updater:allow-download-and-install");
+    expect(capability.permissions).toContain(
+      "updater:allow-download-and-install",
+    );
     expect(capability.permissions).not.toContain("updater:default");
   });
 
   it("locks the Developer ID build to hardened runtime and a privacy plist", () => {
-    const config = JSON.parse(readFileSync(resolve("src-tauri/tauri.macos.conf.json"), "utf8")) as TauriConfig;
+    const config = JSON.parse(
+      readFileSync(resolve("src-tauri/tauri.macos.conf.json"), "utf8"),
+    ) as TauriConfig;
     const privacyPlist = readFileSync(resolve("src-tauri/Info.plist"), "utf8");
 
     expect(config.bundle?.macOS?.hardenedRuntime).toBe(true);
@@ -57,20 +65,28 @@ describe("Tauri updater configuration", () => {
 
 describe("Tauri window permissions", () => {
   it("allows the close-request handler to destroy the main window", () => {
-    const capability = JSON.parse(readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8")) as { permissions: string[] };
+    const capability = JSON.parse(
+      readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8"),
+    ) as { permissions: string[] };
 
     expect(capability.permissions).toContain("core:window:allow-destroy");
   });
 
   it("keeps non-interactive titlebar surfaces draggable in narrow windows", () => {
-    const capability = JSON.parse(readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8")) as { permissions: string[] };
+    const capability = JSON.parse(
+      readFileSync(resolve("src-tauri/capabilities/default.json"), "utf8"),
+    ) as { permissions: string[] };
     const app = readFileSync(resolve("src/App.tsx"), "utf8");
 
-    expect(capability.permissions).toContain("core:window:allow-start-dragging");
-    expect(app).toContain('className="traffic-light-space" data-tauri-drag-region');
+    expect(capability.permissions).toContain(
+      "core:window:allow-start-dragging",
+    );
+    expect(app).toContain(
+      'className="traffic-light-space" data-tauri-drag-region',
+    );
     expect(app).toContain('className="brand" data-tauri-drag-region');
-    expect(app).toContain('className="desktop-badge" data-tauri-drag-region');
-    expect(app).not.toContain('<nav data-tauri-drag-region>');
+    expect(app).toContain('className="titlebar-context"');
+    expect(app).not.toContain("<nav data-tauri-drag-region>");
   });
 });
 
@@ -99,7 +115,7 @@ describe("Windows desktop shell", () => {
     expect(main).toContain(
       '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]',
     );
-    expect(lib).toContain("#[cfg(target_os = \"macos\")]\nfn build_menu");
+    expect(lib).toContain('#[cfg(target_os = "macos")]\nfn build_menu');
     expect(lib).toContain(
       '#[cfg(target_os = "macos")]\n            app.set_menu(build_menu(app)?)?',
     );

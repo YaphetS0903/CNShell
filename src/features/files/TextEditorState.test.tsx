@@ -101,14 +101,14 @@ it("keeps edits made during save and saves them using the new baseline", async (
   );
   const editor = await screen.findByLabelText("远程文本内容");
   fireEvent.change(editor, { target: { value: "first edit" } });
-  await userEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   fireEvent.keyDown(document, { key: "Escape" });
   expect(onClose).not.toHaveBeenCalled();
   fireEvent.change(editor, { target: { value: "second edit while saving" } });
   await act(async () => saving.resolve());
   expect(editor).toHaveValue("second edit while saving");
   expect(screen.getByText(/未保存/)).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   await waitFor(() =>
     expect(api.saveText).toHaveBeenLastCalledWith(
       "session-1",
@@ -134,7 +134,7 @@ it("uses the latest local edits when a pending save reports a conflict", async (
   );
   const editor = await screen.findByLabelText("远程文本内容");
   fireEvent.change(editor, { target: { value: "first edit" } });
-  await userEvent.click(screen.getByRole("button", { name: "原子保存" }));
+  await userEvent.click(screen.getByRole("button", { name: "保存到服务器" }));
   fireEvent.change(editor, { target: { value: "latest edit" } });
   await act(async () => saving.reject(new Error("远端文件已被其他程序修改")));
   expect(await screen.findByText("latest edit")).toBeInTheDocument();

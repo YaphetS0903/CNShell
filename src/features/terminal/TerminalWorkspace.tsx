@@ -3,6 +3,8 @@ import {
   Activity,
   ClipboardList,
   Clock3,
+  ChevronDown,
+  ChevronUp,
   Columns2,
   Command,
   Copy,
@@ -11,6 +13,8 @@ import {
   Highlighter,
   History,
   MoreHorizontal,
+  Maximize2,
+  Minimize2,
   PanelBottom,
   PanelBottomOpen,
   RadioTower,
@@ -18,6 +22,7 @@ import {
   Rows2,
   Search,
   ServerCog,
+  Sparkles,
   Users,
   X,
 } from "lucide-react";
@@ -29,7 +34,11 @@ import { TerminalView, type TerminalActions } from "./TerminalView";
 import { FileManager } from "../files/FileManager";
 import { TransferQueue } from "../files/TransferQueue";
 import { SystemInfoPanel } from "../monitor/SystemInfoPanel";
-import type { ConnectionProfile, TerminalSession } from "../../types";
+import type {
+  ConnectionProfile,
+  SessionLogStatus,
+  TerminalSession,
+} from "../../types";
 
 const isInteractiveTerminal = (
   session: TerminalSession | undefined,
@@ -66,6 +75,7 @@ import {
 } from "./terminal-preferences";
 import { SerialTransferPanel } from "./SerialTransferPanel";
 import { TeamTerminalCenter } from "./TeamTerminalCenter";
+import { AiAssistantDialog } from "./AiAssistantDialog";
 import {
   primaryShortcutPressed,
   usePlatformCapabilities,
@@ -109,6 +119,10 @@ export default function TerminalWorkspace({
   );
   const [findOpen, setFindOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [findResult, setFindResult] = useState({
+    resultIndex: -1,
+    resultCount: 0,
+  });
   const [bottomOpen, setBottomOpen] = useState(true);
   const [bottomHeight, setBottomHeight] = useState(() =>
     clampPanelSize(
@@ -117,9 +131,15 @@ export default function TerminalWorkspace({
       520,
     ),
   );
+  const [bottomMaximized, setBottomMaximized] = useState(false);
+  const previousBottomHeight = useRef(260);
   const stackRef = useRef<HTMLDivElement>(null);
   const [logDialogOpen, setLogDialogOpen] = useState(false);
+  const [logActiveBySession, setLogActiveBySession] = useState<
+    Record<string, boolean>
+  >({});
   const [triggerDialogOpen, setTriggerDialogOpen] = useState(false);
+  const [aiAssistantOpen, setAiAssistantOpen] = useState(false);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
   const [pasteHistoryOpen, setPasteHistoryOpen] = useState(false);
@@ -135,6 +155,12 @@ export default function TerminalWorkspace({
     null,
   );
   const [tabMenu, setTabMenu] = useState<string | null>(null);
+  const updateLogStatus = useCallback((status: SessionLogStatus) => {
+    setLogActiveBySession((current) => ({
+      ...current,
+      [status.sessionId]: status.active,
+    }));
+  }, []);
   const toggleBottomPanel = useCallback(
     () => setBottomOpen((open) => !open),
     [],
@@ -146,6 +172,88 @@ export default function TerminalWorkspace({
     if (isInteractiveTerminal(session) && !refs.has(session.id))
       refs.set(session.id, createRef<TerminalActions>());
   });
+  const runFind = (term: string, direction: "next" | "previous" = "next") => {
+    const actions = activeSessionId ? refs.get(activeSessionId)?.current : null;
+    if (!actions || !term.trim()) {
+      setFindResult({ resultIndex: -1, resultCount: 0 });
+      return;
+    }
+    if (direction === "previous") actions.findPrevious(term);
+    else actions.findNext(term);
+    const update = () => setFindResult(actions.searchResult());
+    update();
+    window.requestAnimationFrame(update);
+  };
+  const closeFind = () => {
+    if (activeSessionId) refs.get(activeSessionId)?.current?.clearSearch();
+    setFindOpen(false);
+    setQuery("");
+    setFindResult({ resultIndex: -1, resultCount: 0 });
+  };
+  const toggleBottomMaximize = () => {
+    if (bottomMaximized) {
+      setBottomHeight(previousBottomHeight.current);
+      setBottomMaximized(false);
+      return;
+    }
+    previousBottomHeight.current = bottomHeight;
+    setBottomHeight(
+      clampPanelSize((stackRef.current?.clientHeight ?? 700) - 180, 210, 520),
+    );
+    setBottomMaximized(true);
+  };
+  useEffect(() => {
+    if (!tabMenu) return;
+    const pointerDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (!target?.closest(`[data-session-id="${CSS.escape(tabMenu)}"]`))
+        setTabMenu(null);
+    };
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setTabMenu(null);
+    };
+    document.addEventListener("pointerdown", pointerDown);
+    document.addEventListener("keydown", keyDown);
+    return () => {
+      document.removeEventListener("pointerdown", pointerDown);
+      document.removeEventListener("keydown", keyDown);
+    };
+  }, [tabMenu]);
+  useEffect(() => {
+    const session =
+      sessions.find((item) => item.id === activeSessionId) ?? sessions[0];
+    if (!isInteractiveTerminal(session)) return;
+    let cancelled = false;
+    void api
+      .sessionLogStatus(session.id)
+      .then((status) => {
+        if (!cancelled) updateLogStatus(status);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSessionId, sessions, updateLogStatus]);
+  useEffect(() => {
+    if (
+      logDialogOpen ||
+      triggerDialogOpen ||
+      aiAssistantOpen ||
+      batchDialogOpen ||
+      globalSearchOpen ||
+      pasteHistoryOpen ||
+      teamTerminalOpen
+    )
+      setTabMenu(null);
+  }, [
+    aiAssistantOpen,
+    batchDialogOpen,
+    globalSearchOpen,
+    logDialogOpen,
+    pasteHistoryOpen,
+    teamTerminalOpen,
+    triggerDialogOpen,
+  ]);
   const close = useCallback(
     async (id: string) => {
       if (!useAppStore.getState().prepareCloseSession(id)) return false;
@@ -343,6 +451,25 @@ export default function TerminalWorkspace({
       window.removeEventListener("cnshell-toggle-files", toggleBottomPanel);
   }, [toggleBottomPanel]);
   useEffect(() => {
+    const applyPreset = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          bottomOpen: boolean;
+          bottomHeight?: number;
+          panel?: "files" | "commands" | "transfers" | "system";
+        }>
+      ).detail;
+      setBottomOpen(detail.bottomOpen);
+      setBottomMaximized(false);
+      if (detail.bottomHeight)
+        setBottomHeight(clampPanelSize(detail.bottomHeight, 210, 520));
+      if (detail.panel) setPanel(detail.panel);
+    };
+    window.addEventListener("cnshell-apply-workspace-preset", applyPreset);
+    return () =>
+      window.removeEventListener("cnshell-apply-workspace-preset", applyPreset);
+  }, [setPanel]);
+  useEffect(() => {
     const paste = (event: Event) => {
       const detail = (event as CustomEvent<{ sessionId: string; text: string }>)
         .detail;
@@ -512,7 +639,11 @@ export default function TerminalWorkspace({
         {sessions.map((session) => {
           const sessionTerminalTheme = terminalThemeFor(session);
           return (
-            <div className="session-tab-wrap" key={session.id}>
+            <div
+              className="session-tab-wrap"
+              data-session-id={session.id}
+              key={session.id}
+            >
               <button
                 id={`session-tab-${session.id}`}
                 role="tab"
@@ -531,7 +662,10 @@ export default function TerminalWorkspace({
                       } as React.CSSProperties)
                     : undefined
                 }
-                onClick={() => selectSession(session.id)}
+                onClick={() => {
+                  setTabMenu(null);
+                  selectSession(session.id);
+                }}
               >
                 <span
                   className={`status-dot ${session.status}`}
@@ -559,14 +693,20 @@ export default function TerminalWorkspace({
                 <div className="tab-context-menu" role="menu">
                   <button
                     role="menuitem"
-                    onClick={() => void duplicate(session)}
+                    onClick={() => {
+                      setTabMenu(null);
+                      void duplicate(session);
+                    }}
                   >
                     <Copy size={13} />
                     复制会话
                   </button>
                   <button
                     role="menuitem"
-                    onClick={() => void reconnect(session)}
+                    onClick={() => {
+                      setTabMenu(null);
+                      void reconnect(session);
+                    }}
                   >
                     <RefreshCw size={13} />
                     重新连接
@@ -575,14 +715,20 @@ export default function TerminalWorkspace({
                     <>
                       <button
                         role="menuitem"
-                        onClick={() => void split(session, "vertical")}
+                        onClick={() => {
+                          setTabMenu(null);
+                          void split(session, "vertical");
+                        }}
                       >
                         <Columns2 size={13} />
                         左右拆分
                       </button>
                       <button
                         role="menuitem"
-                        onClick={() => void split(session, "horizontal")}
+                        onClick={() => {
+                          setTabMenu(null);
+                          void split(session, "horizontal");
+                        }}
                       >
                         <Rows2 size={13} />
                         上下拆分
@@ -590,7 +736,10 @@ export default function TerminalWorkspace({
                       {visibleIds.size > 1 && visibleIds.has(session.id) && (
                         <button
                           role="menuitem"
-                          onClick={() => removeFromLayout(session.id)}
+                          onClick={() => {
+                            setTabMenu(null);
+                            removeFromLayout(session.id);
+                          }}
                         >
                           <X size={13} />
                           移出拆分布局
@@ -607,6 +756,7 @@ export default function TerminalWorkspace({
                         confirm(`关闭“${session.title}”会话？`)
                       )
                         void close(session.id);
+                      setTabMenu(null);
                     }}
                   >
                     <X size={13} />
@@ -661,6 +811,13 @@ export default function TerminalWorkspace({
         )}
         {isInteractiveTerminal(active) && (
           <IconButton
+            icon={Sparkles}
+            label="AI 辅助"
+            onClick={() => setAiAssistantOpen(true)}
+          />
+        )}
+        {isInteractiveTerminal(active) && (
+          <IconButton
             icon={Highlighter}
             label="高亮与通知"
             onClick={() => setTriggerDialogOpen(true)}
@@ -669,7 +826,12 @@ export default function TerminalWorkspace({
         {isInteractiveTerminal(active) && (
           <IconButton
             icon={FileClock}
-            label="会话日志"
+            label={
+              logActiveBySession[active.id]
+                ? "会话日志（正在记录）"
+                : "会话日志（未记录）"
+            }
+            active={Boolean(logActiveBySession[active.id])}
             onClick={() => setLogDialogOpen(true)}
           />
         )}
@@ -711,7 +873,7 @@ export default function TerminalWorkspace({
                 className="terminal-find"
                 onSubmit={(event) => {
                   event.preventDefault();
-                  refs.get(active.id)?.current?.findNext(query);
+                  runFind(query, "next");
                 }}
               >
                 <Search size={14} />
@@ -720,17 +882,35 @@ export default function TerminalWorkspace({
                   value={query}
                   onChange={(event) => {
                     setQuery(event.target.value);
-                    refs.get(active.id)?.current?.findNext(event.target.value);
+                    runFind(event.target.value, "next");
                   }}
                   placeholder="在终端中查找"
                   aria-label="搜索终端输出"
                 />
-                <kbd>Return</kbd>
+                <span
+                  className="terminal-find-result"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {query
+                    ? findResult.resultCount
+                      ? `${findResult.resultIndex + 1}/${findResult.resultCount}`
+                      : "无匹配"
+                    : ""}
+                </span>
                 <IconButton
-                  icon={X}
-                  label="关闭搜索"
-                  onClick={() => setFindOpen(false)}
+                  icon={ChevronUp}
+                  label="上一个匹配"
+                  disabled={!query || !findResult.resultCount}
+                  onClick={() => runFind(query, "previous")}
                 />
+                <IconButton
+                  icon={ChevronDown}
+                  label="下一个匹配"
+                  disabled={!query || !findResult.resultCount}
+                  onClick={() => runFind(query, "next")}
+                />
+                <IconButton icon={X} label="关闭搜索" onClick={closeFind} />
               </form>
             )}
             <div
@@ -931,8 +1111,17 @@ export default function TerminalWorkspace({
                       系统信息
                     </button>
                     <IconButton
+                      icon={bottomMaximized ? Minimize2 : Maximize2}
+                      label={
+                        bottomMaximized ? "恢复工具面板高度" : "放大工具面板"
+                      }
+                      className="panel-maximize"
+                      onClick={toggleBottomMaximize}
+                    />
+                    <IconButton
                       icon={X}
                       label="折叠工具面板"
+                      className="panel-close"
                       onClick={() => setBottomOpen(false)}
                     />
                   </nav>
@@ -979,12 +1168,20 @@ export default function TerminalWorkspace({
           session={active}
           onClose={() => setLogDialogOpen(false)}
           onError={(message) => setError(message)}
+          onStatusChange={updateLogStatus}
         />
       )}
       {triggerDialogOpen && isInteractiveTerminal(active) && (
         <TriggerRulesDialog
           session={active}
           onClose={() => setTriggerDialogOpen(false)}
+          onError={(message) => setError(message)}
+        />
+      )}
+      {aiAssistantOpen && isInteractiveTerminal(active) && (
+        <AiAssistantDialog
+          session={active}
+          onClose={() => setAiAssistantOpen(false)}
           onError={(message) => setError(message)}
         />
       )}

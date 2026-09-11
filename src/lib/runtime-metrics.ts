@@ -1,4 +1,4 @@
-import type { TerminalSession, TransferTask } from "../types";
+import type { DiskInfo, NetworkInfo, TerminalSession, TransferTask } from "../types";
 
 export interface TransferMetric { bytes: number; time: number; speed: number; etaSeconds: number|null }
 
@@ -13,6 +13,37 @@ export const appendMonitorSample=(history:number[],value:number,intervalMs:numbe
 
 export interface MonitorHistorySample { timestamp:number; cpu:number; received:number; sent:number; latency:number|null }
 export const appendMonitorHistory=(history:MonitorHistorySample[],sample:MonitorHistorySample,intervalMs:number)=>[...history.slice(-(Math.max(1,Math.floor(300_000/intervalMs))-1)),sample];
+
+const LOOPBACK_NETWORK_PATTERN=/^(lo|lo\d+|loopback)$/i;
+const VIRTUAL_NETWORK_PATTERN=/^(docker\d*|veth|br-|virbr|vmnet|vboxnet|utun|tailscale|zt|wg\d*)/i;
+
+export const isLoopbackNetwork=(name:string)=>LOOPBACK_NETWORK_PATTERN.test(name);
+export const isVirtualNetwork=(name:string)=>VIRTUAL_NETWORK_PATTERN.test(name);
+
+export const selectMonitorNetwork=(networks:NetworkInfo[],preferredName?:string|null)=>{
+  if(preferredName){
+    const preferred=networks.find((network)=>network.interfaceName===preferredName);
+    if(preferred)return preferred;
+  }
+  const candidates=networks.filter((network)=>!isLoopbackNetwork(network.interfaceName));
+  return [...(candidates.length?candidates:networks)].sort((left,right)=>{
+    const virtualDifference=Number(isVirtualNetwork(left.interfaceName))-Number(isVirtualNetwork(right.interfaceName));
+    if(virtualDifference)return virtualDifference;
+    const trafficDifference=(right.rxTotalBytes+right.txTotalBytes)-(left.rxTotalBytes+left.txTotalBytes);
+    if(trafficDifference)return trafficDifference;
+    return left.interfaceName.localeCompare(right.interfaceName);
+  })[0];
+};
+
+export const monitorHistoryKey=(sessionId:string,interfaceName?:string)=>`${sessionId}\u0000${interfaceName??"no-network"}`;
+
+const TEMPORARY_FILESYSTEM_PATTERN = /^(?:tmpfs|devtmpfs|overlay|shm|proc|procfs|sysfs|cgroup2?|debugfs|tracefs|securityfs|pstore|efivarfs|mqueue|hugetlbfs|fusectl|configfs|ramfs|squashfs|nsfs|autofs)$/i;
+const TEMPORARY_MOUNT_PATTERN = /^\/(?:proc|sys|dev|run)(?:\/|$)/;
+
+export const isTemporaryDisk = (disk: Pick<DiskInfo, "filesystem" | "mountPoint">) =>
+  disk.mountPoint !== "/" &&
+  (TEMPORARY_FILESYSTEM_PATTERN.test(disk.filesystem) ||
+    TEMPORARY_MOUNT_PATTERN.test(disk.mountPoint));
 
 const MONITOR_FAILURE_REPORT_THRESHOLD=3;
 export const shouldReportMonitorPollError=(session:Pick<TerminalSession,"sessionType"|"status">|undefined,consecutiveFailures:number)=>consecutiveFailures>=MONITOR_FAILURE_REPORT_THRESHOLD&&!(session?.sessionType==="mosh"&&session.status==="reconnecting");

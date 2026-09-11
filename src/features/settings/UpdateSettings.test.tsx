@@ -16,28 +16,40 @@ describe("UpdateSettings", () => {
 
   it("does not contact an updater endpoint in browser preview", async () => {
     const user = userEvent.setup();
-    render(<UpdateSettings onError={vi.fn()}/>);
+    render(<UpdateSettings onError={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "检查更新" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("仅在 CNshell 桌面版");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "仅在 CNshell 桌面版",
+    );
     expect(updater.check).not.toHaveBeenCalled();
   });
 
-  it("explains that candidate builds intentionally have no release endpoint", () => {
-    render(<UpdateSettings onError={vi.fn()}/>);
-    expect(screen.getByRole("status")).toHaveTextContent("候选版未配置正式更新通道");
+  it("explains the development channel and provides a manual download page", async () => {
+    const user = userEvent.setup();
+    const openExternal = vi
+      .spyOn(api, "openExternal")
+      .mockResolvedValue(undefined);
+    render(<UpdateSettings onError={vi.fn()} />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "开发构建未配置更新通道",
+    );
+    await user.click(screen.getByRole("button", { name: "打开手动下载页" }));
+    expect(openExternal).toHaveBeenCalledWith(
+      expect.stringContaining("/releases/latest"),
+    );
   });
 
   it("shows signed update metadata and only installs after confirmation", async () => {
     const user = userEvent.setup();
     const close = vi.fn().mockResolvedValue(undefined);
-    const downloadAndInstall = vi.fn().mockImplementation(async (
-      onEvent: (event: DownloadEvent) => void,
-    ) => {
-      onEvent({ event: "Started", data: { contentLength: 100 } });
-      onEvent({ event: "Progress", data: { chunkLength: 40 } });
-      onEvent({ event: "Progress", data: { chunkLength: 60 } });
-      onEvent({ event: "Finished" });
-    });
+    const downloadAndInstall = vi
+      .fn()
+      .mockImplementation(async (onEvent: (event: DownloadEvent) => void) => {
+        onEvent({ event: "Started", data: { contentLength: 100 } });
+        onEvent({ event: "Progress", data: { chunkLength: 40 } });
+        onEvent({ event: "Progress", data: { chunkLength: 60 } });
+        onEvent({ event: "Finished" });
+      });
     updater.check.mockResolvedValue({
       version: "0.2.0",
       currentVersion: "0.1.1",
@@ -48,23 +60,19 @@ describe("UpdateSettings", () => {
     vi.spyOn(api, "isDesktop").mockReturnValue(true);
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<UpdateSettings onError={vi.fn()}/>);
+    render(<UpdateSettings onError={vi.fn()} />);
     await user.click(screen.getByRole("button", { name: "检查更新" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "发现 CNshell 0.2.0（当前 0.1.1）",
     );
     expect(screen.getByText("Security fixes")).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole("button", { name: "下载并安装 0.2.0" }),
-    );
+    await user.click(screen.getByRole("button", { name: "下载并安装 0.2.0" }));
     expect(confirm).toHaveBeenCalledWith(
       "下载并安装 CNshell 0.2.0？安装完成后请重新启动应用。",
     );
     expect(downloadAndInstall).toHaveBeenCalledOnce();
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "更新已安装",
-    );
+    expect(await screen.findByRole("status")).toHaveTextContent("更新已安装");
   });
 
   it("keeps the current version available when installation fails", async () => {
@@ -80,7 +88,7 @@ describe("UpdateSettings", () => {
     vi.spyOn(api, "isDesktop").mockReturnValue(true);
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    render(<UpdateSettings onError={onError}/>);
+    render(<UpdateSettings onError={onError} />);
     await user.click(screen.getByRole("button", { name: "检查更新" }));
     await user.click(
       await screen.findByRole("button", { name: "下载并安装 0.2.0" }),

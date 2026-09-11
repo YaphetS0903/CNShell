@@ -32,7 +32,7 @@
 
 ## 核心安全策略
 
-- macOS 正式包采用 Developer ID 站外分发并显式启用 Hardened Runtime，主程序、FreeRDP、Mosh、G-Kermit 和 MCP sidecar 必须使用同一 Developer ID 与可信时间戳。App Sandbox 不启用：PTY、X11 Unix socket、Serial 和受管 sidecar 均为产品核心能力；文件访问仍通过原生选择器和 security-scoped Bookmark 最小授权。RDP 麦克风默认关闭，只有用户在连接设置中明确启用后才使用 `NSMicrophoneUsageDescription` 请求系统权限。
+- macOS 当前通过 GitHub Releases 站外分发，使用带 Hardened Runtime 的 ad-hoc 签名，并以 Tauri minisign 验证一键更新包。若以后启用 Developer ID，主程序、FreeRDP、Mosh、G-Kermit 和 MCP sidecar 必须使用同一身份与可信时间戳。App Sandbox 不启用：PTY、X11 Unix socket、Serial 和受管 sidecar 均为产品核心能力；文件访问仍通过原生选择器和 security-scoped Bookmark 最小授权。RDP 麦克风默认关闭，只有用户在连接设置中明确启用后才使用 `NSMicrophoneUsageDescription` 请求系统权限。
 - Windows 安装包最低要求 Windows 10 22H2（build 19045），以当前用户模式安装并使用 WebView2 bootstrapper。取得 Authenticode 后，主程序、FreeRDP、Mosh、G-Kermit、MCP sidecar 和 NSIS 安装包必须全部签名并使用可信时间戳；在此之前 Beta 必须明确说明 SmartScreen 风险。Windows 本地 Shell 使用 ConPTY，路径访问使用原生选择器和经校验的绝对路径记录。
 - macOS 外部验收预检固定使用系统 PATH，只读取条件状态且不发起网络连接、触发生物识别或打开设备。输出不包含证书名称、密钥、公钥、URL、主机、账号、cookie 或设备路径；落盘报告拒绝符号链接并通过同目录临时文件原子写入，权限固定为 `0600`。Windows 安装生命周期、凭据往返和原生关闭由隔离的 CI 账户执行；CI 证据不替代真机交互验收。
 - 默认严格校验 SSH 主机密钥。首次连接显式确认，变化立即阻断。

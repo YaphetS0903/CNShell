@@ -7,7 +7,7 @@
 CNshell 是面向 macOS 与 Windows 的 SSH、SFTP、Linux 监控和 RDP 工作区。它将远程终端、文件管理、服务器状态与连接资料集中在一个原生桌面应用中。
 
 > [!WARNING]
-> `v0.2.0-beta.11` 是未做商业代码签名的跨平台预发布版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode，x64 为 Beta、ARM64 为 Preview。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。updater minisign 只验证更新包，不能替代操作系统代码签名。
+> `v0.2.0-beta.11` 是未做商业代码签名的跨平台预发布版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode，x64 为 Beta、ARM64 为 Preview。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。GitHub 更新通道已启用 Tauri minisign 验签；它只验证更新包，不能替代操作系统代码签名。
 
 ## 下载
 
@@ -74,7 +74,7 @@ DMG 已包含 universal FreeRDP 客户端；Windows 安装包会包含对应架�
 
 ## 已知限制
 
-- 当前 Beta 未完成 Developer ID 签名、公证和正式自动更新通道。
+- 当前 Beta 已使用 GitHub Releases、HTTPS 版本清单和 Tauri minisign 提供应用内一键更新；Developer ID、公证和 Authenticode 不属于当前 GitHub 发布的前置条件。
 - RDP 采用独立 FreeRDP 窗口深度联动（状态、定位、聚焦/隐藏、全屏、显示器、缩放、画质、剪贴板、音频和目录映射）；由于嵌入画面会破坏 SDL 原生输入与 sidecar 崩溃隔离，暂不把像素强行搬进 WebView。
 - Windows 10/11 x64、Windows 11 ARM64、真实 Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver/Narrator 真机矩阵仍待扩大；ARM64 在原生验收前保持 Preview。
 - Zmodem 已完成 `lrzsz` 双向互操作，Mosh 已完成真实公网 UDP 短测，X11 已完成真实 SSH request；Mosh 漫游/Intel，以及 XQuartz 或 VcXsrv/Xming 图形窗口仍待对应环境验收。
@@ -137,4 +137,4 @@ CNSHELL_TRANSFER_ACCEPTANCE_LEVEL=quick npm run test:transfer-acceptance
 npm run tauri build -- --bundles app,dmg
 ```
 
-正式签名、公证和 updater 发布流程见 [发布文档](docs/RELEASE.md)。
+GitHub 一键更新及可选的系统代码签名流程见 [发布文档](docs/RELEASE.md)。

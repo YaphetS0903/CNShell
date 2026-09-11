@@ -48,7 +48,7 @@ impl Database {
     }
 
     pub async fn deleted_connections(&self) -> AppResult<Vec<ConnectionProfile>> {
-        let rows=sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, certificate_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, updated_at, last_connected_at FROM connections WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetch_all(&self.pool).await?;
+        let rows=sqlx::query("SELECT id, folder_id, protocol, name, host, port, username, auth_type, private_key_path, certificate_path, host_key_policy, note, tags, encoding, startup_command, proxy_id, environment, credential_ref, created_at, deleted_at AS updated_at, last_connected_at FROM connections WHERE deleted_at IS NOT NULL ORDER BY deleted_at DESC").fetch_all(&self.pool).await?;
         Ok(rows.into_iter().map(connection_from_row).collect())
     }
 
@@ -523,6 +523,25 @@ impl Database {
             .await?;
         Ok(())
     }
+    pub async fn history_summary(
+        &self,
+        connection_id: &str,
+    ) -> AppResult<Vec<CommandHistorySummary>> {
+        sqlx::query("SELECT command,COUNT(*) AS count,MAX(created_at) AS last_used_at FROM command_history WHERE connection_id=? GROUP BY command ORDER BY last_used_at DESC LIMIT 20")
+            .bind(connection_id)
+            .fetch_all(&self.pool)
+            .await
+            .map(|rows| {
+                rows.into_iter()
+                    .map(|row| CommandHistorySummary {
+                        command: row.get("command"),
+                        count: row.get("count"),
+                        last_used_at: row.get("last_used_at"),
+                    })
+                    .collect()
+            })
+            .map_err(Into::into)
+    }
     pub async fn add_history(&self, connection_id: &str, command: &str) -> AppResult<()> {
         if command.len() > 64 * 1024 {
             return Err(AppError::Validation("单条命令历史不能超过 64 KB".into()));
@@ -565,6 +584,60 @@ impl Database {
                 .fetch_optional(&self.pool)
                 .await?;
         Ok(value.and_then(|v| serde_json::from_str(&v).ok()))
+    }
+    pub async fn save_automation_run(&self, run: &AutomationRunRecord) -> AppResult<()> {
+        let results = serde_json::to_string(&run.results)
+            .map_err(|error| AppError::Storage(error.to_string()))?;
+        let mut transaction = self.pool.begin().await?;
+        sqlx::query("INSERT OR REPLACE INTO automation_runs(id,plan_id,plan_name,connection_id,source,schedule_id,started_at,finished_at,status,results,error)VALUES(?,?,?,?,?,?,?,?,?,?,?)")
+            .bind(&run.id)
+            .bind(&run.plan_id)
+            .bind(&run.plan_name)
+            .bind(&run.connection_id)
+            .bind(&run.source)
+            .bind(&run.schedule_id)
+            .bind(&run.started_at)
+            .bind(&run.finished_at)
+            .bind(&run.status)
+            .bind(results)
+            .bind(&run.error)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query("DELETE FROM automation_runs WHERE id NOT IN (SELECT id FROM automation_runs ORDER BY started_at DESC LIMIT 100)")
+            .execute(&mut *transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+    pub async fn automation_runs(&self) -> AppResult<Vec<AutomationRunRecord>> {
+        let rows = sqlx::query("SELECT id,plan_id,plan_name,connection_id,source,schedule_id,started_at,finished_at,status,results,error FROM automation_runs ORDER BY started_at DESC LIMIT 100")
+            .fetch_all(&self.pool)
+            .await?;
+        rows.into_iter()
+            .map(|row| {
+                let results: String = row.get("results");
+                Ok(AutomationRunRecord {
+                    id: row.get("id"),
+                    plan_id: row.get("plan_id"),
+                    plan_name: row.get("plan_name"),
+                    connection_id: row.get("connection_id"),
+                    source: row.get("source"),
+                    schedule_id: row.get("schedule_id"),
+                    started_at: row.get("started_at"),
+                    finished_at: row.get("finished_at"),
+                    status: row.get("status"),
+                    results: serde_json::from_str(&results)
+                        .map_err(|error| AppError::Storage(error.to_string()))?,
+                    error: row.get("error"),
+                })
+            })
+            .collect()
+    }
+    pub async fn clear_automation_runs(&self) -> AppResult<()> {
+        sqlx::query("DELETE FROM automation_runs")
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
     pub async fn save_named_state(&self, key: &str, value: &serde_json::Value) -> AppResult<()> {
         if !key.starts_with("cnshell.") {
@@ -922,6 +995,9 @@ pub fn validate_settings(settings: &AppSettings) -> AppResult<()> {
     if !["system", "dark", "light", "highContrast"].contains(&settings.theme.as_str()) {
         return Err(AppError::Validation("主题设置无效".into()));
     }
+    if ![90, 100, 110, 125].contains(&settings.interface_scale_percent) {
+        return Err(AppError::Validation("界面缩放设置无效".into()));
+    }
     if ![1000, 2000, 5000].contains(&settings.monitor_interval_ms) {
         return Err(AppError::Validation("监控刷新间隔无效".into()));
     }
@@ -1096,6 +1172,9 @@ mod tests {
         };
         assert!(validate_settings(&settings).is_err());
         settings.theme = "system".into();
+        settings.interface_scale_percent = 101;
+        assert!(validate_settings(&settings).is_err());
+        settings.interface_scale_percent = 100;
         settings.terminal.font_size = 40;
         assert!(validate_settings(&settings).is_err());
         let mut input = SaveConnectionInput {
@@ -1261,8 +1340,49 @@ mod tests {
         };
         db.save_connection(&input, None).await.unwrap();
         db.add_history(&input.id, "uname -a").await.unwrap();
-        assert_eq!(db.clear_history().await.unwrap(), 1);
+        db.add_history(&input.id, "uname -a").await.unwrap();
+        let summary = db.history_summary(&input.id).await.unwrap();
+        assert_eq!(summary.len(), 1);
+        assert_eq!(summary[0].command, "uname -a");
+        assert_eq!(summary[0].count, 2);
+        assert!(!summary[0].last_used_at.is_empty());
+        assert_eq!(db.clear_history().await.unwrap(), 2);
         assert!(db.history(&input.id).await.unwrap().is_empty());
+    }
+    #[tokio::test]
+    async fn automation_run_history_round_trips_and_can_be_cleared() {
+        let directory = tempfile::tempdir().unwrap();
+        let db = Database::open(&directory.path().join("automation-runs.sqlite"))
+            .await
+            .unwrap();
+        let run = AutomationRunRecord {
+            id: "run-1".into(),
+            plan_id: "plan-1".into(),
+            plan_name: "Health check".into(),
+            connection_id: "server-1".into(),
+            source: "scheduled".into(),
+            schedule_id: Some("schedule-1".into()),
+            started_at: "2026-09-11T01:00:00Z".into(),
+            finished_at: "2026-09-11T01:00:01Z".into(),
+            status: "completed".into(),
+            results: vec![AutomationStepResult {
+                step_id: "step-1".into(),
+                kind: "command".into(),
+                status: "completed".into(),
+                started_at: "2026-09-11T01:00:00Z".into(),
+                duration_ms: 900,
+                output: "ok".into(),
+                error: None,
+            }],
+            error: None,
+        };
+        db.save_automation_run(&run).await.unwrap();
+        let loaded = db.automation_runs().await.unwrap();
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, run.id);
+        assert_eq!(loaded[0].results[0].output, "ok");
+        db.clear_automation_runs().await.unwrap();
+        assert!(db.automation_runs().await.unwrap().is_empty());
     }
     #[tokio::test]
     async fn completed_transfer_persists_its_renamed_destination() {
