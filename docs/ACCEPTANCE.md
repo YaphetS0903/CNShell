@@ -311,7 +311,7 @@
 | Ventura、Sonoma、Sequoia 与 Intel 真机 | 外部阻塞 | 最低版本和 universal 构建可静态验证；仍需对应设备运行 |
 | 连续 SSH + 监控、空闲内存 < 150 MB | 用户验收通过 | 用户于约 2 小时 50 分钟时主动结束长测并认可结果；期间 4 条 SSH TCP 连接持续建立，RSS 从约 36 MB 降至并稳定在约 21 MB。未宣称实际运行满 8 小时 |
 | 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 本机已完成可回滚生命周期回归：覆盖安装、临时移除 App、恢复启动后，6 条连接记录稳定哈希与 6 个关联 Keychain 条目均保持不变；文档已提供。仍需另一台无开发环境的干净 Mac 验收首次安装与 Gatekeeper 流程 |
-| GitHub Releases 与 Tauri 签名 updater | 通过 | 应用内已实现检查更新、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。公开 Beta 通道固定 HTTPS endpoint 与 updater 公钥，GitHub Actions 使用现有私钥签名 macOS/Windows 更新包，跨平台 verifier 验签后才发布四平台 `latest.json`。Beta.1 → Beta.2 已完成真实应用内更新和数据保留验收；Beta.12 的 [GitHub Actions run `34598271089`](https://github.com/YaphetS0903/CNShell/actions/runs/34598271089) 中 macOS、Windows x64、Windows ARM64 与发布汇总 job 全部通过，18 个 Release 附件、签名和在线清单已经公开。本地、`main` raw endpoint 与 Release 附件的 `latest.json` SHA-256 均为 `fbbe02e9c90ca3bbbc26c3606c48561fb1d8c3e2b99453900de175b11adef48f`；另从公开 Release 下载 macOS updater 归档与签名，以项目内 verifier 对 `tauri.beta.json` 公钥完成独立验签。Developer ID、公证和 Authenticode 只影响操作系统首次安装信任提示，不属于当前 GitHub 一键更新的前置条件。|
+| GitHub Releases 与 Tauri 签名 updater | 通过 | 应用内已实现检查更新、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。公开 Beta 通道固定 HTTPS endpoint 与 updater 公钥，GitHub Actions 使用现有私钥签名 macOS/Windows 更新包，跨平台 verifier 验签后才发布四平台 `latest.json`。Beta.1 → Beta.2 已完成真实应用内更新和数据保留验收；Beta.13 的 [GitHub Actions run `35483578514`](https://github.com/YaphetS0903/CNShell/actions/runs/35483578514) 中 macOS、Windows x64、Windows ARM64 与发布汇总 job 全部通过，18 个 Release 附件、签名和在线清单已经公开。本地、`main` raw endpoint 与 Release 附件的 `latest.json` SHA-256 均为 `20405f5cd8cd6ff60cd487c9cfbb7fa2568b70d9fd244de2b4716c04dcaff624`；另从公开 Release 下载 macOS updater 归档与签名，以项目内 verifier 对 `tauri.beta.json` 公钥完成独立验签。Developer ID、公证和 Authenticode 只影响操作系统首次安装信任提示，不属于当前 GitHub 一键更新的前置条件。|
 
 本机候选包另已完成以下桌面证据：DMG 只读挂载后，包内应用通过 `codesign --verify --deep --strict` 并连续运行；辅助功能树可识别原生菜单、主工具栏、连接表单字段和安全密码输入框，模态打开后焦点进入关闭按钮，Escape 可关闭。该 ad-hoc 签名只用于本机结构验收，不等同 Developer ID 签名或 Apple 公证。
 
@@ -333,7 +333,7 @@
 
 ## 5. 结论
 
-当前工作区版本为 **v0.2.0-beta.13 发布候选**，公开 GitHub 发布链路基线为 **v0.2.0-beta.12 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试；Beta.13 修复了桌面 WebView 未可靠显示系统口令提示时，加密凭据导出提交空口令的问题，并为导出增加至少 8 位口令、二次确认、显隐控制与就地校验，也为加密导入提供应用内口令恢复流程。Beta.13 只有在当前改动提交、完整门禁通过并由对应标签构建后才能表述为公开包。Beta.12 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过；不同设备、真实服务和辅助功能验收继续按第 3 节边界处理。
+当前工作区与公开 GitHub 发布链路基线均为 **v0.2.0-beta.13 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试；Beta.13 修复了桌面 WebView 未可靠显示系统口令提示时，加密凭据导出提交空口令的问题，并为导出增加至少 8 位口令、二次确认、显隐控制与就地校验，也为加密导入提供应用内口令恢复流程。Beta.13 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过；不同设备、真实服务和辅助功能验收继续按第 3 节边界处理。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 
