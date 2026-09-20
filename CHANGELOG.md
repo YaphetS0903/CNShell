@@ -2,6 +2,22 @@
 
 本项目采用语义化版本号。GitHub 发布包使用独立的 Tauri updater 签名与更新通道；Developer ID、公证和 Authenticode 是可选的系统安装信任增强项，不决定版本号。
 
+## 0.2.0（首个跨平台正式版）
+
+### 修复
+
+- macOS 凭据改为集中保存在一个 CNshell 钥匙串条目中；旧版逐连接条目在首次读取时安全迁移，完成后加密导出不再按连接数量反复弹出系统授权。
+- 正式版 updater 优先使用 GitHub Release 上固定的 `release-channel/latest.json`，并保留仓库 raw 清单作为备用地址，修复部分 Windows 网络无法访问 `raw.githubusercontent.com` 时更新检查直接失败的问题；旧 Beta 通道同步发布同一份清单，允许已安装 Beta 升级到正式版。
+- “打开手动下载页”直达最新正式版，并将网络连接错误转换为可操作的中文提示。
+
+### 安全与兼容性
+
+- 凭据仍只保存在 macOS Keychain；共享条目不包含导出口令，旧条目迁移后仍由系统钥匙串访问控制保护。
+- 首次迁移尚未集中保存的旧凭据时，macOS 可能仍会对旧条目逐项授权一次；迁移完成后后续导出只访问共享条目。
+- 加密备份格式、Argon2id + AES-256-GCM、Windows 凭据管理器导入和 updater minisign 公钥保持兼容。
+- 前端单元测试 319/319、WebKit 端到端测试 24/24、Rust 测试 280/280 通过；ESLint、TypeScript、Rust Clippy、生产构建、格式检查和 npm 中等级依赖审计通过。
+- 测试框架升级到已修复路径遍历问题的 Vitest 4.1.11，`npm audit --audit-level=moderate` 为 0 项漏洞。
+
 ## 0.2.0-beta.13（跨平台凭据备份修复版）
 
 ### 修复

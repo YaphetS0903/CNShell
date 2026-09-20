@@ -7,17 +7,17 @@
 CNshell 是面向 macOS 与 Windows 的 SSH、SFTP、Linux 监控和 RDP 工作区。它将远程终端、文件管理、服务器状态与连接资料集中在一个原生桌面应用中。
 
 > [!WARNING]
-> `v0.2.0-beta.13` 是未做商业代码签名的跨平台预发布版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode，x64 为 Beta、ARM64 为 Preview。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。GitHub 更新通道已启用 Tauri minisign 验签；它只验证更新包，不能替代操作系统代码签名。
+> `v0.2.0` 是通过 GitHub Releases 分发的跨平台正式版。macOS 包采用 ad-hoc 签名且没有 Developer ID/公证；Windows 安装包没有 Authenticode。只从本仓库 Release 下载并先核对 `SHA256SUMS.txt`。不要关闭 Gatekeeper、SmartScreen 或其他系统安全功能。GitHub 更新通道已启用 Tauri minisign 验签；它只验证更新包，不能替代操作系统代码签名。
 
 ## 下载
 
-- [打开 CNshell v0.2.0-beta.13 预发布页](https://github.com/YaphetS0903/CNShell/releases/tag/v0.2.0-beta.13)
-- [下载 macOS universal DMG](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_universal.dmg)
-- [下载 Windows x64 Beta](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_x64-setup.exe)
-- [下载 Windows ARM64 Preview](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_arm64-setup.exe)
-- [下载 SHA256SUMS.txt](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/SHA256SUMS.txt)
+- [打开 CNshell v0.2.0 正式发布页](https://github.com/YaphetS0903/CNShell/releases/tag/v0.2.0)
+- [下载 macOS universal DMG](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0/CNshell_0.2.0_universal.dmg)
+- [下载 Windows x64](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0/CNshell_0.2.0_x64-setup.exe)
+- [下载 Windows ARM64](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0/CNshell_0.2.0_arm64-setup.exe)
+- [下载 SHA256SUMS.txt](https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0/SHA256SUMS.txt)
 - macOS 系统要求：macOS 13 Ventura 或更高版本；支持 Apple Silicon 与 Intel Mac
-- Windows 系统要求：Windows 10 22H2（build 19045）或 Windows 11；目标架构为 x64 与 ARM64 Preview
+- Windows 系统要求：Windows 10 22H2（build 19045）或 Windows 11；目标架构为 x64 与 ARM64，ARM64 尚缺少原生设备验收
 
 macOS 首次启动前先核对哈希，再在 Finder 中对 CNshell 使用右键“打开”。不要执行 `xattr -cr`，也不要关闭 Gatekeeper。Windows 若显示 SmartScreen“未知发布者”或信誉提示，只能在仓库来源和哈希都正确时继续；不要关闭 SmartScreen。
 
@@ -25,7 +25,7 @@ DMG 已包含 universal FreeRDP 客户端；Windows 安装包会包含对应架�
 
 ## 安装
 
-1. 下载 `CNshell_0.2.0-beta.13_universal.dmg` 和 `SHA256SUMS.txt`，核对 SHA-256 后打开 DMG。
+1. 下载 `CNshell_0.2.0_universal.dmg` 和 `SHA256SUMS.txt`，核对 SHA-256 后打开 DMG。
 2. 将 `CNshell.app` 拖入“应用程序”。
 3. 在 Finder 中打开“应用程序”，首次启动时选择 CNshell 并使用右键菜单中的“打开”。
 4. 仔细阅读 macOS 的来源提示；只有确认 DMG 来自本仓库发布页时才继续。
@@ -74,7 +74,7 @@ DMG 已包含 universal FreeRDP 客户端；Windows 安装包会包含对应架�
 
 ## 已知限制
 
-- 当前 Beta 已使用 GitHub Releases、HTTPS 版本清单和 Tauri minisign 提供应用内一键更新；Developer ID、公证和 Authenticode 不属于当前 GitHub 发布的前置条件。
+- 当前正式版使用 GitHub Releases、HTTPS 版本清单和 Tauri minisign 提供应用内一键更新；Developer ID、公证和 Authenticode 不属于当前 GitHub 发布的前置条件。
 - RDP 采用独立 FreeRDP 窗口深度联动（状态、定位、聚焦/隐藏、全屏、显示器、缩放、画质、剪贴板、音频和目录映射）；由于嵌入画面会破坏 SDL 原生输入与 sidecar 崩溃隔离，暂不把像素强行搬进 WebView。
 - Windows 10/11 x64、Windows 11 ARM64、真实 Windows RDP、Intel Mac、Ventura/Sonoma/Sequoia、完整弱网和 VoiceOver/Narrator 真机矩阵仍待扩大；ARM64 在原生验收前保持 Preview。
 - Zmodem 已完成 `lrzsz` 双向互操作，Mosh 已完成真实公网 UDP 短测，X11 已完成真实 SSH request；Mosh 漫游/Intel，以及 XQuartz 或 VcXsrv/Xming 图形窗口仍待对应环境验收。
@@ -100,7 +100,7 @@ DMG 已包含 universal FreeRDP 客户端；Windows 安装包会包含对应架�
 | [快捷键](docs/SHORTCUTS.md) | 全局、终端和文件操作快捷键 |
 | [故障排查](docs/TROUBLESHOOTING.md) | 连接、认证、SFTP、监控和 RDP 常见问题 |
 | [安装说明](docs/INSTALLATION.md) | 安装、手动升级、数据保留和完整卸载 |
-| [Beta 测试说明](docs/BETA_TESTING.md) | 未签名预发布版下载、安全提示和真机反馈范围 |
+| [正式版发布说明](docs/RELEASE_NOTES.md) | 下载、安全提示和真机反馈范围 |
 | [Updater 密钥管理](docs/UPDATER_KEY_MANAGEMENT.md) | 更新签名公钥、私钥保管和兼容轮换规则 |
 | [版本记录](CHANGELOG.md) | 当前功能、修复与已知限制 |
 

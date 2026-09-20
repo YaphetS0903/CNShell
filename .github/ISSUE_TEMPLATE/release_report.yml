@@ -1,11 +1,11 @@
-name: Beta 真机反馈
-description: 报告 CNshell 跨平台 Beta 的安装、连接、RDP、中文输入或显示问题
-title: "[Beta] "
+name: 真机反馈
+description: 报告 CNshell 正式版的安装、连接、RDP、中文输入或显示问题
+title: "[Device] "
 body:
   - type: markdown
     attributes:
       value: |
-        感谢参与 CNshell Beta 测试。请勿提交密码、私钥、令牌、完整主机地址或未检查的诊断文件。
+        感谢参与 CNshell 真机测试。请勿提交密码、私钥、令牌、完整主机地址或未检查的诊断文件。
 
   - type: dropdown
     id: system
@@ -26,7 +26,7 @@ body:
     id: version
     attributes:
       label: CNshell 版本
-      placeholder: 例如 0.2.0-beta.1
+      placeholder: 例如 0.2.0
     validations:
       required: true
 

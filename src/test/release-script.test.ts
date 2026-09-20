@@ -29,20 +29,20 @@ describe("release script gates", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
-  const betaReleaseWorkflow = readFileSync(
-    resolve(".github/workflows/beta-release.yml"),
+  const unsignedReleaseWorkflow = readFileSync(
+    resolve(".github/workflows/unsigned-release.yml"),
     "utf8",
   );
-  const betaConfigContents = readFileSync(
-    resolve("src-tauri/tauri.beta.json"),
+  const updaterConfigContents = readFileSync(
+    resolve("src-tauri/tauri.updater.json"),
     "utf8",
   );
-  const betaConfig = JSON.parse(betaConfigContents) as {
+  const updaterConfig = JSON.parse(updaterConfigContents) as {
     plugins: { updater: { endpoints: string[]; pubkey: string } };
   };
-  const betaTesting = readFileSync(resolve("docs/BETA_TESTING.md"), "utf8");
-  const betaReport = readFileSync(
-    resolve(".github/ISSUE_TEMPLATE/beta_report.yml"),
+  const releaseNotes = readFileSync(resolve("docs/RELEASE_NOTES.md"), "utf8");
+  const releaseReport = readFileSync(
+    resolve(".github/ISSUE_TEMPLATE/release_report.yml"),
     "utf8",
   );
   const packageJson = JSON.parse(
@@ -108,27 +108,27 @@ describe("release script gates", () => {
     expect(releaseWorkflow).toContain("bundle/latest.json");
   });
 
-  it("keeps the unsigned Beta independent of Apple credentials while signing updater artifacts", () => {
-    expect(betaReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_BASE64");
-    expect(betaReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_PASSWORD");
-    expect(betaReleaseWorkflow).not.toContain("APPLE_API_ISSUER");
-    expect(betaReleaseWorkflow).not.toContain("APPLE_API_KEY_CONTENT");
-    expect(betaReleaseWorkflow).toContain('APPLE_SIGNING_IDENTITY: "-"');
-    expect(betaReleaseWorkflow).toContain("secrets.TAURI_SIGNING_PRIVATE_KEY");
-    expect(betaReleaseWorkflow).toContain(
+  it("keeps the unsigned release independent of Apple credentials while signing updater artifacts", () => {
+    expect(unsignedReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_BASE64");
+    expect(unsignedReleaseWorkflow).not.toContain("APPLE_CERTIFICATE_PASSWORD");
+    expect(unsignedReleaseWorkflow).not.toContain("APPLE_API_ISSUER");
+    expect(unsignedReleaseWorkflow).not.toContain("APPLE_API_KEY_CONTENT");
+    expect(unsignedReleaseWorkflow).toContain('APPLE_SIGNING_IDENTITY: "-"');
+    expect(unsignedReleaseWorkflow).toContain("secrets.TAURI_SIGNING_PRIVATE_KEY");
+    expect(unsignedReleaseWorkflow).toContain(
       "secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
     );
-    expect(betaReleaseWorkflow).toContain("--verify-updater-signature");
+    expect(unsignedReleaseWorkflow).toContain("--verify-updater-signature");
   });
 
-  it("publishes a verified four-platform Beta without overwriting a public release", () => {
+  it("publishes a verified four-platform stable version without overwriting a public release", () => {
     for (const platform of [
       "darwin-aarch64",
       "darwin-x86_64",
       "windows-x86_64",
       "windows-aarch64",
     ]) {
-      expect(betaReleaseWorkflow).toContain(platform);
+      expect(unsignedReleaseWorkflow).toContain(platform);
     }
     for (const artifact of [
       "SHA256SUMS.txt",
@@ -140,51 +140,59 @@ describe("release script gates", () => {
       "gku201.tar.gz",
       "gkermit-windows-port-source.zip",
     ]) {
-      expect(betaReleaseWorkflow).toContain(artifact);
+      expect(unsignedReleaseWorkflow).toContain(artifact);
     }
-    expect(betaReleaseWorkflow).toContain("gh release create");
-    expect(betaReleaseWorkflow).toContain("--draft --prerelease");
-    expect(betaReleaseWorkflow).toContain(
+    expect(unsignedReleaseWorkflow).toContain("gh release create");
+    expect(unsignedReleaseWorkflow).toContain("--draft --target");
+    expect(unsignedReleaseWorkflow).toContain(
       "Refusing to overwrite an existing public release",
     );
-    expect(betaReleaseWorkflow).toContain("updates/beta/latest.json");
-    const createDraft = betaReleaseWorkflow.indexOf("gh release create");
-    const publishPreRelease = betaReleaseWorkflow.indexOf(
-      "--draft=false --prerelease",
+    expect(unsignedReleaseWorkflow).toContain("updates/latest.json");
+    expect(unsignedReleaseWorkflow).toContain("updates/beta/latest.json");
+    const createDraft = unsignedReleaseWorkflow.indexOf("gh release create");
+    const publishStableRelease = unsignedReleaseWorkflow.indexOf(
+      "--draft=false --latest",
     );
     expect(createDraft).toBeGreaterThan(0);
-    expect(publishPreRelease).toBeGreaterThan(createDraft);
-    expect(betaReleaseWorkflow.indexOf("remoteHash")).toBeLessThan(
-      publishPreRelease,
+    expect(publishStableRelease).toBeGreaterThan(createDraft);
+    expect(unsignedReleaseWorkflow.indexOf("remoteHash")).toBeLessThan(
+      publishStableRelease,
     );
   });
 
-  it("pins the Beta updater endpoint and public key", () => {
-    expect(betaConfig.plugins.updater.endpoints).toEqual([
-      "https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/beta/latest.json",
+  it("pins the stable updater endpoints and public key", () => {
+    expect(updaterConfig.plugins.updater.endpoints).toEqual([
+      "https://github.com/YaphetS0903/CNShell/releases/download/release-channel/latest.json",
+      "https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/latest.json",
     ]);
-    expect(betaConfig.plugins.updater.pubkey).toHaveLength(152);
+    expect(updaterConfig.plugins.updater.pubkey).toHaveLength(152);
     expect(
       createHash("sha256")
-        .update(betaConfig.plugins.updater.pubkey)
+        .update(updaterConfig.plugins.updater.pubkey)
         .digest("hex"),
     ).toBe("ffa2a9cc94b85eec6df771fcc6fffd5bd51933b83061d216d45582995b45331d");
+    expect(unsignedReleaseWorkflow).toContain('Tag = "release-channel"');
+    expect(unsignedReleaseWorkflow).toContain('Tag = "beta-channel"');
+    expect(unsignedReleaseWorkflow).toContain("gh release upload $channelTag");
+    expect(unsignedReleaseWorkflow).toContain(
+      "Release channel manifest does not match release asset",
+    );
   });
 
-  it("documents unsigned Beta warnings and the real-device feedback matrix", () => {
-    expect(betaTesting).toContain("Gatekeeper");
-    expect(betaTesting).toContain("SmartScreen");
-    expect(betaTesting).toContain("不要关闭 Gatekeeper");
-    expect(betaTesting).toContain("不要关闭 SmartScreen");
-    expect(betaTesting).toContain("不能替代 Developer ID");
-    expect(betaTesting).toContain("Windows 10 22H2");
-    expect(betaTesting).toContain("Windows 11 ARM64");
-    expect(betaTesting).toContain("中文 IME");
-    expect(betaTesting).toContain("100%/125%/150%/200% DPI");
-    expect(betaReport).toContain("Windows 10 22H2 x64");
-    expect(betaReport).toContain("Windows 11 ARM64");
-    expect(betaReport).toContain("中文输入");
-    expect(betaReport).toContain("DPI");
+  it("documents unsigned release warnings and the real-device feedback matrix", () => {
+    expect(releaseNotes).toContain("Gatekeeper");
+    expect(releaseNotes).toContain("SmartScreen");
+    expect(releaseNotes).toContain("不要关闭 Gatekeeper");
+    expect(releaseNotes).toContain("不要关闭 SmartScreen");
+    expect(releaseNotes).toContain("不能替代 Developer ID");
+    expect(releaseNotes).toContain("Windows 10 22H2");
+    expect(releaseNotes).toContain("Windows 11 ARM64");
+    expect(releaseNotes).toContain("中文 IME");
+    expect(releaseNotes).toContain("100%/125%/150%/200% DPI");
+    expect(releaseReport).toContain("Windows 10 22H2 x64");
+    expect(releaseReport).toContain("Windows 11 ARM64");
+    expect(releaseReport).toContain("中文输入");
+    expect(releaseReport).toContain("DPI");
   });
 
   it("removes release credentials before running the artifact upload action", () => {
@@ -298,8 +306,8 @@ describe("relay container smoke", () => {
     resolve(".github/workflows/release.yml"),
     "utf8",
   );
-  const betaReleaseWorkflow = readFileSync(
-    resolve(".github/workflows/beta-release.yml"),
+  const unsignedReleaseWorkflow = readFileSync(
+    resolve(".github/workflows/unsigned-release.yml"),
     "utf8",
   );
   const windowsPackageWorkflow = readFileSync(
@@ -405,7 +413,7 @@ describe("relay container smoke", () => {
       workflow,
       releaseWorkflow,
       windowsPackageWorkflow,
-      betaReleaseWorkflow,
+      unsignedReleaseWorkflow,
     ]) {
       const actionLines = contents
         .split(/\r?\n/)
@@ -442,20 +450,20 @@ describe("relay container smoke", () => {
       windowsPackageWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
     expect(
-      betaReleaseWorkflow.match(/persist-credentials: false/g),
+      unsignedReleaseWorkflow.match(/persist-credentials: false/g),
     ).toHaveLength(
-      betaReleaseWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
+      unsignedReleaseWorkflow.match(/actions\/checkout@/g)?.length ?? 0,
     );
     for (const contents of [
       workflow,
       releaseWorkflow,
       windowsPackageWorkflow,
-      betaReleaseWorkflow,
+      unsignedReleaseWorkflow,
     ]) {
       expect(contents).toMatch(/^permissions:\n {2}contents: read$/m);
     }
     expect(releaseWorkflow).toContain(uploadArtifact);
-    expect(betaReleaseWorkflow).toContain(uploadArtifact);
+    expect(unsignedReleaseWorkflow).toContain(uploadArtifact);
     expect(dependabot).toContain("package-ecosystem: github-actions");
     expect(dependabot).toContain("interval: monthly");
   });
@@ -521,7 +529,7 @@ describe("relay container smoke", () => {
     expect(peVerifier).toContain("RequireWindowsGui");
     expect(windowsPackageWorkflow).toContain("-RequireWindowsGui");
     expect(releaseWorkflow).toContain("-RequireWindowsGui");
-    expect(betaReleaseWorkflow).toContain("-RequireWindowsGui");
+    expect(unsignedReleaseWorkflow).toContain("-RequireWindowsGui");
     expect(windowsFreeRdpBuilder).toContain("Get-VisualStudioGenerator");
     expect(windowsFreeRdpBuilder).toContain("vswhere.exe");
     expect(windowsFreeRdpBuilder).toContain('"x64-windows-static"');

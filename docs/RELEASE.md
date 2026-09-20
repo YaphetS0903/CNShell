@@ -7,29 +7,29 @@
 - Windows x64/ARM64 使用 GitHub `windows-2025` runner、MSVC、CMake、vcpkg 与 NSIS。
 - macOS 使用 ad-hoc 签名，Windows 暂不使用 Authenticode；两端都不能省略 updater 签名和 SHA-256。
 
-## GitHub 跨平台 Beta
+## GitHub 跨平台正式版
 
-当前对外发布使用 `.github/workflows/beta-release.yml`。该流程通过 GitHub Releases 和 `updates/beta/latest.json` 提供应用内一键更新，不读取 Apple 证书、公证或 Authenticode 凭据，只需要仓库 Actions Secrets：
+当前对外发布使用 `.github/workflows/unsigned-release.yml`。该流程通过 GitHub Releases、固定的 `release-channel` 和 `updates/latest.json` 提供应用内一键更新，不读取 Apple 证书、公证或 Authenticode 凭据，只需要仓库 Actions Secrets：
 
 - `TAURI_SIGNING_PRIVATE_KEY`
 - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-macOS universal App/DMG 使用 ad-hoc 签名；Windows x64 Beta 与 ARM64 Preview 使用未签名 NSIS。macOS updater 使用 `.app.tar.gz`，Windows updater 直接使用 NSIS `*-setup.exe`，两者均生成对应 `.sig`。Windows x64 CNshell 会再次验证 macOS universal 归档以及 Windows x64、ARM64 安装器，随后生成包含 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` 的 `latest.json`。
+macOS universal App/DMG 使用 ad-hoc 签名；Windows x64 与 ARM64 使用未做 Authenticode 的 NSIS。macOS updater 使用 `.app.tar.gz`，Windows updater 直接使用 NSIS `*-setup.exe`，两者均生成对应 `.sig`。Windows x64 CNshell 会再次验证 macOS universal 归档以及 Windows x64、ARM64 安装器，随后生成包含 `darwin-aarch64`、`darwin-x86_64`、`windows-x86_64`、`windows-aarch64` 的 `latest.json`。
 
-工作流先创建或更新 Draft Release，并拒绝覆盖同版本的公开 Release。只有附件集合、三份 updater 签名、`SHA256SUMS.txt`、第三方说明、FreeRDP/Mosh/Protocol Buffers/G-Kermit 对应源码，以及远端 `updates/beta/latest.json` 内容全部验证通过后，才把 Release 切换为公开 Pre-release。Beta updater endpoint 固定为 `https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/beta/latest.json`。
+工作流先创建或更新 Draft Release，并拒绝覆盖同版本的公开 Release。只有附件集合、三份 updater 签名、`SHA256SUMS.txt`、第三方说明、FreeRDP/Mosh/Protocol Buffers/G-Kermit 对应源码，以及远端清单内容全部验证通过后，才把 Release 切换为公开正式版。正式版 updater 优先使用 `https://github.com/YaphetS0903/CNShell/releases/download/release-channel/latest.json`，并以 `https://raw.githubusercontent.com/YaphetS0903/CNShell/main/updates/latest.json` 作为备用地址。工作流还把同一清单同步到旧 `beta-channel` 与 `updates/beta/latest.json`，让已安装 Beta 能升级到正式版。
 
 Release 说明必须明确：macOS 没有 Developer ID/公证，只能在核对仓库来源和哈希后通过 Finder 右键“打开”，不能关闭 Gatekeeper；Windows 没有 Authenticode，SmartScreen 可能显示未知发布者，不能关闭 SmartScreen。updater minisign 不能替代任何操作系统代码签名。
 
 标签必须与 `package.json` 版本完全一致：
 
 ```bash
-git tag v0.2.0-beta.13
-git push origin v0.2.0-beta.13
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Updater 密钥的本机 Keychain 位置、GitHub Secret 名称、公钥指纹和禁止直接轮换的规则见 `docs/UPDATER_KEY_MANAGEMENT.md`。以后即使选择增加 Developer ID、公证或 Authenticode，也必须复用同一 updater 密钥，避免已安装版本失去更新路径。
 
-开发用 `tauri.conf.json` 保持空 endpoint，避免本地调试包误连公开更新通道；GitHub 发布使用已入库的 `src-tauri/tauri.beta.json`，其中固定 HTTPS endpoint 与 updater 公钥。
+开发用 `tauri.conf.json` 保持空 endpoint，避免本地调试包误连公开更新通道；GitHub 发布使用已入库的 `src-tauri/tauri.updater.json`，其中固定 HTTPS endpoint 与 updater 公钥。
 
 ## 可选的系统代码签名
 
@@ -73,7 +73,7 @@ CNshell 当前采用 GitHub Releases 站外分发，不以 Mac App Store 为目�
 
 汇总 job 会用 Windows x64 CNshell 验证 macOS updater 归档、Windows x64/ARM64 updater 安装器及其 `.sig`，再生成四平台 `latest.json`、`SHA256SUMS.txt`、第三方说明和对应源码附件。它只创建或更新 Draft Release，且拒绝覆盖同版本的公开 Release；发布负责人核对验收矩阵后才可人工公开。`latest.json` 仍必须部署到 `tauri.release.json` 配置的 endpoint，不得只上传 DMG/EXE 后宣称自动更新可用。
 
-首个未做 Authenticode 的 Windows Beta 会触发 SmartScreen 信誉提示。发布页必须同时提供 SHA-256、仓库来源和该限制，不能指导用户关闭 SmartScreen 或系统安全功能。取得可信代码签名证书或云签名服务后，应同时签名主程序、FreeRDP helper 和 NSIS 安装包；Tauri updater minisign 不能替代 Authenticode，反之亦然。
+未做 Authenticode 的 Windows 正式版可能触发 SmartScreen 信誉提示。发布页必须同时提供 SHA-256、仓库来源和该限制，不能指导用户关闭 SmartScreen 或系统安全功能。取得可信代码签名证书或云签名服务后，应同时签名主程序、FreeRDP helper 和 NSIS 安装包；Tauri updater minisign 不能替代 Authenticode，反之亦然。
 
 ## Windows 候选门禁
 
@@ -88,6 +88,6 @@ Windows 安装包最低系统为 Windows 10 22H2（build 19045）。NSIS 在复�
 5. x64 安装器完成静默安装、WebView2 renderer、SQLite 初始化、Credential Manager 保留、原生关闭、覆盖升级、卸载、重装；ARM64 完成应用 PE、NSIS 和 artifact 检查。
 6. 安装器创建开始菜单入口，不在干净账户默认创建桌面快捷方式；升级前已有的用户桌面快捷方式不得被误删。
 
-普通 `Windows Packaging` artifact 是未签名测试安装包，不等同正式 Release。正式对外发布必须使用 `Signed Cross-platform Release Candidate` 生成 macOS updater 归档、Windows updater 安装器及各自 `.sig`，由 Windows x64 verifier 验证三平台签名后才创建 Draft Release。Draft Release 同时附带 FreeRDP、Mosh、Protocol Buffers、G-Kermit 的固定源码归档，以及 CNshell 对 FreeRDP/Mosh/G-Kermit 的 Windows 构建与适配源码包。
+普通 `Windows Packaging` artifact 是未签名测试安装包，不等同正式 Release。正式对外发布使用 `Unsigned Cross-platform Release` 生成 macOS updater 归档、Windows updater 安装器及各自 `.sig`，由 Windows x64 verifier 验证三平台签名后才公开 Release。Release 同时附带 FreeRDP、Mosh、Protocol Buffers、G-Kermit 的固定源码归档，以及 CNshell 对 FreeRDP/Mosh/G-Kermit 的 Windows 构建与适配源码包；`Signed Cross-platform Release Candidate` 保留给以后增加 Developer ID、公证与 Authenticode。
 
 `v0.2.0-beta.1` 目标提交 `47b48c0` 已通过 Core CI run `29640190967` 和 Windows Packaging run `29640190971`；x64 与 ARM64 Preview 两个 Packaging job 均成功，x64 还实际验证了完整资源、桌面快捷方式升级保留和安装生命周期。后续任何构建、安装器或源码附件改动都必须在新目标提交上重新通过同一组门禁，不能沿用旧提交的结论。

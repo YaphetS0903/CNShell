@@ -37,6 +37,7 @@ describe("ConnectionBackupSettings", () => {
     );
     expect(dialog.save).not.toHaveBeenCalled();
     expect(screen.getByLabelText("导出口令")).toHaveFocus();
+    expect(screen.getByText(/完成后将集中为一次授权/)).toBeInTheDocument();
 
     await user.type(screen.getByLabelText("导出口令"), "short");
     await user.type(screen.getByLabelText("确认口令"), "short");

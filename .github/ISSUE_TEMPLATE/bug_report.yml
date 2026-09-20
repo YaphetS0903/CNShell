@@ -14,7 +14,7 @@ body:
     attributes:
       label: 提交前检查
       options:
-        - label: 我使用的是发布页中的最新 Beta，并已确认问题仍然存在。
+        - label: 我使用的是发布页中的最新正式版，并已确认问题仍然存在。
           required: true
         - label: 我搜索过现有 Issue，没有发现相同问题。
           required: true

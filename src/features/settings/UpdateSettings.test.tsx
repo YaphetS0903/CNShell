@@ -39,6 +39,30 @@ describe("UpdateSettings", () => {
     );
   });
 
+  it("offers the manual release page when the update service is unreachable", async () => {
+    const user = userEvent.setup();
+    const onError = vi.fn();
+    updater.check.mockRejectedValue(
+      new Error(
+        "error sending request for url (https://raw.githubusercontent.com/example/latest.json)",
+      ),
+    );
+    vi.spyOn(api, "isDesktop").mockReturnValue(true);
+
+    render(<UpdateSettings onError={onError} />);
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "无法连接自动更新服务",
+    );
+    expect(onError).toHaveBeenCalledWith(
+      "无法连接自动更新服务，请检查网络后重试，或打开手动下载页。",
+    );
+    expect(
+      screen.getByRole("button", { name: "打开手动下载页" }),
+    ).toBeEnabled();
+  });
+
   it("shows signed update metadata and only installs after confirmation", async () => {
     const user = userEvent.setup();
     const close = vi.fn().mockResolvedValue(undefined);

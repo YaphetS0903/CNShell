@@ -71,8 +71,13 @@ export function UpdateSettings({
       if (message.toLowerCase().includes("endpoints"))
         setState({ status: "idle", message: candidateChannelMessage });
       else {
-        setState({ status: "error", message: `更新检查失败：${message}` });
-        onError(`更新检查失败：${message}`);
+        const friendlyMessage =
+          message.includes("sending request") ||
+          message.includes("raw.githubusercontent.com")
+            ? "无法连接自动更新服务，请检查网络后重试，或打开手动下载页。"
+            : `更新检查失败：${message}`;
+        setState({ status: "error", message: friendlyMessage });
+        onError(friendlyMessage);
       }
     }
   };

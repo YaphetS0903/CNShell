@@ -37,6 +37,8 @@ use tokio::{
     time::sleep,
 };
 use uuid::Uuid;
+#[cfg(target_os = "macos")]
+use zeroize::Zeroize;
 use zeroize::Zeroizing;
 
 const KEYCHAIN_SERVICE: &str = "com.cnshell.desktop";
@@ -365,6 +367,112 @@ pub fn credential_ref(connection_id: &str) -> String {
     format!("connection:{connection_id}")
 }
 
+#[cfg(target_os = "macos")]
+const MACOS_CREDENTIAL_VAULT_VERSION: u32 = 1;
+
+#[cfg(target_os = "macos")]
+#[derive(serde::Deserialize, serde::Serialize)]
+struct MacCredentialVault {
+    version: u32,
+    credentials: HashMap<String, String>,
+}
+
+#[cfg(target_os = "macos")]
+impl Default for MacCredentialVault {
+    fn default() -> Self {
+        Self {
+            version: MACOS_CREDENTIAL_VAULT_VERSION,
+            credentials: HashMap::new(),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+impl Drop for MacCredentialVault {
+    fn drop(&mut self) {
+        for secret in self.credentials.values_mut() {
+            secret.zeroize();
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_credential_vault_account() -> String {
+    if cfg!(test) {
+        format!("credential-vault:test-v1:{}", std::process::id())
+    } else {
+        "credential-vault:v1".into()
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn macos_credential_vault_entry() -> AppResult<keyring::Entry> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, &macos_credential_vault_account())
+        .map_err(|error| AppError::Storage(error.to_string()))
+}
+
+#[cfg(target_os = "macos")]
+fn load_macos_credential_vault() -> AppResult<MacCredentialVault> {
+    match macos_credential_vault_entry()?.get_password() {
+        Ok(serialized) => {
+            let vault: MacCredentialVault = serde_json::from_str(&serialized)
+                .map_err(|error| AppError::Storage(format!("CNshell 凭据库损坏：{error}")))?;
+            if vault.version != MACOS_CREDENTIAL_VAULT_VERSION {
+                return Err(AppError::Storage(format!(
+                    "不支持的 CNshell 凭据库版本：{}",
+                    vault.version
+                )));
+            }
+            Ok(vault)
+        }
+        Err(keyring::Error::NoEntry) => Ok(MacCredentialVault::default()),
+        Err(error) => Err(AppError::Storage(error.to_string())),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn save_macos_credential_vault(vault: &MacCredentialVault) -> AppResult<()> {
+    let entry = macos_credential_vault_entry()?;
+    if vault.credentials.is_empty() {
+        return match entry.delete_credential() {
+            Ok(()) => Ok(()),
+            Err(keyring::Error::NoEntry) => Ok(()),
+            Err(error) => Err(AppError::Storage(error.to_string())),
+        };
+    }
+    let serialized = Zeroizing::new(
+        serde_json::to_string(vault)
+            .map_err(|error| AppError::Storage(format!("CNshell 凭据库编码失败：{error}")))?,
+    );
+    entry
+        .set_password(serialized.as_str())
+        .map_err(|error| AppError::Storage(error.to_string()))
+}
+
+#[cfg(target_os = "macos")]
+fn load_legacy_credential(connection_id: &str) -> AppResult<Option<String>> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
+        .map_err(|error| AppError::Storage(error.to_string()))?;
+    match entry.get_password() {
+        Ok(secret) => Ok(Some(secret)),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(error) => Err(AppError::Storage(error.to_string())),
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn save_credential(connection_id: &str, secret: &str) -> AppResult<String> {
+    let _access = keychain_access();
+    let reference = credential_ref(connection_id);
+    let mut vault = load_macos_credential_vault()?;
+    vault
+        .credentials
+        .insert(connection_id.to_string(), secret.to_string());
+    save_macos_credential_vault(&vault)?;
+    Ok(reference)
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn save_credential(connection_id: &str, secret: &str) -> AppResult<String> {
     let _access = keychain_access();
     let reference = credential_ref(connection_id);
@@ -375,6 +483,25 @@ pub fn save_credential(connection_id: &str, secret: &str) -> AppResult<String> {
     Ok(reference)
 }
 
+#[cfg(target_os = "macos")]
+pub fn delete_credential(connection_id: &str) -> AppResult<()> {
+    let _access = keychain_access();
+    let mut vault = load_macos_credential_vault()?;
+    vault.credentials.remove(connection_id);
+    save_macos_credential_vault(&vault)?;
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
+        .map_err(|error| AppError::Storage(error.to_string()))?;
+    match entry.delete_credential() {
+        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+        Err(error) => Err(AppError::Storage(format!(
+            "{}中的凭据清理失败（{}）：{error}",
+            crate::platform::credential_store_name(),
+            credential_ref(connection_id)
+        ))),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn delete_credential(connection_id: &str) -> AppResult<()> {
     let _access = keychain_access();
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
@@ -389,6 +516,24 @@ pub fn delete_credential(connection_id: &str) -> AppResult<()> {
     }
 }
 
+#[cfg(target_os = "macos")]
+pub fn load_credential(connection_id: &str) -> AppResult<Option<String>> {
+    let _access = keychain_access();
+    let mut vault = load_macos_credential_vault()?;
+    if let Some(secret) = vault.credentials.get(connection_id) {
+        return Ok(Some(secret.clone()));
+    }
+    let secret = load_legacy_credential(connection_id)?;
+    if let Some(secret) = secret.as_ref() {
+        vault
+            .credentials
+            .insert(connection_id.to_string(), secret.clone());
+        save_macos_credential_vault(&vault)?;
+    }
+    Ok(secret)
+}
+
+#[cfg(not(target_os = "macos"))]
 pub fn load_credential(connection_id: &str) -> AppResult<Option<String>> {
     let _access = keychain_access();
     let entry = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(connection_id))
@@ -398,6 +543,44 @@ pub fn load_credential(connection_id: &str) -> AppResult<Option<String>> {
         Err(keyring::Error::NoEntry) => Ok(None),
         Err(error) => Err(AppError::Storage(error.to_string())),
     }
+}
+
+#[cfg(target_os = "macos")]
+pub fn load_credentials(connection_ids: &[String]) -> AppResult<HashMap<String, String>> {
+    if connection_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let _access = keychain_access();
+    let mut vault = load_macos_credential_vault()?;
+    let mut credentials = HashMap::new();
+    let mut migrated = false;
+    for connection_id in connection_ids {
+        if let Some(secret) = vault.credentials.get(connection_id) {
+            credentials.insert(connection_id.clone(), secret.clone());
+            continue;
+        }
+        if let Some(secret) = load_legacy_credential(connection_id)? {
+            credentials.insert(connection_id.clone(), secret.clone());
+            vault.credentials.insert(connection_id.clone(), secret);
+            migrated = true;
+        }
+    }
+    if migrated {
+        save_macos_credential_vault(&vault)?;
+    }
+    Ok(credentials)
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn load_credentials(connection_ids: &[String]) -> AppResult<HashMap<String, String>> {
+    let mut credentials = HashMap::new();
+    for id in connection_ids {
+        if let Some(secret) = load_credential(id)? {
+            credentials.insert(id.clone(), secret);
+        }
+    }
+    Ok(credentials)
 }
 
 fn host_key_algorithm(kind: HostKeyType) -> &'static str {
@@ -2591,6 +2774,59 @@ mod tests {
         );
         delete_credential(&id).unwrap();
         assert!(load_credential(&id).unwrap().is_none());
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_keychain_batch_loads_only_requested_connection_secrets() {
+        let first = format!("macos-batch-first-{}", Uuid::new_v4());
+        let second = format!("macos-batch-second-{}", Uuid::new_v4());
+        let omitted = format!("macos-batch-omitted-{}", Uuid::new_v4());
+        struct Cleanup(Vec<String>);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                for id in &self.0 {
+                    let _ = delete_credential(id);
+                }
+            }
+        }
+        let _cleanup = Cleanup(vec![first.clone(), second.clone(), omitted.clone()]);
+        save_credential(&first, "first-secret").unwrap();
+        save_credential(&second, "第二个密码").unwrap();
+        save_credential(&omitted, "must-not-be-returned").unwrap();
+
+        let credentials = load_credentials(&[first.clone(), second.clone()]).unwrap();
+        assert_eq!(credentials.len(), 2);
+        assert_eq!(
+            credentials.get(&first).map(String::as_str),
+            Some("first-secret")
+        );
+        assert_eq!(
+            credentials.get(&second).map(String::as_str),
+            Some("第二个密码")
+        );
+        assert!(!credentials.contains_key(&omitted));
+    }
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_keychain_migrates_a_legacy_secret_into_the_shared_vault() {
+        let id = format!("macos-legacy-migration-{}", Uuid::new_v4());
+        let legacy = keyring::Entry::new(KEYCHAIN_SERVICE, &credential_ref(&id)).unwrap();
+        legacy.set_password("legacy-secret").unwrap();
+        struct Cleanup(String);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = delete_credential(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(id.clone());
+
+        let first = load_credentials(std::slice::from_ref(&id)).unwrap();
+        assert_eq!(first.get(&id).map(String::as_str), Some("legacy-secret"));
+        legacy.delete_credential().unwrap();
+        assert_eq!(
+            load_credential(&id).unwrap().as_deref(),
+            Some("legacy-secret")
+        );
     }
     #[test]
     fn host_algorithm_names_are_stable() {

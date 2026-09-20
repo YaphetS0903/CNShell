@@ -1,4 +1,4 @@
-# CNshell v0.2.0-beta.13 验收矩阵
+# CNshell v0.2.0 验收矩阵
 
 > 最后核验：2026-09-20（加密凭据备份的应用内口令设置、二次确认、Windows 路径导入和错误口令拒绝完成增量验收；其余外部边界按各条记录保留）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
@@ -22,7 +22,7 @@
 | CPU、内存、Swap、网络、进程、磁盘与 5 分钟历史 | 通过 | `src-tauri/src/monitor.rs`、`src/features/monitor/MonitorSidebar.tsx`、`src/features/monitor/MonitorHistoryChart.tsx` | CPU Sparkline 与 uPlot 网络上下行/延迟折线共享对齐的 5 分钟历史窗口并提供实时数值/ARIA 替代；采集解析、单项降级与窗口测试通过；腾讯云实测额外单核负载 0.576% |
 | 系统信息复制与导出 | 通过 | `src/features/monitor/SystemInfoPanel.tsx`、`src-tauri/src/monitor.rs` | 腾讯云真机验证完整内容；Rust 验证 JSON 临时文件原子导出与清理 |
 | 快捷命令、历史策略、帮助与首次引导 | 通过 | `src/features/terminal/TerminalWorkspace.tsx`、`src/features/help/HelpModal.tsx`、`src-tauri/src/db.rs` | Playwright 验证内置命令只读、用户命令删除和帮助弹窗可访问性；敏感历史检测与全量清空测试通过 |
-| 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/ConnectionBackupSettings.tsx`、`src-tauri/src/backup.rs` | 加密导出在应用内要求至少 8 位口令并二次确认，校验通过后才选择保存位置；加密导入保留一次选择的 Windows 路径并允许在应用内重试口令，不再依赖系统 `prompt`。Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
+| 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/ConnectionBackupSettings.tsx`、`src-tauri/src/backup.rs`、`src-tauri/src/ssh.rs` | 加密导出在应用内要求至少 8 位口令并二次确认，校验通过后才选择保存位置；加密导入保留一次选择的 Windows 路径并允许在应用内重试口令。macOS 旧版逐连接凭据按需迁移到单个 CNshell 钥匙串条目，批量读取只返回目标连接，迁移后导出不再按连接数量重复授权。Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
 | 可折叠、可调尺寸的三栏与底部工具区 | 通过 | `src/App.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/lib/layout.ts` | 鼠标拖动与键盘方向键均可调整；侧栏尺寸进入工作区恢复，底部高度本机持久化；紧凑窗口 E2E 通过 |
 | RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，全部参数与密码仅经 Helper stdin 传递；静态 helper 内置 NTLM 所需 MD4/MD5/RC4；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、诊断翻译及应用退出清理。当前局域网测试目标的 TCP 3389 可建立，但对默认、Cookie 和 legacy RDP 协商探针均返回 0 字节并断开，需目标 Windows 开启有效 RDP 服务后再验收画面与输入 |
 | 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分（设置中心真机通过） | `src/styles.css`、`src/components/Modal.tsx`、`src/features/settings/SettingsModal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与桌面辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、SFTP 虚拟表格和监控数值替代；设置中心已在实际 macOS `.app` 开启 VoiceOver 完成五分类、全部模块、搜索跳转、帮助、固定操作栏、焦点回绕和 Escape 验收。此结论不扩大为整个应用所有工作区的完整 VoiceOver 朗读巡检 |
@@ -311,7 +311,7 @@
 | Ventura、Sonoma、Sequoia 与 Intel 真机 | 外部阻塞 | 最低版本和 universal 构建可静态验证；仍需对应设备运行 |
 | 连续 SSH + 监控、空闲内存 < 150 MB | 用户验收通过 | 用户于约 2 小时 50 分钟时主动结束长测并认可结果；期间 4 条 SSH TCP 连接持续建立，RSS 从约 36 MB 降至并稳定在约 21 MB。未宣称实际运行满 8 小时 |
 | 无开发环境 Mac 安装、首次连接、升级、卸载 | 外部阻塞 | 本机已完成可回滚生命周期回归：覆盖安装、临时移除 App、恢复启动后，6 条连接记录稳定哈希与 6 个关联 Keychain 条目均保持不变；文档已提供。仍需另一台无开发环境的干净 Mac 验收首次安装与 Gatekeeper 流程 |
-| GitHub Releases 与 Tauri 签名 updater | 通过 | 应用内已实现检查更新、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。公开 Beta 通道固定 HTTPS endpoint 与 updater 公钥，GitHub Actions 使用现有私钥签名 macOS/Windows 更新包，跨平台 verifier 验签后才发布四平台 `latest.json`。Beta.1 → Beta.2 已完成真实应用内更新和数据保留验收；Beta.13 的 [GitHub Actions run `35483578514`](https://github.com/YaphetS0903/CNShell/actions/runs/35483578514) 中 macOS、Windows x64、Windows ARM64 与发布汇总 job 全部通过，18 个 Release 附件、签名和在线清单已经公开。本地、`main` raw endpoint 与 Release 附件的 `latest.json` SHA-256 均为 `20405f5cd8cd6ff60cd487c9cfbb7fa2568b70d9fd244de2b4716c04dcaff624`；另从公开 Release 下载 macOS updater 归档与签名，以项目内 verifier 对 `tauri.beta.json` 公钥完成独立验签。Developer ID、公证和 Authenticode 只影响操作系统首次安装信任提示，不属于当前 GitHub 一键更新的前置条件。|
+| GitHub Releases 与 Tauri 签名 updater | 通过 | 应用内已实现检查更新、版本/发布说明展示、用户确认后下载并安装、进度和失败保留当前版本；权限仅开放 check 与 download-and-install。公开更新通道固定 HTTPS endpoint 与 updater 公钥，GitHub Actions 使用现有私钥签名 macOS/Windows 更新包，跨平台 verifier 验签后才发布四平台 `latest.json`。Beta.1 → Beta.2 已完成真实应用内更新和数据保留验收；Beta.13 的 [GitHub Actions run `35483578514`](https://github.com/YaphetS0903/CNShell/actions/runs/35483578514) 中 macOS、Windows x64、Windows ARM64 与发布汇总 job 全部通过，18 个 Release 附件、签名和在线清单已经公开。本地、`main` raw endpoint 与 Release 附件的 `latest.json` SHA-256 均为 `20405f5cd8cd6ff60cd487c9cfbb7fa2568b70d9fd244de2b4716c04dcaff624`；另从公开 Release 下载 macOS updater 归档与签名，以项目内 verifier 对 updater 公钥完成独立验签。Developer ID、公证和 Authenticode 只影响操作系统首次安装信任提示，不属于当前 GitHub 一键更新的前置条件。|
 
 本机候选包另已完成以下桌面证据：DMG 只读挂载后，包内应用通过 `codesign --verify --deep --strict` 并连续运行；辅助功能树可识别原生菜单、主工具栏、连接表单字段和安全密码输入框，模态打开后焦点进入关闭按钮，Escape 可关闭。该 ad-hoc 签名只用于本机结构验收，不等同 Developer ID 签名或 Apple 公证。
 
@@ -333,11 +333,11 @@
 
 ## 5. 结论
 
-当前工作区与公开 GitHub 发布链路基线均为 **v0.2.0-beta.13 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试；Beta.13 修复了桌面 WebView 未可靠显示系统口令提示时，加密凭据导出提交空口令的问题，并为导出增加至少 8 位口令、二次确认、显隐控制与就地校验，也为加密导入提供应用内口令恢复流程。Beta.13 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过；不同设备、真实服务和辅助功能验收继续按第 3 节边界处理。
+当前工作区版本为 **v0.2.0 正式版发布候选**，公开 GitHub 发布链路基线为 **v0.2.0-beta.13 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试；v0.2.0 将 macOS 旧版逐连接凭据迁移到单个 CNshell 钥匙串条目，并为 Windows updater 增加 GitHub Release 固定清单与 raw 备用地址。Beta.13 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过；v0.2.0 只有在当前改动提交、完整门禁通过并由对应标签构建后才能表述为公开正式版。不同设备、真实服务和辅助功能验收继续按第 3 节边界处理。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 
-GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 PTY 和 universal App 构建门禁，以及只依赖 Tauri updater Secrets 的 GitHub Beta 发布流程；需要 Apple/Windows 发行凭据的系统代码签名流程作为可选能力保留。1 GB 协议与耐久测试不会在普通 CI 中重复消耗资源。
+GitHub Actions 已提供提交/PR 的短时前端、Rust、WebKit E2E、本机 PTY 和 universal App 构建门禁，以及只依赖 Tauri updater Secrets 的 GitHub 正式版发布流程；需要 Apple/Windows 发行凭据的系统代码签名流程作为可选能力保留。1 GB 协议与耐久测试不会在普通 CI 中重复消耗资源。
 
 ## 6. PLAN 架构偏差与后续范围
 

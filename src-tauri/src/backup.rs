@@ -2,7 +2,7 @@ use crate::{
     db::Database,
     error::{AppError, AppResult},
     models::{ConnectionProfile, SaveConnectionInput, SyncOptions, SyncResult},
-    ssh::{delete_credential, load_credential, save_credential},
+    ssh::{delete_credential, load_credential, load_credentials, save_credential},
 };
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 use argon2::Argon2;
@@ -38,14 +38,8 @@ struct ExportConnection {
 }
 
 impl ExportConnection {
-    fn from_profile(profile: ConnectionProfile, include_secret: bool) -> AppResult<Self> {
-        let credential =
-            if include_secret && !matches!(profile.auth_type.as_str(), "sshAgent" | "fido2Agent") {
-                load_credential(&profile.id)?
-            } else {
-                None
-            };
-        Ok(Self {
+    fn from_profile(profile: ConnectionProfile, credential: Option<String>) -> Self {
+        Self {
             id: profile.id,
             folder_id: profile.folder_id,
             protocol: profile.protocol,
@@ -64,7 +58,7 @@ impl ExportConnection {
             proxy_id: profile.proxy_id,
             environment: profile.environment,
             credential,
-        })
+        }
     }
 
     fn into_input(self) -> SaveConnectionInput {
@@ -89,6 +83,29 @@ impl ExportConnection {
             credential: self.credential,
         }
     }
+}
+
+fn export_connections(
+    profiles: Vec<ConnectionProfile>,
+    include_credentials: bool,
+) -> AppResult<Vec<ExportConnection>> {
+    let credential_ids = if include_credentials {
+        profiles
+            .iter()
+            .filter(|profile| !matches!(profile.auth_type.as_str(), "sshAgent" | "fido2Agent"))
+            .map(|profile| profile.id.clone())
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    let mut credentials = load_credentials(&credential_ids)?;
+    Ok(profiles
+        .into_iter()
+        .map(|profile| {
+            let credential = credentials.remove(&profile.id);
+            ExportConnection::from_profile(profile, credential)
+        })
+        .collect())
 }
 
 #[derive(Serialize, Deserialize)]
@@ -144,16 +161,17 @@ pub async fn sync_write(
                 .into(),
         ));
     }
-    let mut connections = Vec::new();
+    let mut connections = if options.include_hosts {
+        export_connections(db.list_connections().await?, options.include_credentials)?
+    } else {
+        Vec::new()
+    };
     if options.include_hosts {
-        for profile in db.list_connections().await? {
-            let mut exported =
-                ExportConnection::from_profile(profile, options.include_credentials)?;
+        for exported in &mut connections {
             if !options.include_private_key_paths {
                 exported.private_key_path = None;
                 exported.certificate_path = None;
             }
-            connections.push(exported);
         }
     }
     let clear =
@@ -216,15 +234,13 @@ async fn export_profiles(
             "包含凭据的导出必须设置至少 8 位口令".into(),
         ));
     }
-    let mut connections = Vec::new();
-    for profile in db
+    let profiles = db
         .list_connections()
         .await?
         .into_iter()
         .filter(|profile| only_id.is_none() || only_id == Some(profile.id.as_str()))
-    {
-        connections.push(ExportConnection::from_profile(profile, include_secrets)?);
-    }
+        .collect::<Vec<_>>();
+    let connections = export_connections(profiles, include_secrets)?;
     if only_id.is_some() && connections.is_empty() {
         return Err(AppError::NotFound(only_id.unwrap_or_default().into()));
     }

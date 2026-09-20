@@ -262,7 +262,11 @@ export function ConnectionBackupSettings({
             {passphraseError ? (
               <span role="alert">{passphraseError}</span>
             ) : (
-              <small>至少 8 位；CNshell 不会保存或上传此口令。</small>
+              <small>
+                至少 8 位；CNshell 不会保存或上传此口令。
+                {passphraseMode === "export" &&
+                  " 首次迁移旧凭据时，macOS 可能逐条询问钥匙串授权；完成后将集中为一次授权。"}
+              </small>
             )}
           </div>
           <div className="backup-passphrase-actions">

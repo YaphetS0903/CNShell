@@ -19,13 +19,13 @@ beforeEach(() => {
   vi.spyOn(window, "confirm").mockReturnValue(false);
   native.onCloseRequested.mockImplementation(async (handler) => {
     close = handler;
-    return vi.fn();
+    return () => undefined;
   });
   vi.spyOn(api, "exitApplication").mockResolvedValue(undefined);
   vi.spyOn(api, "onApplicationExitRequested").mockImplementation(
     async (handler) => {
       requestApplicationExit = handler;
-      return vi.fn();
+      return () => undefined;
     },
   );
   useAppStore.setState({ transfers: [] });

@@ -13,7 +13,7 @@ const requiredDeliverables = [
   "docs/ACCEPTANCE.md",
   "docs/EXTERNAL_ACCEPTANCE.md",
   "docs/THIRD_PARTY_NOTICES.md",
-  "docs/BETA_TESTING.md",
+  "docs/RELEASE_NOTES.md",
   "docs/UPDATER_KEY_MANAGEMENT.md",
   "src-tauri/resources/licenses/serialport-MPL-2.0.txt",
   "src-tauri/resources/licenses/rmcp-Apache-2.0.txt",
@@ -21,10 +21,10 @@ const requiredDeliverables = [
   "src-tauri/resources/kermit/THIRD_PARTY_NOTICES.md",
   ".github/workflows/ci.yml",
   ".github/workflows/release.yml",
-  ".github/workflows/beta-release.yml",
+  ".github/workflows/unsigned-release.yml",
   ".github/workflows/windows-package.yml",
-  ".github/ISSUE_TEMPLATE/beta_report.yml",
-  "src-tauri/tauri.beta.json",
+  ".github/ISSUE_TEMPLATE/release_report.yml",
+  "src-tauri/tauri.updater.json",
   "scripts/external-acceptance-preflight.sh",
   "scripts/test-windows-installer.ps1",
   "scripts/build-mcp-sidecar.sh",
@@ -110,7 +110,7 @@ describe("PLAN deliverables", () => {
     for (const workflow of [
       ".github/workflows/ci.yml",
       ".github/workflows/windows-package.yml",
-      ".github/workflows/beta-release.yml",
+      ".github/workflows/unsigned-release.yml",
       ".github/workflows/release.yml",
     ]) {
       expect(readFileSync(resolve(workflow), "utf8")).toContain(

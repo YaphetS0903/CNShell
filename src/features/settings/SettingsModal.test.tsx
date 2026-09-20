@@ -68,7 +68,7 @@ describe("SettingsModal", () => {
     expect(screen.getByRole("heading", { name: "CNshell" })).toBeVisible();
     expect(screen.getByText(`v${appVersion}`)).toBeVisible();
     expect(screen.getByText(releaseDate)).toBeVisible();
-    expect(screen.getByText("Beta 候选版")).toBeVisible();
+    expect(screen.getByText("稳定版")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /^软件更新/ }));
     expect(
       await screen.findByRole("button", { name: "检查更新" }),
