@@ -90,10 +90,12 @@ pub fn verify_updater_signature(
     let endpoints = updater
         .endpoints
         .ok_or_else(|| "release 配置缺少 updater endpoint".to_string())?;
-    if endpoints.len() != 1 {
-        return Err("release 配置必须包含且仅包含一个 updater endpoint".into());
+    if endpoints.is_empty() {
+        return Err("release 配置至少需要一个 updater endpoint".into());
     }
-    validate_endpoint(&endpoints[0])?;
+    for endpoint in &endpoints {
+        validate_endpoint(endpoint)?;
+    }
 
     let public_key_text = decode_text(
         updater
@@ -163,6 +165,19 @@ mod tests {
     }
 
     #[test]
+    fn accepts_multiple_secure_updater_endpoints() {
+        let (_directory, archive, signature, config) = fixture(b"test");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+        value["plugins"]["updater"]["endpoints"] = json!([
+            "https://updates.example.test/latest.json",
+            "https://fallback.example.test/latest.json"
+        ]);
+        fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
+        verify_updater_signature(&archive, &signature, &config).unwrap();
+    }
+
+    #[test]
     fn rejects_an_archive_that_does_not_match_the_signature() {
         let (_directory, archive, signature, config) = fixture(b"Test");
         let error = verify_updater_signature(&archive, &signature, &config).unwrap_err();
@@ -192,5 +207,30 @@ mod tests {
         fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
         let error = verify_updater_signature(&archive, &signature, &config).unwrap_err();
         assert!(error.contains("HTTPS"));
+    }
+
+    #[test]
+    fn rejects_an_insecure_fallback_updater_endpoint() {
+        let (_directory, archive, signature, config) = fixture(b"test");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+        value["plugins"]["updater"]["endpoints"] = json!([
+            "https://updates.example.test/latest.json",
+            "http://fallback.example.test/latest.json"
+        ]);
+        fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
+        let error = verify_updater_signature(&archive, &signature, &config).unwrap_err();
+        assert!(error.contains("HTTPS"));
+    }
+
+    #[test]
+    fn rejects_an_empty_updater_endpoint_list() {
+        let (_directory, archive, signature, config) = fixture(b"test");
+        let mut value: serde_json::Value =
+            serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+        value["plugins"]["updater"]["endpoints"] = json!([]);
+        fs::write(&config, serde_json::to_vec(&value).unwrap()).unwrap();
+        let error = verify_updater_signature(&archive, &signature, &config).unwrap_err();
+        assert!(error.contains("至少需要一个"));
     }
 }
