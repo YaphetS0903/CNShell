@@ -573,6 +573,106 @@
   margin-bottom: 8px;
 }
 
+.backup-passphrase-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.backup-passphrase-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+}
+
+.backup-passphrase-heading > svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--blue);
+}
+
+.backup-passphrase-heading > span {
+  display: grid;
+  gap: 3px;
+}
+
+.backup-passphrase-heading strong {
+  font-size: 11px;
+}
+
+.backup-passphrase-heading small,
+.backup-passphrase-help small {
+  color: var(--faint);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.backup-passphrase-panel > label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.backup-passphrase-panel input {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+}
+
+.backup-secret-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 35px;
+}
+
+.backup-secret-field > input {
+  border-radius: 6px 0 0 6px !important;
+}
+
+.backup-visibility-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 35px;
+  border: 1px solid var(--border);
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-3);
+  color: var(--muted);
+}
+
+.backup-visibility-toggle:hover {
+  color: var(--text);
+}
+
+.backup-passphrase-help {
+  min-height: 14px;
+}
+
+.backup-passphrase-help > span {
+  color: var(--danger);
+  font-size: 10px;
+}
+
+.backup-passphrase-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.connection-import-passphrase {
+  margin: 0;
+}
+
 .settings-inline-state {
   min-height: 68px;
   display: flex;

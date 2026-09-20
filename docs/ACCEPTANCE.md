@@ -1,6 +1,6 @@
-# CNshell v0.2.0-beta.12 验收矩阵
+# CNshell v0.2.0-beta.13 验收矩阵
 
-> 最后核验：2026-09-08（传输队列真实协议、编辑器生命周期、应用退出保护与 macOS arm64 成品 App 增量验收完成；其余外部边界按各条记录保留）
+> 最后核验：2026-09-20（加密凭据备份的应用内口令设置、二次确认、Windows 路径导入和错误口令拒绝完成增量验收；其余外部边界按各条记录保留）
 > 状态定义：**通过**＝已有自动化或本机产物证据；**部分**＝实现完成但验收环境不完整；**外部阻塞**＝需要其他设备、发行凭据或长时窗口。
 
 ## 1. 核心功能
@@ -22,7 +22,7 @@
 | CPU、内存、Swap、网络、进程、磁盘与 5 分钟历史 | 通过 | `src-tauri/src/monitor.rs`、`src/features/monitor/MonitorSidebar.tsx`、`src/features/monitor/MonitorHistoryChart.tsx` | CPU Sparkline 与 uPlot 网络上下行/延迟折线共享对齐的 5 分钟历史窗口并提供实时数值/ARIA 替代；采集解析、单项降级与窗口测试通过；腾讯云实测额外单核负载 0.576% |
 | 系统信息复制与导出 | 通过 | `src/features/monitor/SystemInfoPanel.tsx`、`src-tauri/src/monitor.rs` | 腾讯云真机验证完整内容；Rust 验证 JSON 临时文件原子导出与清理 |
 | 快捷命令、历史策略、帮助与首次引导 | 通过 | `src/features/terminal/TerminalWorkspace.tsx`、`src/features/help/HelpModal.tsx`、`src-tauri/src/db.rs` | Playwright 验证内置命令只读、用户命令删除和帮助弹窗可访问性；敏感历史检测与全量清空测试通过 |
-| 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/AdvancedSettings.tsx`、`src-tauri/src/backup.rs` | 连接库工具栏与设置均有导入入口；Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
+| 连接导入导出与加密凭据备份 | 通过 | `src/features/connections/ConnectionSidebar.tsx`、`src/features/settings/ConnectionBackupSettings.tsx`、`src-tauri/src/backup.rs` | 加密导出在应用内要求至少 8 位口令并二次确认，校验通过后才选择保存位置；加密导入保留一次选择的 Windows 路径并允许在应用内重试口令，不再依赖系统 `prompt`。Argon2id + AES-256-GCM 往返及错误口令拒绝测试通过 |
 | 可折叠、可调尺寸的三栏与底部工具区 | 通过 | `src/App.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/lib/layout.ts` | 鼠标拖动与键盘方向键均可调整；侧栏尺寸进入工作区恢复，底部高度本机持久化；紧凑窗口 E2E 通过 |
 | RDP 独立 FreeRDP adapter | 部分 | `src-tauri/src/rdp.rs`、`src/features/rdp/RdpWorkspace.tsx` | 本机实现已通过：RDP 密码保存 Keychain，全部参数与密码仅经 Helper stdin 传递；静态 helper 内置 NTLM 所需 MD4/MD5/RC4；动态分辨率、剪贴板、自动重连参数；受管 PID、标签状态、关闭、诊断翻译及应用退出清理。当前局域网测试目标的 TCP 3389 可建立，但对默认、Cookie 和 legacy RDP 协商探针均返回 0 字节并断开，需目标 Windows 开启有效 RDP 服务后再验收画面与输入 |
 | 浅色、深色、高对比、键盘和 VoiceOver 语义 | 部分（设置中心真机通过） | `src/styles.css`、`src/components/Modal.tsx`、`src/features/settings/SettingsModal.tsx`、`src/features/terminal/TerminalWorkspace.tsx`、`src/features/files/FileManager.tsx` | Playwright 与桌面辅助功能树验证跟随 macOS 浅色、手动主题优先级、高对比、模态焦点陷阱，会话/工具标准 tab/tabpanel、SFTP 虚拟表格和监控数值替代；设置中心已在实际 macOS `.app` 开启 VoiceOver 完成五分类、全部模块、搜索跳转、帮助、固定操作栏、焦点回绕和 Escape 验收。此结论不扩大为整个应用所有工作区的完整 VoiceOver 朗读巡检 |
@@ -333,7 +333,7 @@
 
 ## 5. 结论
 
-当前工作区与公开 GitHub 发布链路基线均为 **v0.2.0-beta.12 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试，耐久测试按用户认可的约 2 小时 50 分钟结果保留；Beta.12 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过。Beta.1 → Beta.2 应用内更新与数据保留已有真实证据，Beta.11 → Beta.12 的人工客户端升级仍需从已安装旧版执行。不同设备、真实服务和辅助功能验收继续按第 3 节边界处理；Developer ID、公证和 Authenticode 为未来可选的首次安装体验增强项。
+当前工作区版本为 **v0.2.0-beta.13 发布候选**，公开 GitHub 发布链路基线为 **v0.2.0-beta.12 未做商业代码签名的跨平台 Pre-release**。核心 SSH/SFTP/监控、高级代理和安全数据路径已通过自动化与真实协议测试；Beta.13 修复了桌面 WebView 未可靠显示系统口令提示时，加密凭据导出提交空口令的问题，并为导出增加至少 8 位口令、二次确认、显隐控制与就地校验，也为加密导入提供应用内口令恢复流程。Beta.13 只有在当前改动提交、完整门禁通过并由对应标签构建后才能表述为公开包。Beta.12 的 Tauri updater 签名、四平台清单、18 个公开附件和跨平台构建门禁均已通过；不同设备、真实服务和辅助功能验收继续按第 3 节边界处理。
 
 PLAN 要求的 universal DMG、版本更新清单、用户手册、快捷键表、架构说明、安全说明、故障排查和安装/升级/卸载说明均已存在，并由 `src/test/deliverables.test.ts` 检查文件、版本一致性和安装文档必要章节。文档存在不等同“已在干净 Mac 验证”，第 3 节对应门槛仍保持外部阻塞。
 

@@ -6,8 +6,11 @@ import {
   Copy,
   Download,
   Edit3,
+  Eye,
+  EyeOff,
   Folder,
   FolderInput,
+  KeyRound,
   Monitor,
   MoreHorizontal,
   Network,
@@ -24,11 +27,18 @@ import {
   Usb,
 } from "lucide-react";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { useCallback, useMemo, useState, useEffect } from "react";
+import {
+  type FormEvent,
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+} from "react";
 import { api } from "../../lib/api";
 import { useAppStore } from "../../store/app-store";
 import type { ConnectionProfile, Folder as FolderModel } from "../../types";
 import { IconButton } from "../../components/IconButton";
+import { Modal } from "../../components/Modal";
 import { errorMessage } from "../../lib/format";
 import { TunnelManager } from "./TunnelManager";
 import { ConnectionDiagnostics } from "./ConnectionDiagnostics";
@@ -58,6 +68,13 @@ export function ConnectionSidebar({
     useState<ConnectionProfile | null>(null);
   const [diagnosticConnection, setDiagnosticConnection] =
     useState<ConnectionProfile | null>(null);
+  const [encryptedImportPath, setEncryptedImportPath] = useState<string | null>(
+    null,
+  );
+  const [importPassphrase, setImportPassphrase] = useState("");
+  const [showImportPassphrase, setShowImportPassphrase] = useState(false);
+  const [importPassphraseError, setImportPassphraseError] = useState("");
+  const [importBusy, setImportBusy] = useState(false);
   const [folders, setFolders] = useState<FolderModel[]>([]);
   const [expandedFolders, setExpandedFolders] = useState(
     () => new Set<string>(),
@@ -335,13 +352,38 @@ export function ConnectionSidebar({
         setError(message);
         return;
       }
-      const passphrase = prompt("该备份已加密，请输入导出口令") ?? undefined;
-      try {
-        await api.importConnections(path, passphrase);
-        await refreshConnections();
-      } catch (retry) {
-        setError(errorMessage(retry));
-      }
+      setEncryptedImportPath(path);
+      setImportPassphrase("");
+      setShowImportPassphrase(false);
+      setImportPassphraseError("");
+    }
+  };
+  const closeEncryptedImport = () => {
+    if (importBusy) return;
+    setEncryptedImportPath(null);
+    setImportPassphrase("");
+    setShowImportPassphrase(false);
+    setImportPassphraseError("");
+  };
+  const importEncryptedConnections = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!encryptedImportPath) return;
+    if (importPassphrase.length < 8) {
+      setImportPassphraseError("请输入导出时设置的至少 8 位口令");
+      return;
+    }
+    setImportPassphraseError("");
+    setImportBusy(true);
+    try {
+      await api.importConnections(encryptedImportPath, importPassphrase);
+      await refreshConnections();
+      setEncryptedImportPath(null);
+      setImportPassphrase("");
+      setShowImportPassphrase(false);
+    } catch (error) {
+      setImportPassphraseError(errorMessage(error));
+    } finally {
+      setImportBusy(false);
     }
   };
   const toggleFolder = (id: string) =>
@@ -649,6 +691,81 @@ export function ConnectionSidebar({
             openConnectionEditor(connection);
           }}
         />
+      )}
+      {encryptedImportPath && (
+        <Modal title="导入加密备份" onClose={closeEncryptedImport}>
+          <form
+            className="backup-passphrase-panel connection-import-passphrase"
+            onSubmit={importEncryptedConnections}
+          >
+            <div className="backup-passphrase-heading">
+              <KeyRound size={17} />
+              <span>
+                <strong>输入加密备份口令</strong>
+                <small>
+                  已选择 {encryptedImportPath.split(/[\\/]/).at(-1)}
+                  ，请输入导出时设置的口令。
+                </small>
+              </span>
+            </div>
+            <label>
+              <span>备份口令</span>
+              <div className="backup-secret-field">
+                <input
+                  autoFocus
+                  type={showImportPassphrase ? "text" : "password"}
+                  value={importPassphrase}
+                  onChange={(event) => {
+                    setImportPassphrase(event.target.value);
+                    setImportPassphraseError("");
+                  }}
+                  autoComplete="current-password"
+                  aria-invalid={Boolean(importPassphraseError)}
+                  aria-describedby="connection-import-passphrase-help"
+                />
+                <button
+                  type="button"
+                  className="backup-visibility-toggle"
+                  aria-label={showImportPassphrase ? "隐藏口令" : "显示口令"}
+                  onClick={() => setShowImportPassphrase((current) => !current)}
+                >
+                  {showImportPassphrase ? (
+                    <EyeOff size={14} />
+                  ) : (
+                    <Eye size={14} />
+                  )}
+                </button>
+              </div>
+            </label>
+            <div
+              id="connection-import-passphrase-help"
+              className="backup-passphrase-help"
+            >
+              {importPassphraseError ? (
+                <span role="alert">{importPassphraseError}</span>
+              ) : (
+                <small>至少 8 位；CNshell 不会保存或上传此口令。</small>
+              )}
+            </div>
+            <div className="backup-passphrase-actions">
+              <button
+                type="button"
+                className="button secondary"
+                disabled={importBusy}
+                onClick={closeEncryptedImport}
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                className="button primary"
+                disabled={importBusy}
+              >
+                {importBusy ? "正在导入…" : "解密并导入"}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
     </aside>
   );

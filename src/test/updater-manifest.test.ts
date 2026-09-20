@@ -44,7 +44,8 @@ describe("static updater manifest", () => {
       platforms: Record<string, { url: string; signature: string }>;
     };
     expect(manifest.version).toBe(currentVersion);
-    expect(manifest.notes).toContain("### 新增");
+    expect(manifest.notes).toMatch(/^### /);
+    expect(manifest.notes).not.toContain("\n## ");
     expect(manifest.pub_date).toBe("2026-07-16T00:00:00.000Z");
     expect(Object.keys(manifest.platforms).sort()).toEqual([
       "darwin-aarch64",

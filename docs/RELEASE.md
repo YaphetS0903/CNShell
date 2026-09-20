@@ -23,8 +23,8 @@ Release 说明必须明确：macOS 没有 Developer ID/公证，只能在核对�
 标签必须与 `package.json` 版本完全一致：
 
 ```bash
-git tag v0.2.0-beta.12
-git push origin v0.2.0-beta.12
+git tag v0.2.0-beta.13
+git push origin v0.2.0-beta.13
 ```
 
 Updater 密钥的本机 Keychain 位置、GitHub Secret 名称、公钥指纹和禁止直接轮换的规则见 `docs/UPDATER_KEY_MANAGEMENT.md`。以后即使选择增加 Developer ID、公证或 Authenticode，也必须复用同一 updater 密钥，避免已安装版本失去更新路径。
