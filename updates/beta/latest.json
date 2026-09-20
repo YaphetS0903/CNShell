@@ -1,23 +1,23 @@
 {
-  "version": "0.2.0-beta.12",
-  "notes": "### 新增\n\n- 自动化从设置页拆分为独立中心，提供任务列表、步骤编辑、自然语言计划、时区、下次运行、持久运行记录、手动运行、Python 和录制四个子页。\n- 终端新增 AI 辅助入口，支持携带选区或错误上下文、发送前脱敏预览和明确确认；AI 设置仅保留 Provider 管理。\n- 主工作区新增终端优先、文件优先和监控优先布局，以及单面板放大；基础设置新增 90%、100%、110% 和 125% 全局界面缩放与即时预览。\n- 文件管理器新增单行可编辑路径栏，将面包屑与完整路径输入合并，并区分根目录和真实远端用户主目录入口。\n\n### 优化\n\n- 连接编辑器按协议保存独立草稿，切换 SSH、RDP、Serial、本地 Shell 和 Telnet 时不再带入无关字段；精简首屏并增加固定操作区与“保存并连接”。\n- 设置中心明确基础设置与各模块的独立保存范围，统一输入框、下拉框、复选框和表单间距，并为插件、MCP、团队、备份、同步和代理提供更清晰的首次配置引导。\n- 传输队列增加状态计数、连接筛选、失败突出和可操作的中文错误说明；连接诊断、隧道、批量执行、快捷命令、通知规则、粘贴历史、帮助、关于和更新入口同步整理。\n- 网络监控固定主接口并按会话和网卡保存历史；系统信息、进程、端口和连接列表补充采集时间、筛选、分页与高负载保护。\n- 标题栏显示当前连接名称、协议和身份；移除重复的连接管理器和新建连接按钮，保留连接库切换与左侧新建入口。\n\n### 无障碍与可靠性\n\n- 深色与浅色主题的辅助文字在最不利语义背景上达到 WCAG AA 4.5:1，并加入源码变量和 WebKit 最终计算样式回归测试。\n- 改进弹窗初始焦点、焦点返回、Escape/点击外部关闭及紧凑窗口布局；125% 缩放下主要弹窗仍保留固定操作区。\n- 自动化运行结果写入 SQLite；端口与连接列表按 200 条分批渲染，避免一次创建最多 5000 行界面。\n\n### 验证\n\n- 前端单元测试 315/315、WebKit 端到端测试 24/24、Rust 测试 278/278、发布与 updater 定向测试 69/69 通过；ESLint、TypeScript、生产构建和 `git diff --check` 通过。\n- AI、插件、MCP、团队、Relay、RDP 与 Serial 本地定向测试 71/71 通过；本地 SSH/SFTP 互操作 14/14 通过。\n- 60 秒 SSH 稳定性测试完成 30 次操作，PTY 往返 0 ms，RSS 从 59,792 KiB 降至 59,760 KiB，峰值 59,824 KiB。\n- GitHub Beta.11 在线清单与仓库 SHA-256 一致，macOS updater 归档已由 CNshell 内置 verifier 确认签名与 release 公钥匹配。\n\n### 已知限制\n\n- macOS 继续使用 ad-hoc 签名且没有 Developer ID/公证；Windows 没有 Authenticode。GitHub Releases 与 Tauri minisign 一键更新不受影响，但首次安装仍可能显示 Gatekeeper 或 SmartScreen 提示。\n- Windows ARM64、Intel Mac、真实 RDP、实体串口、Mosh 漫游、WebDAV 双设备、生产 Relay 与完整辅助功能矩阵仍需对应设备或服务继续验收。",
-  "pub_date": "2026-09-11T13:28:53.667Z",
+  "version": "0.2.0-beta.13",
+  "notes": "### 修复\n\n- 修复 macOS 与 Windows 桌面 WebView 未可靠显示系统口令提示时，“导出含凭据的加密备份”仍继续提交空口令并报错的问题。\n- 加密导出改为先在应用内设置至少 8 位口令并二次确认，校验通过后再选择保存位置；提供口令显隐控制、就地错误提示和处理中状态。\n- 加密导入在选中备份后直接显示应用内口令表单，保留已选择的文件供错误口令重试，不再依赖系统 `prompt`。\n\n### 安全与兼容性\n\n- 含凭据备份继续使用 Argon2id 派生密钥与 AES-256-GCM 加密；口令不会保存或上传，错误口令不会写入部分连接。\n- 备份格式保持不变，可在 macOS 导出后导入 Windows；密码与私钥口令在目标电脑写入其系统凭据库。\n- 新增加密导出前置校验、无系统提示调用、Windows 路径导入和单次文件选择回归测试；既有加密备份往返与错误口令拒绝测试继续通过。",
+  "pub_date": "2026-09-20T03:41:06.960Z",
   "platforms": {
     "darwin-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.12/CNshell_0.2.0-beta.12_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWNUOGdnN2hVZDF6RS96RkRrcEtkQjkrdER0YTRsTlpQTnNQUVZRQ3gwZTdOVEQvRktFTnJuWlRXcEhXN1YvVWErMnlrd3ZzQjhnWlBWamVYdzkydUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTMxNjU3CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6CmlNSVRhSDVUVHFzaDkrR2s5V3hmQmI4cHo3c0lvNFdaM0E1R1JnZ3c3SXVaNjJHUnovZUhyU2hON3B3cndLKythcDN0bS9mNVByUnB0bnJETXpEd0JRPT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWFWdy8yMWhNOXg3MmFZbFJhcUROcnhqQkZ0VzlYQjdZTHVqMllpZ3Boc0hYdWxyWTgzOHBVTHQ3c250NU53ZlpqYzZXdk5idnN4ZGZFNVc1VWd1OGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5ODcyOTExCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cms1UU9ldGxnckJGaHc2cTFOanl1ZWVmeGR1b1luUG42RnJyWmhQekJpaWFES3h2bDV6ZTZkNzVZdTgzSW1qRVRWYUJROW1HUlh3UHQxdzBHQmtEa0NnPT0K"
     },
     "darwin-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.12/CNshell_0.2.0-beta.12_universal.app.tar.gz",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWNUOGdnN2hVZDF6RS96RkRrcEtkQjkrdER0YTRsTlpQTnNQUVZRQ3gwZTdOVEQvRktFTnJuWlRXcEhXN1YvVWErMnlrd3ZzQjhnWlBWamVYdzkydUE0PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTMxNjU3CWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6CmlNSVRhSDVUVHFzaDkrR2s5V3hmQmI4cHo3c0lvNFdaM0E1R1JnZ3c3SXVaNjJHUnovZUhyU2hON3B3cndLKythcDN0bS9mNVByUnB0bnJETXpEd0JRPT0K"
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_universal.app.tar.gz",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWFWdy8yMWhNOXg3MmFZbFJhcUROcnhqQkZ0VzlYQjdZTHVqMllpZ3Boc0hYdWxyWTgzOHBVTHQ3c250NU53ZlpqYzZXdk5idnN4ZGZFNVc1VWd1OGc4PQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5ODcyOTExCWZpbGU6Q05zaGVsbC5hcHAudGFyLmd6Cms1UU9ldGxnckJGaHc2cTFOanl1ZWVmeGR1b1luUG42RnJyWmhQekJpaWFES3h2bDV6ZTZkNzVZdTgzSW1qRVRWYUJROW1HUlh3UHQxdzBHQmtEa0NnPT0K"
     },
     "windows-x86_64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.12/CNshell_0.2.0-beta.12_x64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZWQ2SzhrZ0g5M3BkYVV3dUJ0c053OG5Sc3lFdVB0YXRMMXBIelFrUThDa3RibDVJeVlRRUxXa3VmRU1DdjBKOHIrTjlHRE14SEcreXM5cFo5bjBxT2dnPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTMyOTQ2CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEyX3g2NC1zZXR1cC5leGUKL2ZSVXMvemFpSTRMMk5LYTRGZ2VSNUFrZUNCRkpMYW9UOFlMalEzeFJNZ2xwSnRwY1hha3ByQmNUc0VibmxKZkVBcDRsd2tUajY3OGw4YVU5aldRQ0E9PQo="
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_x64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVlYQmJhdTlSa1BzZUZSSnB6OERkLzBLOFIwT2VNVTJCaDk0Nzl2SGhPWmU3VytlL1QwRW5ZNUJHQ0FMTTJHbmVzREFJcWRJZmJoQUd2Vjc0ZGlEbXdRPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5ODc1MjQwCWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEzX3g2NC1zZXR1cC5leGUKcFdUdyt0QTVQMHRhd015dC9rNXBuR0EweUNQdUttMVZRS3ZpaThOaDluS3Aydm9WdDkraXZQWXR1TWRWVnFMbEY5Zk1tL3hVSzZweml0K094RW9yQ0E9PQo="
     },
     "windows-aarch64": {
-      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.12/CNshell_0.2.0-beta.12_arm64-setup.exe",
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVJrUDd2c2k5SlNzQmQ2dXlDQ1AzWGVZMXl4dkhIdGlZNVVUQ1JVR2hybTlXVGlPT1lwMlVHcWdFMVVhSmRqM2NwN3ppUXRQbm9wNWpqSUhJMlFLdVFNPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5MTMxNDU5CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEyX2FybTY0LXNldHVwLmV4ZQp4b240bzZ3VEdIYllBcWd4NkE0b3V5UmtuckRUc2l6c0Z3ZFExUnJ5cjUvYk5kTlFMMzZFWUc1Vi8zQUF6MHBpcDRMd2VLNEVjVGlsNUZselpwMVpBZz09Cg=="
+      "url": "https://github.com/YaphetS0903/CNShell/releases/download/v0.2.0-beta.13/CNshell_0.2.0-beta.13_arm64-setup.exe",
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVRVWJtR2xKcmFlZVI5RW42a2dTOTVOWklqWCtocVhGS0c0QlZvN1Z4dDI5UGh6L2l0SnI4dXFDVytBRTZMOFkweHI0b1VZSW9ZMUg0N3dmaURwSVBxSndzaEtsRmhZUGdzPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg5ODc0NDA3CWZpbGU6Q05zaGVsbF8wLjIuMC1iZXRhLjEzX2FybTY0LXNldHVwLmV4ZQpyR3RIQ1B4c3RhZklrVk50WnFsRzJYZHcxZWVxdGJ6QkdIYzhMbHRmdWovYWJpY0N0V1ljUm1hb01GbmhiYnhQbHdIQXo0NnF6SktUYStyc1UvSWtBUT09Cg=="
     }
   }
 }
