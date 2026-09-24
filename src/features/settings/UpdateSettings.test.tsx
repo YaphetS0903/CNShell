@@ -29,8 +29,14 @@ describe("UpdateSettings", () => {
     const openExternal = vi
       .spyOn(api, "openExternal")
       .mockResolvedValue(undefined);
+    vi.spyOn(api, "isDesktop").mockReturnValue(true);
+    updater.check.mockRejectedValue(new Error("endpoints are not configured"));
     render(<UpdateSettings onError={vi.fn()} />);
     expect(screen.getByRole("status")).toHaveTextContent(
+      "点击“检查更新”获取最新版本",
+    );
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
       "开发构建未配置更新通道",
     );
     await user.click(screen.getByRole("button", { name: "打开手动下载页" }));

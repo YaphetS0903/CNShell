@@ -315,6 +315,8 @@
 
 本机已从公开 Release 下载 `CNshell_0.2.0_universal.dmg`，核对 SHA-256 `835c556112b5baadc2ab089aa36a2bb2f7ab0274dea31a0ec79d3653b1ababa3` 并通过 `hdiutil verify`。覆盖安装后 `/Applications/CNshell.app` 的版本与 build 均为 `0.2.0`，主程序包含 `x86_64 + arm64`，`codesign --verify --deep --strict` 通过并成功启动；旧 Beta.13 应用本体已移入废纸篓，应用数据与系统凭据未删除。既有辅助功能树证据继续保留；该 ad-hoc 签名不等同 Developer ID 签名或 Apple 公证。
 
+2026-09-24 在已安装的原生 `v0.2.0` 中打开“关于与支持 → 软件更新”，界面显示“稳定版 / 签名自动更新”，点击“检查更新”后返回“当前已是最新版本”，没有网络错误。Windows `v0.2.0-beta.12` 的旧程序只知道 raw 地址；若该域名不可达，须按[安装文档](INSTALLATION.md)手动覆盖安装正式版一次。用户的 Windows 真机尚未完成此轮升级验收。
+
 ## 4. 腾讯云真实主机证据
 
 2026-07-11 使用用户提供的腾讯云服务器完成以下非破坏性验收；密码未进入命令参数、日志或本文档，测试文件仅位于随机 `/tmp/cnshell-acceptance-*` 并由 trap 清理。

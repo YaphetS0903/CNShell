@@ -32,6 +32,8 @@ Tauri updater 的 minisign 签名会验证更新包，但不能替代 Developer 
 
 在“设置 → 软件更新”可手动检查。CNshell 会先展示目标版本和发布说明，只有用户确认后才下载、验签并安装；不会静默安装。该 GitHub 一键更新链路不依赖 Developer ID、公证或 Authenticode，并会持续沿用兼容的 updater 签名信任链。
 
+如果 Windows 上安装的是 `v0.2.0-beta.12`，且点击“检查更新”提示无法访问 `raw.githubusercontent.com`，旧版程序无法使用新增的 Release 备用通道。请从[正式版 Release](https://github.com/YaphetS0903/CNShell/releases/tag/v0.2.0)下载对应架构的 `v0.2.0` 安装器，核对 `SHA256SUMS.txt` 后直接覆盖安装一次；启动后确认“关于与支持”显示 `v0.2.0 / 稳定版`。之后的应用内更新会使用正式版主通道和备用通道。覆盖安装不会主动删除连接数据库或 Windows 凭据管理器中的凭据。
+
 1. 退出 CNshell，确保传输队列没有运行中任务。
 2. 备份重要连接；普通安全导出不含凭据，需要跨设备或跨平台携带凭据时使用加密导出。
 3. macOS 打开新 DMG 并覆盖“应用程序”中的 App；Windows 运行同架构的新 NSIS 安装包完成当前用户覆盖升级。

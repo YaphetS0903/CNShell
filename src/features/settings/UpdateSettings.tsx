@@ -33,7 +33,7 @@ export function UpdateSettings({
 }) {
   const [state, setState] = useState<UpdateState>({
     status: "idle",
-    message: candidateChannelMessage,
+    message: "点击“检查更新”获取最新版本。",
   });
   const updateRef = useRef<Update | null>(null);
   useEffect(
